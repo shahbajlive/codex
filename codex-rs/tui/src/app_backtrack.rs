@@ -34,11 +34,11 @@ use crate::history_cell::UserHistoryCell;
 use crate::pager_overlay::Overlay;
 use crate::tui;
 use crate::tui::TuiEvent;
-use codex_core::protocol::CodexErrorInfo;
-use codex_core::protocol::ErrorEvent;
-use codex_core::protocol::EventMsg;
-use codex_core::protocol::Op;
 use codex_protocol::ThreadId;
+use codex_protocol::protocol::CodexErrorInfo;
+use codex_protocol::protocol::ErrorEvent;
+use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::Op;
 use codex_protocol::user_input::TextElement;
 use color_eyre::eyre::Result;
 use crossterm::event::KeyCode;
@@ -344,7 +344,7 @@ impl App {
         } else {
             self.backtrack.nth_user_message = usize::MAX;
             if let Some(Overlay::Transcript(t)) = &mut self.overlay {
-                t.set_highlight_cell(None);
+                t.set_highlight_cell(/*cell*/ None);
             }
         }
     }

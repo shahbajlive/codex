@@ -6,6 +6,8 @@ mod windows_impl {
     use crate::env::ensure_non_interactive_pager;
     use crate::env::inherit_path_env;
     use crate::env::normalize_null_device_env;
+    use crate::helper_materialization::resolve_helper_for_launch;
+    use crate::helper_materialization::HelperExecutable;
     use crate::identity::require_logon_sandbox_creds;
     use crate::logging::log_failure;
     use crate::logging::log_note;
@@ -15,6 +17,8 @@ mod windows_impl {
     use crate::policy::SandboxPolicy;
     use crate::token::convert_string_sid_to_sid;
     use crate::winutil::quote_windows_arg;
+    use crate::winutil::resolve_sid;
+    use crate::winutil::string_from_sid_bytes;
     use crate::winutil::to_wide;
     use anyhow::Result;
     use rand::rngs::SmallRng;
@@ -110,17 +114,9 @@ mod windows_impl {
         }
     }
 
-    /// Locates `codex-command-runner.exe` next to the current binary.
-    fn find_runner_exe() -> PathBuf {
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                let candidate = dir.join("codex-command-runner.exe");
-                if candidate.exists() {
-                    return candidate;
-                }
-            }
-        }
-        PathBuf::from("codex-command-runner.exe")
+    /// Resolves the command runner path, preferring CODEX_HOME/.sandbox/bin.
+    fn find_runner_exe(codex_home: &Path, log_dir: Option<&Path>) -> PathBuf {
+        resolve_helper_for_launch(HelperExecutable::CommandRunner, codex_home, log_dir)
     }
 
     /// Generates a unique named-pipe path used to communicate with the runner process.
@@ -129,10 +125,9 @@ mod windows_impl {
         format!(r"\\.\pipe\codex-runner-{:x}-{}", rng.gen::<u128>(), suffix)
     }
 
-    /// Creates a named pipe with permissive ACLs so the sandbox user can connect.
-    fn create_named_pipe(name: &str, access: u32) -> io::Result<HANDLE> {
-        // Allow sandbox users to connect by granting Everyone full access on the pipe.
-        let sddl = to_wide("D:(A;;GA;;;WD)");
+    /// Creates a named pipe whose DACL only allows the sandbox user to connect.
+    fn create_named_pipe(name: &str, access: u32, sandbox_sid: &str) -> io::Result<HANDLE> {
+        let sddl = to_wide(format!("D:(A;;GA;;;{sandbox_sid})"));
         let mut sd: PSECURITY_DESCRIPTOR = ptr::null_mut();
         let ok = unsafe {
             ConvertStringSecurityDescriptorToSecurityDescriptorW(
@@ -202,12 +197,14 @@ mod windows_impl {
         cwd: PathBuf,
         env_map: HashMap<String, String>,
         timeout_ms: Option<u64>,
+        use_private_desktop: bool,
         stdin_pipe: String,
         stdout_pipe: String,
         stderr_pipe: String,
     }
 
     /// Launches the command runner under the sandbox user and captures its output.
+    #[allow(clippy::too_many_arguments)]
     pub fn run_windows_sandbox_capture(
         policy_json_or_preset: &str,
         sandbox_policy_cwd: &Path,
@@ -216,6 +213,7 @@ mod windows_impl {
         cwd: &Path,
         mut env_map: HashMap<String, String>,
         timeout_ms: Option<u64>,
+        use_private_desktop: bool,
     ) -> Result<CaptureResult> {
         let policy = parse_policy(policy_json_or_preset)?;
         normalize_null_device_env(&mut env_map);
@@ -231,6 +229,11 @@ mod windows_impl {
         log_start(&command, logs_base_dir);
         let sandbox_creds =
             require_logon_sandbox_creds(&policy, sandbox_policy_cwd, cwd, &env_map, codex_home)?;
+        let sandbox_sid = resolve_sid(&sandbox_creds.username).map_err(|err: anyhow::Error| {
+            io::Error::new(io::ErrorKind::PermissionDenied, err.to_string())
+        })?;
+        let sandbox_sid = string_from_sid_bytes(&sandbox_sid)
+            .map_err(|err| io::Error::new(io::ErrorKind::PermissionDenied, err))?;
         // Build capability SID for ACL grants.
         if matches!(
             &policy,
@@ -275,18 +278,21 @@ mod windows_impl {
         let h_stdin_pipe = create_named_pipe(
             &stdin_name,
             PIPE_ACCESS_DUPLEX | PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+            &sandbox_sid,
         )?;
         let h_stdout_pipe = create_named_pipe(
             &stdout_name,
             PIPE_ACCESS_DUPLEX | PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+            &sandbox_sid,
         )?;
         let h_stderr_pipe = create_named_pipe(
             &stderr_name,
             PIPE_ACCESS_DUPLEX | PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+            &sandbox_sid,
         )?;
 
         // Launch runner as sandbox user via CreateProcessWithLogonW.
-        let runner_exe = find_runner_exe();
+        let runner_exe = find_runner_exe(codex_home, logs_base_dir);
         let runner_cmdline = runner_exe
             .to_str()
             .map(|s| s.to_string())
@@ -308,6 +314,7 @@ mod windows_impl {
             cwd: cwd.to_path_buf(),
             env_map: env_map.clone(),
             timeout_ms,
+            use_private_desktop,
             stdin_pipe: stdin_name.clone(),
             stdout_pipe: stdout_name.clone(),
             stderr_pipe: stderr_name.clone(),
@@ -340,6 +347,16 @@ mod windows_impl {
         // Suppress WER/UI popups from the runner process so we can collect exit codes.
         let _ = unsafe { SetErrorMode(0x0001 | 0x0002) }; // SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX
 
+        log_note(
+            &format!(
+                "runner launch: exe={} cmdline={} cwd={}",
+                runner_exe.display(),
+                runner_full_cmd,
+                cwd.display()
+            ),
+            logs_base_dir,
+        );
+
         // Ensure command line buffer is mutable and includes the exe as argv[0].
         let spawn_res = unsafe {
             CreateProcessWithLogonW(
@@ -362,6 +379,14 @@ mod windows_impl {
         };
         if spawn_res == 0 {
             let err = unsafe { GetLastError() } as i32;
+            log_note(
+                &format!(
+                    "runner launch failed before process start: exe={} cmdline={} error={err}",
+                    runner_exe.display(),
+                    runner_full_cmd
+                ),
+                logs_base_dir,
+            );
             return Err(anyhow::anyhow!("CreateProcessWithLogonW failed: {}", err));
         }
 
@@ -518,6 +543,7 @@ mod stub {
     }
 
     /// Stub implementation for non-Windows targets; sandboxing only works on Windows.
+    #[allow(clippy::too_many_arguments)]
     pub fn run_windows_sandbox_capture(
         _policy_json_or_preset: &str,
         _sandbox_policy_cwd: &Path,
@@ -526,6 +552,7 @@ mod stub {
         _cwd: &Path,
         _env_map: HashMap<String, String>,
         _timeout_ms: Option<u64>,
+        _use_private_desktop: bool,
     ) -> Result<CaptureResult> {
         bail!("Windows sandbox is only available on Windows")
     }

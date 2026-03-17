@@ -1,3 +1,4 @@
+use codex_protocol::config_types::ReasoningSummary;
 use codex_protocol::openai_models::ConfigShellToolType;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ModelInstructionsVariables;
@@ -5,6 +6,7 @@ use codex_protocol::openai_models::ModelMessages;
 use codex_protocol::openai_models::ModelVisibility;
 use codex_protocol::openai_models::TruncationMode;
 use codex_protocol::openai_models::TruncationPolicyConfig;
+use codex_protocol::openai_models::WebSearchToolType;
 use codex_protocol::openai_models::default_input_modalities;
 
 use crate::config::Config;
@@ -20,8 +22,10 @@ const LOCAL_PRAGMATIC_TEMPLATE: &str = "You are a deeply pragmatic, effective so
 const PERSONALITY_PLACEHOLDER: &str = "{{ personality }}";
 
 pub(crate) fn with_config_overrides(mut model: ModelInfo, config: &Config) -> ModelInfo {
-    if let Some(supports_reasoning_summaries) = config.model_supports_reasoning_summaries {
-        model.supports_reasoning_summaries = supports_reasoning_summaries;
+    if let Some(supports_reasoning_summaries) = config.model_supports_reasoning_summaries
+        && supports_reasoning_summaries
+    {
+        model.supports_reasoning_summaries = true;
     }
     if let Some(context_window) = config.model_context_window {
         model.context_window = Some(context_window);
@@ -66,15 +70,19 @@ pub(crate) fn model_info_from_slug(slug: &str) -> ModelInfo {
         visibility: ModelVisibility::None,
         supported_in_api: true,
         priority: 99,
+        availability_nux: None,
         upgrade: None,
         base_instructions: BASE_INSTRUCTIONS.to_string(),
         model_messages: local_personality_messages_for_slug(slug),
         supports_reasoning_summaries: false,
+        default_reasoning_summary: ReasoningSummary::Auto,
         support_verbosity: false,
         default_verbosity: None,
         apply_patch_tool_type: None,
-        truncation_policy: TruncationPolicyConfig::bytes(10_000),
+        web_search_tool_type: WebSearchToolType::Text,
+        truncation_policy: TruncationPolicyConfig::bytes(/*limit*/ 10_000),
         supports_parallel_tool_calls: false,
+        supports_image_detail_original: false,
         context_window: Some(272_000),
         auto_compact_token_limit: None,
         effective_context_window_percent: 95,
@@ -82,6 +90,7 @@ pub(crate) fn model_info_from_slug(slug: &str) -> ModelInfo {
         input_modalities: default_input_modalities(),
         prefer_websockets: false,
         used_fallback_model_metadata: true, // this is the fallback model metadata
+        supports_search_tool: false,
     }
 }
 
@@ -100,3 +109,7 @@ fn local_personality_messages_for_slug(slug: &str) -> Option<ModelMessages> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+#[path = "model_info_tests.rs"]
+mod tests;
