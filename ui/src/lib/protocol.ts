@@ -1,6 +1,8 @@
 import type { ClientInfo } from "../../../codex-rs/app-server-protocol/schema/typescript/ClientInfo";
 import type { InitializeCapabilities } from "../../../codex-rs/app-server-protocol/schema/typescript/InitializeCapabilities";
 import type { InitializeResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/InitializeResponse";
+import type { AgentInfo } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentInfo";
+import type { AgentListResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentListResponse";
 import type { AgentMessageDeltaNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentMessageDeltaNotification";
 import type { ItemCompletedNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ItemCompletedNotification";
 import type { ItemStartedNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ItemStartedNotification";
@@ -24,6 +26,8 @@ import type { TurnStartResponse } from "../../../codex-rs/app-server-protocol/sc
 import type { UserInput } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/UserInput";
 
 export type {
+  AgentInfo,
+  AgentListResponse,
   AgentMessageDeltaNotification,
   ClientInfo,
   InitializeCapabilities,
@@ -64,7 +68,10 @@ export type ApprovalPolicy =
   | "on-request"
   | "never";
 
-export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
+export type SandboxMode =
+  | "read-only"
+  | "workspace-write"
+  | "danger-full-access";
 
 export type PersonalityMode = "friendly" | "pragmatic" | "none";
 

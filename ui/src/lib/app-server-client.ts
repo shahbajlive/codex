@@ -1,5 +1,7 @@
 import type { CodexTransport } from "./transport";
 import type {
+  AgentInfo,
+  AgentListResponse,
   ApprovalPolicy,
   CodexNotification,
   InitializeResponse,
@@ -53,95 +55,132 @@ export class CodexAppServerClient {
     });
   }
 
-  onStatusChange(listener: (status: "idle" | "connecting" | "connected" | "disconnected") => void) {
+  onStatusChange(
+    listener: (
+      status: "idle" | "connecting" | "connected" | "disconnected",
+    ) => void,
+  ) {
     return this.transport.onStatusChange(listener);
   }
 
   async initialize(): Promise<InitializeResponse> {
-    const response = await this.transport.request<InitializeResponse>("initialize", {
-      clientInfo: {
-        name: "codex_web_ui",
-        title: "Codex Web UI",
-        version: "0.1.0",
+    const response = await this.transport.request<InitializeResponse>(
+      "initialize",
+      {
+        clientInfo: {
+          name: "codex_web_ui",
+          title: "Codex Web UI",
+          version: "0.1.0",
+        },
+        capabilities: {
+          experimentalApi: false,
+          optOutNotificationMethods: null,
+        },
       },
-      capabilities: {
-        experimentalApi: false,
-        optOutNotificationMethods: null,
-      },
-    });
+    );
     this.transport.notify("initialized");
     return response;
   }
 
   async listThreads(): Promise<Thread[]> {
-    const response = await this.transport.request<ThreadListResponse>("thread/list", {
-      archived: false,
-      cursor: null,
-      cwd: null,
-      limit: 100,
-      modelProviders: null,
-      searchTerm: null,
-      sortKey: "updated_at",
-      sourceKinds: null,
-    });
+    const response = await this.transport.request<ThreadListResponse>(
+      "thread/list",
+      {
+        archived: false,
+        cursor: null,
+        cwd: null,
+        limit: 100,
+        modelProviders: null,
+        searchTerm: null,
+        sortKey: "updated_at",
+        sourceKinds: null,
+      },
+    );
     return response.data;
   }
 
   async listAgentThreads(): Promise<Thread[]> {
-    const response = await this.transport.request<ThreadListResponse>("thread/list", {
-      archived: false,
-      cursor: null,
-      cwd: null,
-      limit: 100,
-      modelProviders: null,
-      searchTerm: null,
-      sortKey: "updated_at",
-      sourceKinds: [
-        "subAgent",
-        "subAgentReview",
-        "subAgentCompact",
-        "subAgentThreadSpawn",
-        "subAgentOther",
-      ],
-    });
+    const response = await this.transport.request<ThreadListResponse>(
+      "thread/list",
+      {
+        archived: false,
+        cursor: null,
+        cwd: null,
+        limit: 100,
+        modelProviders: null,
+        searchTerm: null,
+        sortKey: "updated_at",
+        sourceKinds: [
+          "subAgent",
+          "subAgentReview",
+          "subAgentCompact",
+          "subAgentThreadSpawn",
+          "subAgentOther",
+        ],
+      },
+    );
     return response.data;
   }
 
+  async listAgents(): Promise<AgentInfo[]> {
+    const response = await this.transport.request<AgentListResponse>(
+      "agent/list",
+      {},
+    );
+    return response.agents;
+  }
+
   async readThread(threadId: string): Promise<Thread> {
-    const response = await this.transport.request<ThreadReadResponse>("thread/read", {
-      threadId,
-      includeTurns: true,
-    });
+    const response = await this.transport.request<ThreadReadResponse>(
+      "thread/read",
+      {
+        threadId,
+        includeTurns: true,
+      },
+    );
     return response.thread;
   }
 
-  async resumeThread(threadId: string, settings: ThreadRuntimeSettings): Promise<Thread> {
-    const response = await this.transport.request<ThreadResumeResponse>("thread/resume", {
-      threadId,
-      cwd: settings.cwd || null,
-      model: settings.model,
-      personality: normalizePersonality(settings.personality),
-      approvalPolicy: normalizeApprovalPolicy(settings.approvalPolicy),
-      sandbox: normalizeSandboxMode(settings.sandboxMode),
-      persistExtendedHistory: true,
-    });
+  async resumeThread(
+    threadId: string,
+    settings: ThreadRuntimeSettings,
+  ): Promise<Thread> {
+    const response = await this.transport.request<ThreadResumeResponse>(
+      "thread/resume",
+      {
+        threadId,
+        cwd: settings.cwd || null,
+        model: settings.model,
+        personality: normalizePersonality(settings.personality),
+        approvalPolicy: normalizeApprovalPolicy(settings.approvalPolicy),
+        sandbox: normalizeSandboxMode(settings.sandboxMode),
+        persistExtendedHistory: true,
+      },
+    );
     return response.thread;
   }
 
   async startThread(settings: ThreadRuntimeSettings): Promise<Thread> {
-    const response = await this.transport.request<ThreadStartResponse>("thread/start", {
-      cwd: settings.cwd || null,
-      model: settings.model,
-      personality: normalizePersonality(settings.personality),
-      approvalPolicy: normalizeApprovalPolicy(settings.approvalPolicy),
-      sandbox: normalizeSandboxMode(settings.sandboxMode),
-      experimentalRawEvents: false,
-      persistExtendedHistory: true,
-    });
+    const response = await this.transport.request<ThreadStartResponse>(
+      "thread/start",
+      {
+        cwd: settings.cwd || null,
+        model: settings.model,
+        personality: normalizePersonality(settings.personality),
+        approvalPolicy: normalizeApprovalPolicy(settings.approvalPolicy),
+        sandbox: normalizeSandboxMode(settings.sandboxMode),
+        experimentalRawEvents: false,
+        persistExtendedHistory: true,
+      },
+    );
     return response.thread;
   }
 
-  async startTurn(threadId: string, text: string, settings: ThreadRuntimeSettings): Promise<Turn> {
+  async startTurn(
+    threadId: string,
+    text: string,
+    settings: ThreadRuntimeSettings,
+  ): Promise<Turn> {
     const input: UserInput[] = [
       {
         type: "text",
@@ -150,24 +189,30 @@ export class CodexAppServerClient {
       },
     ];
 
-    const response = await this.transport.request<TurnStartResponse>("turn/start", {
-      threadId,
-      input,
-      cwd: settings.cwd || null,
-      model: settings.model,
-      personality: normalizePersonality(settings.personality),
-      approvalPolicy: normalizeApprovalPolicy(settings.approvalPolicy),
-      sandboxPolicy: buildSandboxPolicy(settings),
-    });
+    const response = await this.transport.request<TurnStartResponse>(
+      "turn/start",
+      {
+        threadId,
+        input,
+        cwd: settings.cwd || null,
+        model: settings.model,
+        personality: normalizePersonality(settings.personality),
+        approvalPolicy: normalizeApprovalPolicy(settings.approvalPolicy),
+        sandboxPolicy: buildSandboxPolicy(settings),
+      },
+    );
     return response.turn;
   }
 
   async listModels(): Promise<Model[]> {
-    const response = await this.transport.request<ModelListResponse>("model/list", {
-      cursor: null,
-      includeHidden: false,
-      limit: 100,
-    });
+    const response = await this.transport.request<ModelListResponse>(
+      "model/list",
+      {
+        cursor: null,
+        includeHidden: false,
+        limit: 100,
+      },
+    );
     return response.data;
   }
 }

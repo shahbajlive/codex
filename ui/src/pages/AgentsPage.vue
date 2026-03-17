@@ -7,11 +7,15 @@ import { useCodexStore } from "../stores/codex";
 
 const codexStore = useCodexStore();
 const router = useRouter();
-const { agentThreads, agentTranscript, busy, selectedAgent, selectedAgentId } =
+const { configuredAgents, agentTranscript, busy, selectedAgentId } =
   storeToRefs(codexStore);
 
-async function openConversation(threadId: string) {
-  await codexStore.openAgentConversation(threadId);
+function selectAgent(agentId: string) {
+  codexStore.selectConfiguredAgent(agentId);
+}
+
+async function openConversation(agentId: string) {
+  await codexStore.openAgentConversation(agentId);
   await router.push("/chat");
 }
 </script>
@@ -25,12 +29,11 @@ async function openConversation(threadId: string) {
 
     <AgentsPane
       :loading="busy"
-      :agents="agentThreads"
+      :agents="configuredAgents"
       :selected-agent-id="selectedAgentId"
-      :selected-agent="selectedAgent"
       :transcript="agentTranscript"
-      @refresh="codexStore.refreshAgentThreads"
-      @select="codexStore.selectAgent"
+      @refresh="codexStore.refreshConfiguredAgents"
+      @select="selectAgent"
       @open-conversation="openConversation"
     />
   </section>

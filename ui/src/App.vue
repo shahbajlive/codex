@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onBeforeUnmount } from "vue";
+import { ref, onBeforeUnmount, onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import AppSidebar from "./components/layout/AppSidebar.vue";
 import AppTopbar from "./components/layout/AppTopbar.vue";
@@ -13,6 +13,10 @@ const settingsStore = useSettingsStore();
 const codexStore = useCodexStore();
 
 const rightSidebarOpen = ref(false);
+
+onMounted(() => {
+  codexStore.connect();
+});
 
 watchEffect(() => {
   const theme = settingsStore.theme;

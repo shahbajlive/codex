@@ -1,26 +1,27 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import type { Thread } from "../lib/protocol";
-import type { TranscriptTurn } from "../lib/transcript";
-import { agentDisplayName, agentRoleLabel, agentTypeLabel } from "../lib/agents";
+import { ref, computed } from "vue";
+import type { AgentInfo, TranscriptTurn } from "../lib/protocol";
 import { formatThreadStatus, truncate } from "../lib/format";
 
-const activePanel = ref<"overview" | "files" | "tools" | "skills" | "channels" | "cron">(
-  "overview",
-);
+const activePanel = ref<
+  "overview" | "files" | "tools" | "skills" | "channels" | "cron"
+>("overview");
 
-defineProps<{
+const props = defineProps<{
   loading: boolean;
-  agents: Thread[];
+  agents: AgentInfo[];
   selectedAgentId: string | null;
-  selectedAgent: Thread | null;
   transcript: TranscriptTurn[];
 }>();
 
+const selectedAgent = computed(
+  () => props.agents.find((a) => a.name === props.selectedAgentId) || null,
+);
+
 const emit = defineEmits<{
   refresh: [];
-  select: [threadId: string];
-  openConversation: [threadId: string];
+  select: [agentId: string];
+  openConversation: [agentId: string];
 }>();
 
 const panels = [
@@ -49,19 +50,20 @@ const panels = [
       <div class="agent-list">
         <button
           v-for="agent in agents"
-          :key="agent.id"
+          :key="agent.name"
           class="agent-row"
-          :class="{ active: agent.id === selectedAgentId }"
-          @click="emit('select', agent.id)"
+          :class="{ active: agent.name === selectedAgentId }"
+          @click="emit('select', agent.name)"
         >
           <div class="agent-avatar">
-            {{ agent.agentNickname?.slice(0, 1) || agentDisplayName(agent).slice(0, 1) }}
+            {{ agent.name.slice(0, 1).toUpperCase() }}
           </div>
           <div class="agent-info">
-            <div class="agent-title">{{ agentDisplayName(agent) }}</div>
-            <div class="agent-sub mono">{{ agent.id }}</div>
+            <div class="agent-title">{{ agent.name }}</div>
+            <div class="agent-sub mono">
+              {{ agent.workspace || "default workspace" }}
+            </div>
           </div>
-          <span v-if="agent.id === selectedAgentId" class="agent-pill">default</span>
         </button>
       </div>
     </aside>
@@ -71,21 +73,23 @@ const panels = [
         <section class="card agent-header">
           <div class="agent-header-main">
             <div class="agent-avatar agent-avatar--lg">
-              {{
-                selectedAgent.agentNickname?.slice(0, 1) ||
-                agentDisplayName(selectedAgent).slice(0, 1)
-              }}
+              {{ selectedAgent.name.slice(0, 1).toUpperCase() }}
             </div>
             <div>
-              <div class="card-title">{{ agentDisplayName(selectedAgent) }}</div>
+              <div class="card-title">{{ selectedAgent.name }}</div>
               <div class="card-sub">
-                {{ truncate(selectedAgent.preview || "Agent workspace and routing.", 140) }}
+                {{
+                  truncate(
+                    selectedAgent.description ||
+                      "Agent configuration from config.toml",
+                    140,
+                  )
+                }}
               </div>
             </div>
           </div>
           <div class="agent-header-meta">
-            <div class="mono">{{ selectedAgent.id }}</div>
-            <span class="agent-pill">default</span>
+            <div class="mono">{{ selectedAgent.name }}</div>
           </div>
         </section>
 
@@ -104,85 +108,85 @@ const panels = [
 
         <section v-if="activePanel === 'overview'" class="card">
           <div class="card-title">Overview</div>
-          <div class="card-sub">Workspace paths and identity metadata.</div>
+          <div class="card-sub">Configuration from config.toml.</div>
 
           <div class="agents-overview-grid mt-6">
             <div class="agent-kv">
+              <div class="card-sub">Name</div>
+              <div class="mono">{{ selectedAgent.name }}</div>
+            </div>
+            <div class="agent-kv">
+              <div class="card-sub">Description</div>
+              <div>{{ selectedAgent.description || "No description" }}</div>
+            </div>
+            <div class="agent-kv">
               <div class="card-sub">Workspace</div>
-              <div class="mono">{{ selectedAgent.cwd || "Unavailable" }}</div>
+              <div class="mono">{{ selectedAgent.workspace || "default" }}</div>
             </div>
             <div class="agent-kv">
-              <div class="card-sub">Primary Model</div>
-              <div class="mono">{{ selectedAgent.modelProvider || "default" }}</div>
+              <div class="card-sub">Config File</div>
+              <div class="mono">{{ selectedAgent.configFile || "inline" }}</div>
             </div>
             <div class="agent-kv">
-              <div class="card-sub">Identity Name</div>
-              <div>{{ agentDisplayName(selectedAgent) }}</div>
-            </div>
-            <div class="agent-kv">
-              <div class="card-sub">Default</div>
-              <div>{{ selectedAgentId === selectedAgent.id ? "yes" : "no" }}</div>
-            </div>
-            <div class="agent-kv">
-              <div class="card-sub">Role</div>
-              <div>{{ agentRoleLabel(selectedAgent) }}</div>
-            </div>
-            <div class="agent-kv">
-              <div class="card-sub">Type</div>
-              <div>{{ agentTypeLabel(selectedAgent) }}</div>
-            </div>
-            <div class="agent-kv">
-              <div class="card-sub">Status</div>
-              <div>{{ formatThreadStatus(selectedAgent.status) }}</div>
-            </div>
-            <div class="agent-kv">
-              <div class="card-sub">Preview</div>
-              <div class="agent-kv-sub">
-                {{ truncate(selectedAgent.preview || "No preview yet.", 180) }}
+              <div class="card-sub">Nickname Candidates</div>
+              <div>
+                {{ selectedAgent.nicknameCandidates?.join(", ") || "none" }}
               </div>
             </div>
-          </div>
-
-          <div class="row row--spread mt-6">
-            <div class="card-sub">Open this isolated thread in the chat workspace.</div>
-            <button class="btn primary" @click="emit('openConversation', selectedAgent.id)">
-              Open Conversation
-            </button>
           </div>
         </section>
 
         <section v-else-if="activePanel === 'files'" class="card">
           <div class="card-title">Files</div>
-          <div class="card-sub">File browsing for Codex subagents will land here next.</div>
+          <div class="card-sub">
+            File browsing for Codex subagents will land here next.
+          </div>
         </section>
 
         <section v-else-if="activePanel === 'tools'" class="card">
           <div class="card-title">Tools</div>
-          <div class="card-sub">Tool permissions and tool activity are next in line for parity.</div>
+          <div class="card-sub">
+            Tool permissions and tool activity are next in line for parity.
+          </div>
         </section>
 
         <section v-else-if="activePanel === 'skills'" class="card">
           <div class="card-title">Skills</div>
-          <div class="card-sub">Installed skills and toggles will appear in this panel.</div>
+          <div class="card-sub">
+            Installed skills and toggles will appear in this panel.
+          </div>
         </section>
 
         <section v-else-if="activePanel === 'channels'" class="card">
           <div class="card-title">Channels</div>
-          <div class="card-sub">Delivery channels are not wired for Codex yet.</div>
+          <div class="card-sub">
+            Delivery channels are not wired for Codex yet.
+          </div>
         </section>
 
         <section v-else class="card">
           <div class="card-title">Cron Jobs</div>
-          <div class="card-sub">Scheduled automation parity is still to come.</div>
+          <div class="card-sub">
+            Scheduled automation parity is still to come.
+          </div>
         </section>
 
         <section class="card">
           <div class="card-title">Transcript</div>
           <div class="card-sub">Recent activity from the selected thread.</div>
 
-          <div v-if="transcript.length > 0" class="mt-4 flex max-h-[34rem] flex-col gap-5 overflow-auto">
-            <div v-for="turn in transcript" :key="turn.id" class="flex flex-col gap-2.5">
-              <div class="flex items-center justify-between gap-3 text-xs uppercase tracking-[0.1em] text-[var(--muted)]">
+          <div
+            v-if="transcript.length > 0"
+            class="mt-4 flex max-h-[34rem] flex-col gap-5 overflow-auto"
+          >
+            <div
+              v-for="turn in transcript"
+              :key="turn.id"
+              class="flex flex-col gap-2.5"
+            >
+              <div
+                class="flex items-center justify-between gap-3 text-xs uppercase tracking-[0.1em] text-[var(--muted)]"
+              >
                 <span>Turn {{ turn.id.slice(0, 8) }}</span>
                 <span>{{ turn.status }}</span>
               </div>
@@ -193,28 +197,38 @@ const panels = [
                 :style="
                   item.kind === 'assistant'
                     ? {
-                        borderColor: 'color-mix(in srgb, var(--border-strong) 28%, transparent)',
-                        background: 'color-mix(in srgb, var(--bg-elevated) 86%, transparent)',
+                        borderColor:
+                          'color-mix(in srgb, var(--border-strong) 28%, transparent)',
+                        background:
+                          'color-mix(in srgb, var(--bg-elevated) 86%, transparent)',
                         color: 'var(--chat-text)',
                       }
                     : item.kind === 'activity'
                       ? {
-                          borderColor: 'color-mix(in srgb, var(--accent-2) 26%, transparent)',
-                          background: 'color-mix(in srgb, var(--accent-2-subtle) 85%, var(--bg-elevated))',
+                          borderColor:
+                            'color-mix(in srgb, var(--accent-2) 26%, transparent)',
+                          background:
+                            'color-mix(in srgb, var(--accent-2-subtle) 85%, var(--bg-elevated))',
                           color: 'var(--text)',
                         }
                       : {
-                          borderColor: 'color-mix(in srgb, var(--accent) 46%, transparent)',
+                          borderColor:
+                            'color-mix(in srgb, var(--accent) 46%, transparent)',
                           background:
                             'linear-gradient(180deg, color-mix(in srgb, var(--accent) 86%, #ffffff), color-mix(in srgb, var(--accent) 78%, #000000))',
                           color: 'var(--accent-foreground)',
                         }
                 "
               >
-                <div v-if="item.kind === 'activity'" class="mb-2 text-sm font-semibold text-[var(--accent-2)]">
+                <div
+                  v-if="item.kind === 'activity'"
+                  class="mb-2 text-sm font-semibold text-[var(--accent-2)]"
+                >
                   {{ item.label }}
                 </div>
-                <pre>{{ item.kind === "activity" ? item.detail : item.text }}</pre>
+                <pre>{{
+                  item.kind === "activity" ? item.detail : item.text
+                }}</pre>
               </div>
             </div>
           </div>
@@ -226,7 +240,9 @@ const panels = [
 
       <div v-else class="card">
         <div class="card-title">Select an agent</div>
-        <div class="card-sub">Pick an agent to inspect its workspace and tools.</div>
+        <div class="card-sub">
+          Pick an agent to inspect its workspace and tools.
+        </div>
       </div>
     </section>
   </section>

@@ -1,8 +1,22 @@
 import { defineStore } from "pinia";
-import { CodexAppServerClient, type ThreadRuntimeSettings } from "../lib/app-server-client";
+import {
+  CodexAppServerClient,
+  type ThreadRuntimeSettings,
+} from "../lib/app-server-client";
 import { AppServerWsTransport } from "../lib/app-server-ws-transport";
-import type { CodexNotification, InitializeResponse, Model, Thread } from "../lib/protocol";
-import { applyNotification, attachTurn, buildTranscript, latestActivity } from "../lib/transcript";
+import type {
+  CodexNotification,
+  InitializeResponse,
+  Model,
+  Thread,
+  AgentInfo,
+} from "../lib/protocol";
+import {
+  applyNotification,
+  attachTurn,
+  buildTranscript,
+  latestActivity,
+} from "../lib/transcript";
 import { useSettingsStore } from "./settings";
 
 let client: CodexAppServerClient | null = null;
@@ -16,6 +30,7 @@ export const useCodexStore = defineStore("codex", {
     selectedThread: null as Thread | null,
     transcript: buildTranscript(null),
     agentThreads: [] as Thread[],
+    configuredAgents: [] as AgentInfo[],
     selectedAgentId: null as string | null,
     selectedAgent: null as Thread | null,
     agentTranscript: buildTranscript(null),
@@ -29,7 +44,9 @@ export const useCodexStore = defineStore("codex", {
   getters: {
     isConnected: (state) => state.connectionStatus === "connected",
     selectedThreadName: (state) =>
-      state.selectedThread?.name || state.selectedThread?.preview || "New conversation",
+      state.selectedThread?.name ||
+      state.selectedThread?.preview ||
+      "New conversation",
     currentActivity: (state) => latestActivity(state.transcript),
     platformSummary: (state) => {
       if (!state.initializeResponse) {
@@ -59,8 +76,10 @@ export const useCodexStore = defineStore("codex", {
         this.models = await client.listModels();
         await this.refreshThreads();
         await this.refreshAgentThreads();
+        await this.refreshConfiguredAgents();
       } catch (error) {
-        this.errorMessage = error instanceof Error ? error.message : String(error);
+        this.errorMessage =
+          error instanceof Error ? error.message : String(error);
       }
     },
 
@@ -96,6 +115,13 @@ export const useCodexStore = defineStore("codex", {
       }
     },
 
+    async refreshConfiguredAgents() {
+      if (!client) {
+        return;
+      }
+      this.configuredAgents = await client.listAgents();
+    },
+
     async createThread() {
       if (!client) {
         return;
@@ -110,7 +136,8 @@ export const useCodexStore = defineStore("codex", {
         this.transcript = buildTranscript(thread);
         await this.refreshThreads();
       } catch (error) {
-        this.errorMessage = error instanceof Error ? error.message : String(error);
+        this.errorMessage =
+          error instanceof Error ? error.message : String(error);
       } finally {
         this.busy = false;
       }
@@ -127,7 +154,8 @@ export const useCodexStore = defineStore("codex", {
         this.selectedThread = await client.readThread(threadId);
         this.transcript = buildTranscript(this.selectedThread);
       } catch (error) {
-        this.errorMessage = error instanceof Error ? error.message : String(error);
+        this.errorMessage =
+          error instanceof Error ? error.message : String(error);
       } finally {
         this.busy = false;
       }
@@ -144,10 +172,15 @@ export const useCodexStore = defineStore("codex", {
         this.selectedAgent = await client.readThread(threadId);
         this.agentTranscript = buildTranscript(this.selectedAgent);
       } catch (error) {
-        this.errorMessage = error instanceof Error ? error.message : String(error);
+        this.errorMessage =
+          error instanceof Error ? error.message : String(error);
       } finally {
         this.busy = false;
       }
+    },
+
+    async selectConfiguredAgent(agentId: string) {
+      this.selectedAgentId = agentId;
     },
 
     async sendMessage(message: string) {
@@ -164,7 +197,10 @@ export const useCodexStore = defineStore("codex", {
           this.resumedThreadId = thread.id;
         }
 
-        if (this.selectedThread && this.resumedThreadId !== this.selectedThread.id) {
+        if (
+          this.selectedThread &&
+          this.resumedThreadId !== this.selectedThread.id
+        ) {
           this.selectedThread = await client.resumeThread(
             this.selectedThread.id,
             this.runtimeSettings(),
@@ -186,7 +222,8 @@ export const useCodexStore = defineStore("codex", {
         this.transcript = buildTranscript(this.selectedThread);
         await this.refreshThreads();
       } catch (error) {
-        this.errorMessage = error instanceof Error ? error.message : String(error);
+        this.errorMessage =
+          error instanceof Error ? error.message : String(error);
         this.busy = false;
       }
     },
@@ -205,7 +242,10 @@ export const useCodexStore = defineStore("codex", {
         (!("threadId" in notification.params) ||
           notification.params.threadId === this.selectedAgent.id)
       ) {
-        this.agentTranscript = applyNotification(this.agentTranscript, notification);
+        this.agentTranscript = applyNotification(
+          this.agentTranscript,
+          notification,
+        );
       }
 
       if (notification.method === "turn/completed") {

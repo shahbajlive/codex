@@ -16,11 +16,17 @@ export function isAgentThread(thread: Thread): boolean {
   if (typeof thread.source === "string") {
     return false;
   }
-  return "subagent" in thread.source;
+  return "subAgent" in thread.source;
 }
 
 export function agentDisplayName(thread: Thread): string {
-  return thread.agentNickname || thread.name || thread.agentRole || thread.preview || thread.id;
+  return (
+    thread.agentNickname ||
+    thread.name ||
+    thread.agentRole ||
+    thread.preview ||
+    thread.id
+  );
 }
 
 export function agentTypeLabel(thread: Thread): string {
@@ -28,7 +34,7 @@ export function agentTypeLabel(thread: Thread): string {
     return thread.source;
   }
 
-  const source = thread.source.subagent;
+  const source = thread.source.subAgent;
   if (typeof source === "string") {
     switch (source) {
       case "review":
