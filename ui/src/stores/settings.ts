@@ -14,6 +14,8 @@ export const useSettingsStore = defineStore("settings", {
         personality: this.personality,
         approvalPolicy: this.approvalPolicy,
         sandboxMode: this.sandboxMode,
+        theme: this.theme,
+        navCollapsed: this.navCollapsed,
       });
     },
   },

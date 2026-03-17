@@ -11,7 +11,8 @@ export type AppRouteName =
   | "cron"
   | "agents"
   | "skills"
-  | "settings";
+  | "settings"
+  | "config";
 
 export type NavGroup = {
   label: string;
@@ -32,13 +33,14 @@ export type NavGroup = {
       | "cron"
       | "agent"
       | "skill"
-      | "settings";
+      | "settings"
+      | "config";
   }>;
 };
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    label: "chat",
+    label: "Chat",
     items: [
       {
         name: "chat",
@@ -50,7 +52,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "workspace",
+    label: "Workspace",
     items: [
       {
         name: "workspace-map",
@@ -76,7 +78,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "control",
+    label: "Control",
     items: [
       {
         name: "overview",
@@ -123,7 +125,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "agent",
+    label: "Agent",
     items: [
       {
         name: "agents",
@@ -142,7 +144,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "settings",
+    label: "Settings",
     items: [
       {
         name: "settings",
@@ -150,6 +152,13 @@ export const NAV_GROUPS: NavGroup[] = [
         subtitle: "Backend URL and runtime defaults.",
         path: "/settings",
         icon: "settings",
+      },
+      {
+        name: "config",
+        title: "Config",
+        subtitle: "Edit config.toml and advanced settings.",
+        path: "/config",
+        icon: "config",
       },
     ],
   },
@@ -159,7 +168,7 @@ export const ROUTE_TITLES: Record<
   AppRouteName,
   { title: string; subtitle: string }
 > = {
-  chat: {
+  "chat": {
     title: "Chat",
     subtitle:
       "Direct Codex conversations with thread history and streaming turns.",
@@ -176,40 +185,44 @@ export const ROUTE_TITLES: Record<
     title: "Kanban",
     subtitle: "Track Codex work across the workspace.",
   },
-  overview: {
+  "overview": {
     title: "Overview",
     subtitle: "Monitor the Codex workspace at a glance.",
   },
-  channels: {
+  "channels": {
     title: "Channels",
     subtitle: "Inspect connections and delivery destinations.",
   },
-  instances: {
+  "instances": {
     title: "Instances",
     subtitle: "Review active runtimes and worker capacity.",
   },
-  sessions: {
+  "sessions": {
     title: "Sessions",
     subtitle: "Inspect conversation sessions and resumes.",
   },
-  usage: {
+  "usage": {
     title: "Usage",
     subtitle: "Track model usage and activity volume.",
   },
-  cron: {
+  "cron": {
     title: "Cron Jobs",
     subtitle: "Review scheduled Codex automations.",
   },
-  agents: {
+  "agents": {
     title: "Agents",
     subtitle: "Inspect isolated agents created by Codex collaboration flows.",
   },
-  skills: {
+  "skills": {
     title: "Skills",
     subtitle: "Review installed skills and execution helpers.",
   },
-  settings: {
+  "settings": {
     title: "Connection Settings",
     subtitle: "Manage app-server connection details and runtime defaults.",
+  },
+  "config": {
+    title: "Config",
+    subtitle: "Edit config.toml and advanced settings.",
   },
 };

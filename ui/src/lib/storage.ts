@@ -7,6 +7,8 @@ export type StoredSettings = {
   personality: PersonalityMode;
   approvalPolicy: ApprovalPolicy;
   sandboxMode: SandboxMode;
+  theme: "system" | "light" | "dark";
+  navCollapsed: boolean;
 };
 
 const STORAGE_KEY = "codex-web-ui-settings";
@@ -43,5 +45,7 @@ function defaults(): StoredSettings {
     personality: "friendly",
     approvalPolicy: "on-request",
     sandboxMode: "workspace-write",
+    theme: "system",
+    navCollapsed: false,
   };
 }
