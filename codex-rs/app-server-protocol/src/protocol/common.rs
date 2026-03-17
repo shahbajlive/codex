@@ -499,6 +499,15 @@ client_request_definitions! {
         response: v2::ConfigWriteResponse,
     },
 
+    AgentList => "agent/list" {
+        params: v2::AgentListParams,
+        response: v2::AgentListResponse,
+    },
+    AgentRead => "agent/read" {
+        params: v2::AgentReadParams,
+        response: v2::AgentReadResponse,
+    },
+
     ConfigRequirementsRead => "configRequirements/read" {
         params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,
         response: v2::ConfigRequirementsReadResponse,

@@ -1,6 +1,10 @@
 use crate::error_code::INTERNAL_ERROR_CODE;
 use crate::error_code::INVALID_REQUEST_ERROR_CODE;
 use async_trait::async_trait;
+use codex_app_server_protocol::AgentListParams;
+use codex_app_server_protocol::AgentListResponse;
+use codex_app_server_protocol::AgentReadParams;
+use codex_app_server_protocol::AgentReadResponse;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigReadParams;
 use codex_app_server_protocol::ConfigReadResponse;
@@ -152,6 +156,26 @@ impl ConfigApi {
             self.user_config_reloader.reload_user_config().await;
         }
         Ok(response)
+    }
+
+    pub(crate) async fn agent_list(
+        &self,
+        params: AgentListParams,
+    ) -> Result<AgentListResponse, JSONRPCErrorError> {
+        self.config_service()
+            .agent_list(params.cwd.as_deref())
+            .await
+            .map_err(map_error)
+    }
+
+    pub(crate) async fn agent_read(
+        &self,
+        params: AgentReadParams,
+    ) -> Result<AgentReadResponse, JSONRPCErrorError> {
+        self.config_service()
+            .agent_read(&params.name, params.cwd.as_deref())
+            .await
+            .map_err(map_error)
     }
 
     fn emit_plugin_toggle_events(&self, pending_changes: std::collections::BTreeMap<String, bool>) {

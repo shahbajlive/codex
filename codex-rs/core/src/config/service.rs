@@ -16,6 +16,9 @@ use crate::path_utils;
 use crate::path_utils::SymlinkWritePaths;
 use crate::path_utils::resolve_symlink_write_paths;
 use crate::path_utils::write_atomically;
+use codex_app_server_protocol::AgentInfo;
+use codex_app_server_protocol::AgentListResponse;
+use codex_app_server_protocol::AgentReadResponse;
 use codex_app_server_protocol::Config as ApiConfig;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigLayerMetadata;
@@ -208,6 +211,103 @@ impl ConfigService {
         } else {
             Ok(Some(requirements))
         }
+    }
+
+    pub async fn agent_list(
+        &self,
+        _cwd: Option<&str>,
+    ) -> Result<AgentListResponse, ConfigServiceError> {
+        let layers = self.load_thread_agnostic_config().await.map_err(|err| {
+            ConfigServiceError::io("failed to read configuration layers for agent list", err)
+        })?;
+
+        let effective = layers.effective_config();
+        let config_toml: ConfigToml = effective
+            .try_into()
+            .map_err(|err| ConfigServiceError::toml("invalid configuration", err))?;
+
+        let mut agents = Vec::new();
+
+        if let Some(agents_config) = &config_toml.agents {
+            for (name, role) in &agents_config.roles {
+                let config_file = role
+                    .config_file
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string());
+                let workspace = role
+                    .config_file
+                    .as_ref()
+                    .and_then(|p| p.parent().map(|p| p.to_string_lossy().to_string()));
+
+                agents.push(AgentInfo {
+                    name: name.clone(),
+                    description: role.description.clone(),
+                    config_file,
+                    nickname_candidates: role.nickname_candidates.clone(),
+                    workspace,
+                });
+            }
+        }
+
+        Ok(AgentListResponse { agents })
+    }
+
+    pub async fn agent_read(
+        &self,
+        name: &str,
+        _cwd: Option<&str>,
+    ) -> Result<AgentReadResponse, ConfigServiceError> {
+        let layers = self.load_thread_agnostic_config().await.map_err(|err| {
+            ConfigServiceError::io("failed to read configuration layers for agent read", err)
+        })?;
+
+        let effective = layers.effective_config();
+        let config_toml: ConfigToml = effective
+            .try_into()
+            .map_err(|err| ConfigServiceError::toml("invalid configuration", err))?;
+
+        let agents_config = config_toml.agents.ok_or_else(|| {
+            ConfigServiceError::io(
+                "agents not configured",
+                std::io::Error::new(std::io::ErrorKind::NotFound, "agents not found"),
+            )
+        })?;
+
+        let role = agents_config.roles.get(name).ok_or_else(|| {
+            ConfigServiceError::io(
+                "agent not found",
+                std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("agent {} not found", name),
+                ),
+            )
+        })?;
+
+        let config_file = role
+            .config_file
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+        let workspace = role
+            .config_file
+            .as_ref()
+            .and_then(|p| p.parent().map(|p| p.to_string_lossy().to_string()));
+
+        let role_config_json = if let Some(config_file_path) = &role.config_file {
+            let content = std::fs::read_to_string(config_file_path)
+                .map_err(|e| ConfigServiceError::io("failed to read agent config file", e))?;
+            serde_json::from_str(&content).unwrap_or(JsonValue::Object(serde_json::Map::new()))
+        } else {
+            JsonValue::Object(serde_json::Map::new())
+        };
+
+        Ok(AgentReadResponse {
+            name: name.to_string(),
+            description: role.description.clone(),
+            config_file,
+            nickname_candidates: role.nickname_candidates.clone(),
+            workspace,
+            config: role_config_json,
+        })
     }
 
     pub async fn write_value(

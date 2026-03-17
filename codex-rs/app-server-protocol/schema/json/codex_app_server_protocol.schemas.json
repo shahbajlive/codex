@@ -1563,6 +1563,54 @@
             },
             "method": {
               "enum": [
+                "agent/list"
+              ],
+              "title": "Agent/listRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/AgentListParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Agent/listRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "agent/read"
+              ],
+              "title": "Agent/readRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/AgentReadParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Agent/readRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
                 "configRequirements/read"
               ],
               "title": "ConfigRequirements/readRequestMethod",
@@ -4867,6 +4915,71 @@
         "title": "AccountUpdatedNotification",
         "type": "object"
       },
+      "AgentInfo": {
+        "properties": {
+          "configFile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "nicknameCandidates": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "workspace": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "AgentListParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "cwd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "AgentListParams",
+        "type": "object"
+      },
+      "AgentListResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "agents": {
+            "default": [],
+            "items": {
+              "$ref": "#/definitions/v2/AgentInfo"
+            },
+            "type": "array"
+          }
+        },
+        "title": "AgentListResponse",
+        "type": "object"
+      },
       "AgentMessageDeltaNotification": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
@@ -4890,6 +5003,128 @@
           "turnId"
         ],
         "title": "AgentMessageDeltaNotification",
+        "type": "object"
+      },
+      "AgentReadParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "cwd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AgentReadParams",
+        "type": "object"
+      },
+      "AgentReadResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "config": true,
+          "configFile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "nicknameCandidates": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "workspace": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "config",
+          "name"
+        ],
+        "title": "AgentReadResponse",
+        "type": "object"
+      },
+      "AgentRoleConfig": {
+        "properties": {
+          "configFile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nicknameCandidates": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "AgentsConfig": {
+        "properties": {
+          "jobMaxRuntimeSeconds": {
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "maxDepth": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "maxThreads": {
+            "format": "uint",
+            "minimum": 0.0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "roles": {
+            "additionalProperties": {
+              "$ref": "#/definitions/v2/AgentRoleConfig"
+            },
+            "default": {},
+            "type": "object"
+          }
+        },
         "type": "object"
       },
       "AnalyticsConfig": {
@@ -6170,6 +6405,17 @@
       "Config": {
         "additionalProperties": true,
         "properties": {
+          "agents": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/AgentsConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "analytics": {
             "anyOf": [
               {

@@ -717,8 +717,79 @@ pub struct Config {
     #[experimental("config/read.apps")]
     #[serde(default)]
     pub apps: Option<AppsConfig>,
+    #[experimental(nested)]
+    #[serde(default)]
+    pub agents: Option<AgentsConfig>,
     #[serde(default, flatten)]
     pub additional: HashMap<String, JsonValue>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS, ExperimentalApi)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentsConfig {
+    pub max_threads: Option<usize>,
+    pub max_depth: Option<i32>,
+    pub job_max_runtime_seconds: Option<u64>,
+    #[serde(default)]
+    pub roles: HashMap<String, AgentRoleConfig>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentRoleConfig {
+    pub description: Option<String>,
+    pub config_file: Option<String>,
+    pub nickname_candidates: Option<Vec<String>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentListParams {
+    #[ts(optional = nullable)]
+    pub cwd: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentListResponse {
+    #[serde(default)]
+    pub agents: Vec<AgentInfo>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentInfo {
+    pub name: String,
+    pub description: Option<String>,
+    pub config_file: Option<String>,
+    pub nickname_candidates: Option<Vec<String>>,
+    pub workspace: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentReadParams {
+    pub name: String,
+    #[ts(optional = nullable)]
+    pub cwd: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentReadResponse {
+    pub name: String,
+    pub description: Option<String>,
+    pub config_file: Option<String>,
+    pub nickname_candidates: Option<Vec<String>>,
+    pub workspace: Option<String>,
+    pub config: serde_json::Value,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

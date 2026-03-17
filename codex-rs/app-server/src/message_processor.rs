@@ -17,6 +17,8 @@ use crate::outgoing_message::OutgoingMessageSender;
 use crate::outgoing_message::RequestContext;
 use crate::transport::AppServerTransport;
 use async_trait::async_trait;
+use codex_app_server_protocol::AgentListParams;
+use codex_app_server_protocol::AgentReadParams;
 use codex_app_server_protocol::ChatgptAuthTokensRefreshParams;
 use codex_app_server_protocol::ChatgptAuthTokensRefreshReason;
 use codex_app_server_protocol::ChatgptAuthTokensRefreshResponse;
@@ -684,6 +686,26 @@ impl MessageProcessor {
                 })
                 .await;
             }
+            ClientRequest::AgentList { request_id, params } => {
+                self.handle_agent_list(
+                    ConnectionRequestId {
+                        connection_id,
+                        request_id,
+                    },
+                    params,
+                )
+                .await;
+            }
+            ClientRequest::AgentRead { request_id, params } => {
+                self.handle_agent_read(
+                    ConnectionRequestId {
+                        connection_id,
+                        request_id,
+                    },
+                    params,
+                )
+                .await;
+            }
             ClientRequest::FsReadFile { request_id, params } => {
                 self.handle_fs_read_file(
                     ConnectionRequestId {
@@ -808,6 +830,20 @@ impl MessageProcessor {
                     .await;
                 self.outgoing.send_response(request_id, response).await;
             }
+            Err(error) => self.outgoing.send_error(request_id, error).await,
+        }
+    }
+
+    async fn handle_agent_list(&self, request_id: ConnectionRequestId, params: AgentListParams) {
+        match self.config_api.agent_list(params).await {
+            Ok(response) => self.outgoing.send_response(request_id, response).await,
+            Err(error) => self.outgoing.send_error(request_id, error).await,
+        }
+    }
+
+    async fn handle_agent_read(&self, request_id: ConnectionRequestId, params: AgentReadParams) {
+        match self.config_api.agent_read(params).await {
+            Ok(response) => self.outgoing.send_response(request_id, response).await,
             Err(error) => self.outgoing.send_error(request_id, error).await,
         }
     }

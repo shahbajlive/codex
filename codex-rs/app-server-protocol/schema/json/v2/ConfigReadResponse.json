@@ -5,6 +5,67 @@
       "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
       "type": "string"
     },
+    "AgentRoleConfig": {
+      "properties": {
+        "configFile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nicknameCandidates": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentsConfig": {
+      "properties": {
+        "jobMaxRuntimeSeconds": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxDepth": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxThreads": {
+          "format": "uint",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "roles": {
+          "additionalProperties": {
+            "$ref": "#/definitions/AgentRoleConfig"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
     "AnalyticsConfig": {
       "additionalProperties": true,
       "properties": {
@@ -190,6 +251,17 @@
     "Config": {
       "additionalProperties": true,
       "properties": {
+        "agents": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AgentsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "analytics": {
           "anyOf": [
             {

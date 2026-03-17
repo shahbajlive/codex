@@ -8,7 +8,14 @@ export type { AdditionalFileSystemPermissions } from "./AdditionalFileSystemPerm
 export type { AdditionalMacOsPermissions } from "./AdditionalMacOsPermissions";
 export type { AdditionalNetworkPermissions } from "./AdditionalNetworkPermissions";
 export type { AdditionalPermissionProfile } from "./AdditionalPermissionProfile";
+export type { AgentInfo } from "./AgentInfo";
+export type { AgentListParams } from "./AgentListParams";
+export type { AgentListResponse } from "./AgentListResponse";
 export type { AgentMessageDeltaNotification } from "./AgentMessageDeltaNotification";
+export type { AgentReadParams } from "./AgentReadParams";
+export type { AgentReadResponse } from "./AgentReadResponse";
+export type { AgentRoleConfig } from "./AgentRoleConfig";
+export type { AgentsConfig } from "./AgentsConfig";
 export type { AnalyticsConfig } from "./AnalyticsConfig";
 export type { AppBranding } from "./AppBranding";
 export type { AppInfo } from "./AppInfo";
