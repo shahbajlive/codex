@@ -41,6 +41,7 @@ use crate::realtime_conversation::handle_close as handle_realtime_conversation_c
 use crate::realtime_conversation::handle_start as handle_realtime_conversation_start;
 use crate::realtime_conversation::handle_text as handle_realtime_conversation_text;
 use crate::rollout::session_index;
+use crate::skills::filter_skills_by_allowlist;
 use crate::skills::render_skills_section;
 use crate::stream_events_utils::HandleOutputCtx;
 use crate::stream_events_utils::handle_non_tool_response_item;
@@ -376,6 +377,7 @@ pub(crate) struct CodexSpawnArgs {
     pub(crate) agent_tools_deny: Option<Vec<String>>,
     pub(crate) agent_id: Option<String>,
     pub(crate) workspace_instructions: Option<String>,
+    pub(crate) agent_skills_allow: Option<Vec<String>>,
 }
 
 pub(crate) const INITIAL_SUBMIT_ID: &str = "";
@@ -431,6 +433,7 @@ impl Codex {
             agent_tools_deny,
             agent_id: _,
             workspace_instructions,
+            agent_skills_allow,
         } = args;
 
         if let Some(workspace_instructions) = workspace_instructions {
@@ -597,6 +600,7 @@ impl Codex {
             inherited_shell_snapshot,
             agent_tools_allow,
             agent_tools_deny,
+            agent_skills_allow,
         };
 
         // Generate a unique ID for the lifetime of this Codex session.
@@ -1065,6 +1069,7 @@ pub(crate) struct SessionConfiguration {
     inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
     pub(crate) agent_tools_allow: Option<Vec<String>>,
     pub(crate) agent_tools_deny: Option<Vec<String>>,
+    pub(crate) agent_skills_allow: Option<Vec<String>>,
 }
 
 impl SessionConfiguration {
@@ -2388,11 +2393,15 @@ impl Session {
                 &per_turn_config,
             )
             .await;
-        let skills_outcome = Arc::new(
-            self.services
-                .skills_manager
-                .skills_for_config(&per_turn_config),
-        );
+        let mut skills_outcome = self
+            .services
+            .skills_manager
+            .skills_for_config(&per_turn_config);
+        if let Some(ref allowlist) = session_configuration.agent_skills_allow {
+            skills_outcome.skills =
+                crate::skills::filter_skills_by_allowlist(skills_outcome.skills, Some(allowlist));
+        }
+        let skills_outcome = Arc::new(skills_outcome);
         let mut turn_context: TurnContext = Self::make_turn_context(
             Some(Arc::clone(&self.services.auth_manager)),
             &self.services.session_telemetry,

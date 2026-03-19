@@ -924,8 +924,7 @@ impl CodexMessageProcessor {
             | ClientRequest::AgentListIsolated { .. }
             | ClientRequest::AgentReadIsolated { .. }
             | ClientRequest::AgentUpdateIsolated { .. }
-            | ClientRequest::AgentWorkspaceFiles { .. }
-            | ClientRequest::AgentWorkspaceFileWrite { .. } => {
+            | ClientRequest::AgentWorkspaceFiles { .. } => {
                 warn!("Agent request reached CodexMessageProcessor unexpectedly");
             }
             ClientRequest::GetAccountRateLimits {

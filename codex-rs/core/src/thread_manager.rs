@@ -741,6 +741,7 @@ impl ThreadManagerState {
             agent_tools_deny: None,
             agent_id: None,
             workspace_instructions,
+            agent_skills_allow: None,
         })
         .await?;
         self.finalize_thread_spawn(codex, thread_id, watch_registration)

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
+import { useForm, useField } from "vee-validate";
 
 const props = defineProps<{
   files: { filename: string; content: string }[];
@@ -10,29 +11,20 @@ const emit = defineEmits<{
   discard: [];
 }>();
 
-const values = ref<Record<string, string>>({});
-const initialValues = ref<Record<string, string>>({});
-
-watch(
-  () => props.files,
-  (files) => {
-    const newValues: Record<string, string> = {};
-    const newInitial: Record<string, string> = {};
-    for (const f of files) {
-      newValues[f.filename] = f.content;
-      newInitial[f.filename] = f.content;
-    }
-    values.value = newValues;
-    initialValues.value = newInitial;
-  },
-  { immediate: true },
-);
+const { setFieldValue, resetForm } = useForm();
 
 const activeFile = ref("");
 
+const fileContents = ref<Record<string, string>>({});
+
 watch(
   () => props.files,
   (files) => {
+    for (const f of files) {
+      if (!(f.filename in fileContents.value)) {
+        fileContents.value[f.filename] = f.content;
+      }
+    }
     if (files.length > 0 && !activeFile.value) {
       activeFile.value = files[0].filename;
     }
@@ -44,11 +36,20 @@ function selectFile(filename: string) {
   activeFile.value = filename;
 }
 
+const activeContent = computed(() => {
+  if (!activeFile.value) return "";
+  return fileContents.value[activeFile.value] ?? "";
+});
+
+function handleInput(event: Event) {
+  const target = event.target as HTMLTextAreaElement;
+  fileContents.value[activeFile.value] = target.value;
+}
+
 const isDirty = computed(() => {
   if (!activeFile.value) return false;
-  return (
-    values.value[activeFile.value] !== initialValues.value[activeFile.value]
-  );
+  const file = props.files.find((f) => f.filename === activeFile.value);
+  return activeContent.value !== (file?.content ?? "");
 });
 
 function formatFileSize(content: string): string {
@@ -58,23 +59,26 @@ function formatFileSize(content: string): string {
 }
 
 const onDiscard = () => {
-  if (activeFile.value) {
-    values.value[activeFile.value] =
-      initialValues.value[activeFile.value] || "";
+  const file = props.files.find((f) => f.filename === activeFile.value);
+  if (activeFile.value && file) {
+    fileContents.value[activeFile.value] = file.content;
   }
   emit("discard");
 };
 
 const onSubmit = () => {
   const toSave: Record<string, string> = {};
-  for (const [filename, content] of Object.entries(values.value)) {
-    if (content !== initialValues.value[filename]) {
-      toSave[filename] = content;
+  for (const f of props.files) {
+    const current = fileContents.value[f.filename];
+    if (current !== f.content) {
+      toSave[f.filename] = current ?? "";
     }
   }
   if (Object.keys(toSave).length > 0) {
     emit("save", toSave);
-    initialValues.value = { ...values.value };
+    for (const [filename, content] of Object.entries(toSave)) {
+      fileContents.value[filename] = content;
+    }
   }
 };
 </script>
@@ -125,7 +129,8 @@ const onSubmit = () => {
             "
           >
             <textarea
-              v-model="values[activeFile]"
+              :value="activeContent"
+              @input="handleInput"
               class="field"
               style="flex: 1; min-height: 400px; resize: vertical"
             ></textarea>

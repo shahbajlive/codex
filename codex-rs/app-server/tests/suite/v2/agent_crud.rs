@@ -523,7 +523,11 @@ async fn agent_full_crud_workflow() -> Result<()> {
     .await?;
     let create_resp = read_response_for_id(&mut ws, 2).await?;
     assert!(
-        create_resp.result.get("success").and_then(serde_json::Value::as_bool) == Some(true),
+        create_resp
+            .result
+            .get("success")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true),
         "create should succeed"
     );
 
@@ -554,7 +558,10 @@ async fn agent_full_crud_workflow() -> Result<()> {
     .await?;
     let write_resp = read_response_for_id(&mut ws, 4).await?;
     assert_eq!(
-        write_resp.result.get("success").and_then(serde_json::Value::as_bool),
+        write_resp
+            .result
+            .get("success")
+            .and_then(serde_json::Value::as_bool),
         Some(true),
         "write should succeed"
     );
@@ -571,7 +578,10 @@ async fn agent_full_crud_workflow() -> Result<()> {
     .await?;
     let update_resp = read_response_for_id(&mut ws, 5).await?;
     assert_eq!(
-        update_resp.result.get("success").and_then(serde_json::Value::as_bool),
+        update_resp
+            .result
+            .get("success")
+            .and_then(serde_json::Value::as_bool),
         Some(true),
         "updateIsolated should succeed"
     );
@@ -607,7 +617,10 @@ async fn agent_full_crud_workflow() -> Result<()> {
     send_request(&mut ws, "agent/delete", 7, Some(json!({ "id": agent_id }))).await?;
     let delete_resp = read_response_for_id(&mut ws, 7).await?;
     assert_eq!(
-        delete_resp.result.get("success").and_then(serde_json::Value::as_bool),
+        delete_resp
+            .result
+            .get("success")
+            .and_then(serde_json::Value::as_bool),
         Some(true),
         "delete should succeed"
     );

@@ -16,6 +16,7 @@ pub(crate) use injection::collect_explicit_skill_mentions;
 pub(crate) use invocation_utils::build_implicit_skill_path_indexes;
 pub(crate) use invocation_utils::maybe_emit_implicit_skill_invocation;
 pub use manager::SkillsManager;
+pub use manager::filter_skills_by_allowlist;
 pub use model::SkillError;
 pub use model::SkillLoadOutcome;
 pub use model::SkillMetadata;

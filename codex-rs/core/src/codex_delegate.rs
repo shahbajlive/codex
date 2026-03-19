@@ -93,6 +93,7 @@ pub(crate) async fn run_codex_thread_interactive(
         agent_tools_deny: None,
         agent_id: None,
         workspace_instructions: None,
+        agent_skills_allow: None,
     })
     .await?;
     let codex = Arc::new(codex);

@@ -537,10 +537,6 @@ client_request_definitions! {
         params: v2::AgentWorkspaceFilesParams,
         response: v2::AgentWorkspaceFilesResponse,
     },
-    AgentWorkspaceFileWrite => "agent/workspaceFile/write" {
-        params: v2::AgentWorkspaceFileWriteParams,
-        response: v2::AgentWorkspaceFileWriteResponse,
-    },
 
     ConfigRequirementsRead => "configRequirements/read" {
         params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,
