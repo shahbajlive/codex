@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { useForm, useIsFormDirty } from "vee-validate";
-import { computed, ref, watch } from "vue";
+import { ref, computed, watch } from "vue";
 
 const props = defineProps<{
   files: { filename: string; content: string }[];
@@ -11,21 +10,20 @@ const emit = defineEmits<{
   discard: [];
 }>();
 
-const { values, resetForm } = useForm<Record<string, string>>({
-  initialValues: {},
-});
-
-const isDirty = useIsFormDirty();
-const dirty = computed(() => isDirty.value);
+const values = ref<Record<string, string>>({});
+const initialValues = ref<Record<string, string>>({});
 
 watch(
   () => props.files,
   (files) => {
-    const initial: Record<string, string> = {};
+    const newValues: Record<string, string> = {};
+    const newInitial: Record<string, string> = {};
     for (const f of files) {
-      initial[f.filename] = f.content;
+      newValues[f.filename] = f.content;
+      newInitial[f.filename] = f.content;
     }
-    resetForm({ values: initial });
+    values.value = newValues;
+    initialValues.value = newInitial;
   },
   { immediate: true },
 );
@@ -46,6 +44,13 @@ function selectFile(filename: string) {
   activeFile.value = filename;
 }
 
+const isDirty = computed(() => {
+  if (!activeFile.value) return false;
+  return (
+    values.value[activeFile.value] !== initialValues.value[activeFile.value]
+  );
+});
+
 function formatFileSize(content: string): string {
   const kb = content.length / 1024;
   if (kb < 1) return `${content.length} B`;
@@ -53,17 +58,24 @@ function formatFileSize(content: string): string {
 }
 
 const onDiscard = () => {
-  const initial: Record<string, string> = {};
-  for (const f of props.files) {
-    initial[f.filename] = f.content;
+  if (activeFile.value) {
+    values.value[activeFile.value] =
+      initialValues.value[activeFile.value] || "";
   }
-  resetForm({ values: initial });
   emit("discard");
 };
 
 const onSubmit = () => {
-  emit("save", { ...values });
-  resetForm({ values });
+  const toSave: Record<string, string> = {};
+  for (const [filename, content] of Object.entries(values.value)) {
+    if (content !== initialValues.value[filename]) {
+      toSave[filename] = content;
+    }
+  }
+  if (Object.keys(toSave).length > 0) {
+    emit("save", toSave);
+    initialValues.value = { ...values.value };
+  }
 };
 </script>
 
@@ -120,7 +132,7 @@ const onSubmit = () => {
           </div>
 
           <div
-            v-if="dirty"
+            v-if="isDirty"
             class="row"
             style="justify-content: flex-end; gap: 8px; margin-top: 12px"
           >

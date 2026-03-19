@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { useRoute } from "vue-router";
+import { useSettingsStore } from "../../stores/settings";
 import { NAV_GROUPS } from "../../navigation";
 
 const route = useRoute();
+const settingsStore = useSettingsStore();
+const isCollapsed = computed(() => settingsStore.navCollapsed);
 
 function iconPath(icon: string) {
   switch (icon) {
@@ -63,7 +67,7 @@ function iconPath(icon: string) {
 </script>
 
 <template>
-  <aside class="nav">
+  <aside class="nav" :class="{ 'nav--collapsed': isCollapsed }">
     <section v-for="group in NAV_GROUPS" :key="group.label" class="nav-group">
       <div class="nav-label nav-label--static">
         <span class="nav-label__text">{{ group.label }}</span>
