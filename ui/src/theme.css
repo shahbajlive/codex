@@ -1,4 +1,5 @@
 :root {
+  /* Background - Warmer dark with depth */
   --bg: #12141a;
   --bg-accent: #14161d;
   --bg-elevated: #1a1d25;
@@ -6,18 +7,21 @@
   --bg-muted: #262a35;
   --bg-content: #12141a;
 
+  /* Card / Surface - More contrast between levels */
   --card: #181b22;
   --card-foreground: #f4f4f5;
   --card-highlight: rgba(255, 255, 255, 0.05);
   --popover: #181b22;
   --popover-foreground: #f4f4f5;
 
+  /* Panel */
   --panel: #12141a;
   --panel-strong: #1a1d25;
   --panel-hover: #262a35;
   --chrome: rgba(18, 20, 26, 0.95);
   --chrome-strong: rgba(18, 20, 26, 0.98);
 
+  /* Text - Slightly warmer */
   --text: #e4e4e7;
   --text-strong: #fafafa;
   --chat-text: #e4e4e7;
@@ -25,12 +29,14 @@
   --muted-strong: #52525b;
   --muted-foreground: #71717a;
 
+  /* Border - Subtle but defined */
   --border: #27272a;
   --border-strong: #3f3f46;
   --border-hover: #52525b;
   --input: #27272a;
   --ring: #ff5c5c;
 
+  /* Accent - Punchy signature red */
   --accent: #ff5c5c;
   --accent-hover: #ff7070;
   --accent-muted: #ff5c5c;
@@ -40,12 +46,14 @@
   --primary: #ff5c5c;
   --primary-foreground: #ffffff;
 
+  /* Secondary - Teal accent for variety */
   --secondary: #1e2028;
   --secondary-foreground: #f4f4f5;
   --accent-2: #14b8a6;
   --accent-2-muted: rgba(20, 184, 166, 0.7);
   --accent-2-subtle: rgba(20, 184, 166, 0.15);
 
+  /* Semantic - More saturated */
   --ok: #22c55e;
   --ok-muted: rgba(34, 197, 94, 0.75);
   --ok-subtle: rgba(34, 197, 94, 0.12);
@@ -59,24 +67,38 @@
   --danger-subtle: rgba(239, 68, 68, 0.12);
   --info: #3b82f6;
 
+  /* Focus - With glow */
   --focus: rgba(255, 92, 92, 0.25);
   --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--ring);
-  --focus-glow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ring), 0 0 20px var(--accent-glow);
+  --focus-glow:
+    0 0 0 2px var(--bg), 0 0 0 4px var(--ring), 0 0 20px var(--accent-glow);
 
+  /* Grid */
   --grid-line: rgba(255, 255, 255, 0.04);
 
-  --mono:
-    "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
-  --font-body:
-    "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-display: "Space Grotesk", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Theme transition */
+  --theme-switch-x: 50%;
+  --theme-switch-y: 50%;
 
+  /* Typography */
+  --mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco,
+    Consolas, monospace;
+  --font-body:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-body);
+
+  /* Shadows - Richer with subtle color */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.03);
-  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.03);
-  --shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --shadow-md:
+    0 4px 12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --shadow-lg:
+    0 12px 28px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --shadow-xl:
+    0 24px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03);
   --shadow-glow: 0 0 30px var(--accent-glow);
 
+  /* Radii - Slightly larger for friendlier feel */
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -84,8 +106,10 @@
   --radius-full: 9999px;
   --radius: 8px;
 
+  /* Transitions - Snappy but smooth */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --duration-fast: 120ms;
   --duration-normal: 200ms;
   --duration-slow: 350ms;
@@ -93,13 +117,14 @@
   color-scheme: dark;
 }
 
+/* Light theme - Clean with subtle warmth */
 :root[data-theme="light"] {
   --bg: #fafafa;
   --bg-accent: #f5f5f5;
   --bg-elevated: #ffffff;
   --bg-hover: #f0f0f0;
   --bg-muted: #f0f0f0;
-  --bg-content: #fafafa;
+  --bg-content: #f5f5f5;
 
   --card: #ffffff;
   --card-foreground: #18181b;
@@ -154,10 +179,12 @@
   --info: #2563eb;
 
   --focus: rgba(220, 38, 38, 0.2);
-  --focus-glow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ring), 0 0 16px var(--accent-glow);
+  --focus-glow:
+    0 0 0 2px var(--bg), 0 0 0 4px var(--ring), 0 0 16px var(--accent-glow);
 
   --grid-line: rgba(0, 0, 0, 0.05);
 
+  /* Light shadows */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);

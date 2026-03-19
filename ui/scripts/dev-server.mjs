@@ -1,11 +1,30 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import path from "node:path";
+import path from "path";
+import fs from "node:fs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const uiDir = path.resolve(here, "..");
 const repoRoot = path.resolve(uiDir, "..");
+
+const envPath = path.join(repoRoot, ".env");
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, "utf8");
+  for (const line of envContent.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith("#")) {
+      const eqIndex = trimmed.indexOf("=");
+      if (eqIndex > 0) {
+        const key = trimmed.slice(0, eqIndex);
+        const value = trimmed.slice(eqIndex + 1);
+        if (!(key in process.env)) {
+          process.env[key] = value;
+        }
+      }
+    }
+  }
+}
 
 const appServerUrl = process.env.CODEX_APP_SERVER_URL ?? "ws://127.0.0.1:8765";
 

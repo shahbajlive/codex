@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useForm } from "vee-validate";
+import { useForm, useIsFormDirty } from "vee-validate";
 import { computed, watch } from "vue";
 
 interface Tool {
@@ -71,9 +71,12 @@ const toolSections = computed(() => {
   return sections;
 });
 
-const { isDirty, values, resetForm } = useForm<Record<string, boolean>>({
+const { values, resetForm } = useForm<Record<string, boolean>>({
   initialValues: {},
 });
+
+const isDirty = useIsFormDirty();
+const dirty = computed(() => isDirty.value);
 
 const allowedTools = computed(() => props.configTools?.allow || []);
 const deniedTools = computed(() => props.configTools?.deny || []);
@@ -135,50 +138,43 @@ function disableAll() {
 
 <template>
   <form @submit.prevent="onSubmit">
-    <div class="flex justify-between items-start gap-4 flex-wrap">
-      <div>
-        <div class="font-semibold">Tool Access</div>
-        <div class="text-sm text-muted">
-          Profile + per-tool overrides for this agent.
-          <span class="font-mono"
-            >{{ enabledCount }}/{{ tools.length }} enabled.</span
-          >
-        </div>
-      </div>
-      <div class="flex gap-2">
-        <button
-          type="button"
-          class="btn btn-sm"
-          :disabled="!isDirty"
-          @click="enableAll"
-        >
-          Enable All
-        </button>
-        <button
-          type="button"
-          class="btn btn-sm"
-          :disabled="!isDirty"
-          @click="disableAll"
-        >
-          Disable All
-        </button>
-      </div>
+    <div class="card-title">Tool Access</div>
+    <div class="card-sub">
+      Profile + per-tool overrides for this agent.
+      <span class="mono">{{ enabledCount }}/{{ tools.length }} enabled.</span>
     </div>
 
-    <div class="mt-6 flex flex-col gap-6">
+    <div class="agent-tools-buttons" style="margin-top: 12px">
+      <button
+        type="button"
+        class="btn btn--sm"
+        :disabled="!dirty"
+        @click="enableAll"
+      >
+        Enable All
+      </button>
+      <button
+        type="button"
+        class="btn btn--sm"
+        :disabled="!dirty"
+        @click="disableAll"
+      >
+        Disable All
+      </button>
+    </div>
+
+    <div class="agent-tools-grid" style="margin-top: 16px">
       <div v-for="section in toolSections" :key="section.id">
-        <div class="font-medium text-sm pb-2 border-b border-border mb-3">
-          {{ section.label }}
-        </div>
-        <div class="flex flex-col gap-2">
+        <div class="agent-tools-header">{{ section.label }}</div>
+        <div class="agent-tools-list">
           <div
             v-for="tool in section.tools"
             :key="tool.id"
-            class="flex justify-between items-center p-3 bg-bg rounded-md border border-border"
+            class="agent-tool-row"
           >
             <div>
-              <div class="font-medium text-sm font-mono">{{ tool.label }}</div>
-              <div class="text-xs text-muted">{{ tool.description }}</div>
+              <div class="agent-tool-title mono">{{ tool.label }}</div>
+              <div class="agent-tool-sub">{{ tool.description }}</div>
             </div>
             <label class="toggle">
               <input
@@ -193,16 +189,23 @@ function disableAll() {
       </div>
     </div>
 
-    <div v-if="tools.length === 0" class="py-8 text-center text-muted">
+    <div
+      v-if="tools.length === 0"
+      class="muted"
+      style="text-align: center; padding: 40px"
+    >
       No tools available
     </div>
 
     <div
-      v-if="isDirty"
-      class="mt-6 pt-4 border-t border-border flex justify-end gap-2"
+      v-if="dirty"
+      class="row"
+      style="justify-content: flex-end; gap: 8px; margin-top: 16px"
     >
-      <button type="button" class="btn" @click="onDiscard">Discard</button>
-      <button type="submit" class="btn btn-primary">Save Changes</button>
+      <button type="button" class="btn btn--sm" @click="onDiscard">
+        Discard
+      </button>
+      <button type="submit" class="btn btn--sm primary">Save Changes</button>
     </div>
   </form>
 </template>

@@ -25,6 +25,7 @@ use codex_app_server_protocol::AgentReadResponse;
 use codex_app_server_protocol::AgentToolsConfig as ApiAgentToolsConfig;
 use codex_app_server_protocol::AgentUpdateResponse;
 use codex_app_server_protocol::AgentWorkspaceFile;
+use codex_app_server_protocol::AgentWorkspaceFileWriteResponse;
 use codex_app_server_protocol::AgentWorkspaceFilesResponse;
 use codex_app_server_protocol::Config as ApiConfig;
 use codex_app_server_protocol::ConfigBatchWriteParams;
@@ -94,7 +95,7 @@ impl ConfigServiceError {
         }
     }
 
-    fn io(context: &'static str, source: std::io::Error) -> Self {
+    pub fn io(context: &'static str, source: std::io::Error) -> Self {
         Self::Io { context, source }
     }
 
@@ -108,6 +109,13 @@ impl ConfigServiceError {
 
     fn anyhow(context: &'static str, source: anyhow::Error) -> Self {
         Self::Anyhow { context, source }
+    }
+
+    pub fn invalid_config(message: impl Into<String>) -> Self {
+        Self::Write {
+            code: ConfigWriteErrorCode::InvalidConfig,
+            message: message.into(),
+        }
     }
 
     pub fn write_error_code(&self) -> Option<ConfigWriteErrorCode> {
@@ -692,6 +700,32 @@ impl ConfigService {
                 .map(|(filename, content)| AgentWorkspaceFile { filename, content })
                 .collect(),
         })
+    }
+
+    pub async fn write_agent_workspace_file(
+        &self,
+        id: &str,
+        filename: &str,
+        content: &str,
+        agent_dir: Option<&str>,
+    ) -> Result<AgentWorkspaceFileWriteResponse, ConfigServiceError> {
+        tracing::info!(
+            "write_agent_workspace_file called for agent: {}, file: {}",
+            id,
+            filename
+        );
+
+        let agents_dir = if let Some(dir) = agent_dir {
+            PathBuf::from(dir)
+        } else {
+            crate::config::find_codex_agents_dir()
+                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
+        };
+
+        let service = super::AgentConfigService::new(agents_dir);
+        service.write_workspace_file(id, filename, content)?;
+
+        Ok(AgentWorkspaceFileWriteResponse { success: true })
     }
 
     pub async fn write_value(

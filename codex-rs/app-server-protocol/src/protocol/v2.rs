@@ -868,8 +868,26 @@ pub struct AgentWorkspaceFilesParams {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
+pub struct AgentWorkspaceFileWriteParams {
+    pub id: String,
+    pub filename: String,
+    pub content: String,
+    #[ts(optional = nullable)]
+    pub agent_dir: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
 pub struct AgentWorkspaceFilesResponse {
     pub files: Vec<AgentWorkspaceFile>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentWorkspaceFileWriteResponse {
+    pub success: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -986,6 +1004,7 @@ pub enum ConfigWriteErrorCode {
     ConfigPathNotFound,
     ConfigSchemaUnknownKey,
     UserLayerNotFound,
+    InvalidConfig,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

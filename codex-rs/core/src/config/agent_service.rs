@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
+use crate::config::ConfigServiceError;
 use crate::config::agent_config::AgentConfig;
 use crate::config::agent_config::AgentInfo;
 
@@ -301,6 +302,35 @@ impl AgentConfigService {
             }
         }
         files
+    }
+
+    pub fn write_workspace_file(
+        &self,
+        id: &str,
+        filename: &str,
+        content: &str,
+    ) -> Result<(), ConfigServiceError> {
+        let workspace = self.workspace_path(id);
+
+        if !workspace.exists() {
+            std::fs::create_dir_all(&workspace)
+                .map_err(|e| ConfigServiceError::io("failed to create workspace directory", e))?;
+        }
+
+        let allowed_filenames: Vec<&str> = BOOTSTRAP_FILES.iter().map(|(name, _)| *name).collect();
+        if !allowed_filenames.contains(&filename) {
+            return Err(ConfigServiceError::invalid_config(format!(
+                "Invalid workspace filename: {}. Allowed files: {:?}",
+                filename, allowed_filenames
+            )));
+        }
+
+        let path = workspace.join(filename);
+        std::fs::write(&path, content)
+            .map_err(|e| ConfigServiceError::io("failed to write workspace file", e))?;
+
+        tracing::info!("Wrote workspace file {} for agent {}", filename, id);
+        Ok(())
     }
 }
 

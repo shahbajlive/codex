@@ -263,6 +263,42 @@ export const useCodexStore = defineStore("codex", {
       }
     },
 
+    async saveWorkspaceFile(
+      agentId: string,
+      filename: string,
+      content: string,
+    ): Promise<{ success: boolean; message?: string }> {
+      const settingsStore = useSettingsStore();
+      const agentDir = settingsStore.cwd || undefined;
+
+      if (!client) {
+        console.error("Client not connected!");
+        return { success: false, message: "Not connected" };
+      }
+
+      try {
+        const result = await client.writeAgentWorkspaceFile(
+          agentId,
+          filename,
+          content,
+          agentDir,
+        );
+        console.log("Saved workspace file:", filename);
+        if (result.success) {
+          // Refresh the workspace files
+          const workspaceFiles = await client.getAgentWorkspaceFiles(
+            agentId,
+            agentDir,
+          );
+          this.selectedAgentWorkspaceFiles = workspaceFiles.files;
+        }
+        return result;
+      } catch (e) {
+        console.error("Failed to save workspace file:", e);
+        return { success: false, message: String(e) };
+      }
+    },
+
     async sendMessage(message: string) {
       if (!client) {
         return;

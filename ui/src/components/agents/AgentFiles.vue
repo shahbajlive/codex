@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useForm } from "vee-validate";
+import { useForm, useIsFormDirty } from "vee-validate";
 import { computed, ref, watch } from "vue";
 
 const props = defineProps<{
@@ -11,9 +11,12 @@ const emit = defineEmits<{
   discard: [];
 }>();
 
-const { isDirty, values, resetForm } = useForm<Record<string, string>>({
+const { values, resetForm } = useForm<Record<string, string>>({
   initialValues: {},
 });
+
+const isDirty = useIsFormDirty();
+const dirty = computed(() => isDirty.value);
 
 watch(
   () => props.files,
@@ -43,6 +46,12 @@ function selectFile(filename: string) {
   activeFile.value = filename;
 }
 
+function formatFileSize(content: string): string {
+  const kb = content.length / 1024;
+  if (kb < 1) return `${content.length} B`;
+  return `${kb.toFixed(1)} KB`;
+}
+
 const onDiscard = () => {
   const initial: Record<string, string> = {};
   for (const f of props.files) {
@@ -60,77 +69,82 @@ const onSubmit = () => {
 
 <template>
   <form @submit.prevent="onSubmit">
-    <div class="grid" style="grid-template-columns: 220px 1fr; gap: 1rem">
-      <div class="flex flex-col gap-2">
-        <div class="font-semibold">Core Files</div>
-        <div class="text-sm text-muted">
-          Bootstrap persona, identity, and tool guidance.
-        </div>
+    <div class="card-title">Workspace Files</div>
+    <div class="card-sub">Bootstrap persona, identity, and tool guidance.</div>
 
-        <div v-if="files.length > 0" class="flex flex-col gap-1 mt-2">
+    <div class="agent-files-grid" style="margin-top: 16px">
+      <div class="agent-files-list">
+        <template v-if="files.length > 0">
           <button
             v-for="file in files"
             :key="file.filename"
             type="button"
-            class="text-left px-3 py-2 rounded-md transition-colors"
-            :class="
-              activeFile === file.filename
-                ? 'bg-accent/10 text-accent'
-                : 'hover:bg-bg-hover'
-            "
+            class="agent-file-row"
+            :class="{ active: activeFile === file.filename }"
             @click="selectFile(file.filename)"
           >
-            <div class="font-medium text-sm">{{ file.filename }}</div>
-            <div class="text-xs text-muted font-mono">
-              {{ (file.content.length / 1024).toFixed(1) }}KB
+            <div>
+              <div class="agent-file-name">{{ file.filename }}</div>
+              <div class="agent-file-meta mono">
+                {{ formatFileSize(file.content) }}
+              </div>
             </div>
           </button>
-        </div>
-        <div v-else class="text-sm text-muted mt-2">
-          No workspace files found.
-        </div>
+        </template>
+        <div v-else class="muted">No workspace files found.</div>
       </div>
 
-      <div class="flex flex-col gap-3">
+      <div class="agent-files-editor">
         <template v-if="files.length > 0 && activeFile">
-          <div class="font-semibold font-mono">{{ activeFile }}</div>
-          <textarea
-            v-model="values[activeFile]"
-            class="input font-mono text-sm"
-            style="min-height: 300px; resize: vertical"
-          ></textarea>
+          <div class="agent-file-header">
+            <div>
+              <div class="agent-file-title mono">{{ activeFile }}</div>
+              <div class="agent-file-sub">Edit workspace file content</div>
+            </div>
+          </div>
+
+          <div
+            class="field"
+            style="
+              margin-top: 12px;
+              flex: 1;
+              display: flex;
+              flex-direction: column;
+            "
+          >
+            <textarea
+              v-model="values[activeFile]"
+              class="field"
+              style="flex: 1; min-height: 400px; resize: vertical"
+            ></textarea>
+          </div>
+
+          <div
+            v-if="dirty"
+            class="row"
+            style="justify-content: flex-end; gap: 8px; margin-top: 12px"
+          >
+            <button type="button" class="btn btn--sm" @click="onDiscard">
+              Discard
+            </button>
+            <button type="submit" class="btn btn--sm primary">
+              Save Changes
+            </button>
+          </div>
         </template>
 
-        <div
-          v-else
-          class="flex flex-col items-center justify-center py-12 text-muted"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="48"
-            height="48"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1"
-            class="mb-4 opacity-50"
-          >
-            <path
-              d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
-            />
-            <polyline points="14 2 14 8 20 8" />
-          </svg>
-          <div class="font-semibold">No workspace files</div>
-        </div>
-
-        <div
-          v-if="isDirty"
-          class="pt-3 border-t border-border flex justify-end gap-2"
-        >
-          <button type="button" class="btn" @click="onDiscard">Discard</button>
-          <button type="submit" class="btn btn-primary">Save Changes</button>
+        <div v-else class="muted" style="text-align: center; padding: 40px">
+          Select a file to edit its contents.
         </div>
       </div>
     </div>
   </form>
 </template>
+
+<style scoped>
+.agent-files-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 1000px;
+}
+</style>

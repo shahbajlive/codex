@@ -5,22 +5,11 @@ defineProps<{
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center py-12 text-muted">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="48"
-      height="48"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1"
-      class="mb-4 opacity-50"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
-    <div class="font-semibold">Cron Jobs</div>
-    <div class="text-sm mt-1">
+  <div>
+    <div class="card-title">Cron Jobs</div>
+    <div class="card-sub">Scheduled automation for this agent.</div>
+
+    <div class="callout info" style="margin-top: 16px">
       Scheduled automation parity is still to come.
     </div>
   </div>

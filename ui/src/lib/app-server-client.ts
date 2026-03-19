@@ -157,6 +157,20 @@ export class CodexAppServerClient {
     });
   }
 
+  async writeAgentWorkspaceFile(
+    id: string,
+    filename: string,
+    content: string,
+    agentDir?: string,
+  ): Promise<{ success: boolean }> {
+    return this.transport.request("agent/workspaceFile/write", {
+      id,
+      filename,
+      content,
+      agentDir: agentDir || null,
+    });
+  }
+
   async readThread(threadId: string): Promise<Thread> {
     const response = await this.transport.request<ThreadReadResponse>(
       "thread/read",
