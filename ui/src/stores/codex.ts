@@ -221,6 +221,7 @@ export const useCodexStore = defineStore("codex", {
       model: string | null,
       developerInstructions: string | null,
       nicknameCandidates: string[] | null,
+      tools?: { allow?: string[]; deny?: string[] } | null,
     ) {
       const settingsStore = useSettingsStore();
       const agentDir = settingsStore.cwd || undefined;
@@ -230,6 +231,7 @@ export const useCodexStore = defineStore("codex", {
         model,
         developerInstructions: developerInstructions?.slice(0, 50),
         nicknameCandidates,
+        tools,
         agentDir,
       });
       if (!client) {
@@ -245,6 +247,9 @@ export const useCodexStore = defineStore("codex", {
           model,
           developerInstructions,
           nicknameCandidates,
+          tools: tools
+            ? { allow: tools.allow || null, deny: tools.deny || null }
+            : null,
         });
         console.log("Client updateAgent result:", result);
         if (result.success) {
@@ -330,6 +335,143 @@ export const useCodexStore = defineStore("codex", {
 
     async openAgentConversation(threadId: string) {
       await this.selectThread(threadId);
+    },
+
+    async loadToolsCatalog() {
+      if (!client) {
+        return;
+      }
+      this.toolsLoading = true;
+      try {
+        this.toolsCatalog = {
+          tools: [
+            {
+              id: "shell",
+              label: "Shell",
+              description: "Execute shell commands",
+              category: "execution",
+            },
+            {
+              id: "git",
+              label: "Git",
+              description: "Git operations (status, diff, log, etc)",
+              category: "vcs",
+            },
+            {
+              id: "web-fetch",
+              label: "Web Fetch",
+              description: "Fetch web pages and content",
+              category: "network",
+            },
+            {
+              id: "glob",
+              label: "Glob",
+              description: "Find files by pattern",
+              category: "filesystem",
+            },
+            {
+              id: "grep",
+              label: "Grep",
+              description: "Search file contents",
+              category: "filesystem",
+            },
+            {
+              id: "read",
+              label: "Read",
+              description: "Read file contents",
+              category: "filesystem",
+            },
+            {
+              id: "write",
+              label: "Write",
+              description: "Write/edit file contents",
+              category: "filesystem",
+            },
+            {
+              id: "strace",
+              label: "Strace",
+              description: "System call tracing",
+              category: "execution",
+            },
+            {
+              id: "ltrace",
+              label: "Ltrace",
+              description: "Library call tracing",
+              category: "execution",
+            },
+            {
+              id: "top",
+              label: "Top",
+              description: "Process monitoring",
+              category: "execution",
+            },
+            {
+              id: "kill",
+              label: "Kill",
+              description: "Terminate processes",
+              category: "execution",
+            },
+            {
+              id: "pkill",
+              label: "PKill",
+              description: "Kill processes by name",
+              category: "execution",
+            },
+            {
+              id: "edit",
+              label: "Edit",
+              description: "Edit files with code editor",
+              category: "filesystem",
+            },
+            {
+              id: "bash",
+              label: "Bash",
+              description: "Bash shell execution",
+              category: "execution",
+            },
+            {
+              id: "nodejs",
+              label: "Node.js",
+              description: "Node.js runtime",
+              category: "execution",
+            },
+            {
+              id: "index-files",
+              label: "Index Files",
+              description: "Index files for search",
+              category: "filesystem",
+            },
+            {
+              id: "search-files",
+              label: "Search Files",
+              description: "Search indexed files",
+              category: "filesystem",
+            },
+            {
+              id: "memory",
+              label: "Memory",
+              description: "Access agent memory",
+              category: "agent",
+            },
+            {
+              id: "skills",
+              label: "Skills",
+              description: "Manage and use skills",
+              category: "agent",
+            },
+            {
+              id: "ddp",
+              label: "DDP",
+              description: "Debug adapter protocol",
+              category: "debugging",
+            },
+          ],
+        };
+      } catch (e) {
+        console.error("Failed to load tools catalog:", e);
+      } finally {
+        this.toolsLoading = false;
+      }
     },
 
     runtimeSettings(): ThreadRuntimeSettings {
