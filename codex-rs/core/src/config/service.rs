@@ -1,3 +1,4 @@
+use super::Config;
 use super::ConfigToml;
 use super::deserialize_config_toml_with_base;
 use crate::config::edit::ConfigEdit;
@@ -16,9 +17,15 @@ use crate::path_utils;
 use crate::path_utils::SymlinkWritePaths;
 use crate::path_utils::resolve_symlink_write_paths;
 use crate::path_utils::write_atomically;
+use codex_app_server_protocol::AgentCreateResponse;
+use codex_app_server_protocol::AgentDeleteResponse;
 use codex_app_server_protocol::AgentInfo;
 use codex_app_server_protocol::AgentListResponse;
 use codex_app_server_protocol::AgentReadResponse;
+use codex_app_server_protocol::AgentToolsConfig as ApiAgentToolsConfig;
+use codex_app_server_protocol::AgentUpdateResponse;
+use codex_app_server_protocol::AgentWorkspaceFile;
+use codex_app_server_protocol::AgentWorkspaceFilesResponse;
 use codex_app_server_protocol::Config as ApiConfig;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigLayerMetadata;
@@ -143,6 +150,18 @@ impl ConfigService {
         }
     }
 
+    pub async fn build_config(&self, cwd: Option<&str>) -> std::io::Result<Config> {
+        let cwd = cwd.map(PathBuf::from);
+        crate::config::ConfigBuilder::default()
+            .codex_home(self.codex_home.clone())
+            .cli_overrides(self.cli_overrides.clone())
+            .loader_overrides(self.loader_overrides.clone())
+            .fallback_cwd(cwd)
+            .cloud_requirements(self.cloud_requirements.clone())
+            .build()
+            .await
+    }
+
     pub async fn read(
         &self,
         params: ConfigReadParams,
@@ -215,38 +234,35 @@ impl ConfigService {
 
     pub async fn agent_list(
         &self,
-        _cwd: Option<&str>,
+        cwd: Option<&str>,
     ) -> Result<AgentListResponse, ConfigServiceError> {
-        let layers = self.load_thread_agnostic_config().await.map_err(|err| {
-            ConfigServiceError::io("failed to read configuration layers for agent list", err)
+        let config = self.build_config(cwd).await.map_err(|err| {
+            ConfigServiceError::io("failed to read configuration for agent list", err)
         })?;
-
-        let effective = layers.effective_config();
-        let config_toml: ConfigToml = effective
-            .try_into()
-            .map_err(|err| ConfigServiceError::toml("invalid configuration", err))?;
 
         let mut agents = Vec::new();
 
-        if let Some(agents_config) = &config_toml.agents {
-            for (name, role) in &agents_config.roles {
-                let config_file = role
-                    .config_file
-                    .as_ref()
-                    .map(|p| p.to_string_lossy().to_string());
-                let workspace = role
-                    .config_file
-                    .as_ref()
-                    .and_then(|p| p.parent().map(|p| p.to_string_lossy().to_string()));
+        for (name, role) in &config.agent_roles {
+            let config_file = role
+                .config_file
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string());
+            let workspace = role
+                .config_file
+                .as_ref()
+                .and_then(|p| p.parent().map(|p| p.to_string_lossy().to_string()));
+            let has_workspace = workspace.is_some();
 
-                agents.push(AgentInfo {
-                    name: name.clone(),
-                    description: role.description.clone(),
-                    config_file,
-                    nickname_candidates: role.nickname_candidates.clone(),
-                    workspace,
-                });
-            }
+            agents.push(AgentInfo {
+                id: name.clone(),
+                name: Some(name.clone()),
+                description: role.description.clone(),
+                config_file,
+                nickname_candidates: role.nickname_candidates.clone(),
+                workspace,
+                extends: None,
+                has_workspace,
+            });
         }
 
         Ok(AgentListResponse { agents })
@@ -255,25 +271,13 @@ impl ConfigService {
     pub async fn agent_read(
         &self,
         name: &str,
-        _cwd: Option<&str>,
+        cwd: Option<&str>,
     ) -> Result<AgentReadResponse, ConfigServiceError> {
-        let layers = self.load_thread_agnostic_config().await.map_err(|err| {
-            ConfigServiceError::io("failed to read configuration layers for agent read", err)
+        let config = self.build_config(cwd).await.map_err(|err| {
+            ConfigServiceError::io("failed to read configuration for agent read", err)
         })?;
 
-        let effective = layers.effective_config();
-        let config_toml: ConfigToml = effective
-            .try_into()
-            .map_err(|err| ConfigServiceError::toml("invalid configuration", err))?;
-
-        let agents_config = config_toml.agents.ok_or_else(|| {
-            ConfigServiceError::io(
-                "agents not configured",
-                std::io::Error::new(std::io::ErrorKind::NotFound, "agents not found"),
-            )
-        })?;
-
-        let role = agents_config.roles.get(name).ok_or_else(|| {
+        let role = config.agent_roles.get(name).ok_or_else(|| {
             ConfigServiceError::io(
                 "agent not found",
                 std::io::Error::new(
@@ -295,18 +299,398 @@ impl ConfigService {
         let role_config_json = if let Some(config_file_path) = &role.config_file {
             let content = std::fs::read_to_string(config_file_path)
                 .map_err(|e| ConfigServiceError::io("failed to read agent config file", e))?;
-            serde_json::from_str(&content).unwrap_or(JsonValue::Object(serde_json::Map::new()))
+            let toml_value: toml::Value = toml::from_str(&content)
+                .map_err(|e| ConfigServiceError::toml("failed to parse agent config file", e))?;
+            serde_json::to_value(toml_value).unwrap_or(JsonValue::Object(serde_json::Map::new()))
         } else {
             JsonValue::Object(serde_json::Map::new())
         };
 
+        let model = role_config_json
+            .get("model")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let developer_instructions = role_config_json
+            .get("developer_instructions")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
         Ok(AgentReadResponse {
-            name: name.to_string(),
+            id: name.to_string(),
+            name: Some(name.to_string()),
             description: role.description.clone(),
             config_file,
             nickname_candidates: role.nickname_candidates.clone(),
-            workspace,
+            workspace: workspace.clone(),
             config: role_config_json,
+            model,
+            developer_instructions,
+            extends: None,
+            has_workspace: workspace.is_some(),
+            workspace_instructions: None,
+            tools: None,
+            skills: None,
+        })
+    }
+
+    pub async fn agent_update(
+        &self,
+        name: &str,
+        cwd: Option<&str>,
+        model: Option<&str>,
+        developer_instructions: Option<&str>,
+        nickname_candidates: Option<&[String]>,
+    ) -> Result<AgentUpdateResponse, ConfigServiceError> {
+        tracing::info!("agent_update called for: {} with cwd: {:?}", name, cwd);
+        let config = self.build_config(cwd).await.map_err(|err| {
+            ConfigServiceError::io("failed to read configuration for agent update", err)
+        })?;
+
+        let role = config.agent_roles.get(name).ok_or_else(|| {
+            ConfigServiceError::io(
+                "agent not found",
+                std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("agent {} not found", name),
+                ),
+            )
+        })?;
+        tracing::info!("Found agent role, config_file: {:?}", role.config_file);
+
+        let config_file_path = role.config_file.as_ref().ok_or_else(|| {
+            ConfigServiceError::io(
+                "agent has no config file",
+                std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("agent {} has no config file", name),
+                ),
+            )
+        })?;
+        tracing::info!("Config file path: {:?}", config_file_path);
+
+        let content = std::fs::read_to_string(config_file_path)
+            .map_err(|e| ConfigServiceError::io("failed to read agent config file", e))?;
+        tracing::info!("Read {} bytes from config file", content.len());
+
+        let mut toml_value: toml::Value = toml::from_str(&content)
+            .map_err(|e| ConfigServiceError::toml("failed to parse agent config file", e))?;
+
+        if let Some(table) = toml_value.as_table_mut() {
+            if let Some(model) = model {
+                table.insert("model".to_string(), toml::Value::String(model.to_string()));
+            }
+            if let Some(instructions) = developer_instructions {
+                table.insert(
+                    "developer_instructions".to_string(),
+                    toml::Value::String(instructions.to_string()),
+                );
+            }
+            if let Some(nicknames) = nickname_candidates {
+                let nicknames_value: Vec<toml::Value> = nicknames
+                    .iter()
+                    .map(|s| toml::Value::String(s.clone()))
+                    .collect();
+                table.insert(
+                    "nickname_candidates".to_string(),
+                    toml::Value::Array(nicknames_value),
+                );
+            }
+        }
+
+        let new_content = toml::to_string_pretty(&toml_value).map_err(|e| {
+            ConfigServiceError::io(
+                "failed to serialize agent config",
+                std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()),
+            )
+        })?;
+
+        std::fs::write(config_file_path, &new_content)
+            .map_err(|e| ConfigServiceError::io("failed to write agent config file", e))?;
+        tracing::info!(
+            "Successfully wrote updated config to {}",
+            config_file_path.display()
+        );
+
+        Ok(AgentUpdateResponse {
+            success: true,
+            message: Some(format!("Agent {} updated successfully", name)),
+        })
+    }
+
+    pub async fn agent_create(
+        &self,
+        id: &str,
+        name: Option<&str>,
+        description: Option<&str>,
+        extends: Option<&str>,
+        agent_dir: Option<&str>,
+    ) -> Result<AgentCreateResponse, ConfigServiceError> {
+        tracing::info!("agent_create called for: {}", id);
+
+        let agents_dir = if let Some(dir) = agent_dir {
+            PathBuf::from(dir)
+        } else {
+            crate::config::find_codex_agents_dir()
+                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
+        };
+
+        let service = super::AgentConfigService::new(agents_dir);
+
+        let config = super::AgentConfig {
+            name: name.map(String::from),
+            description: description.map(String::from),
+            extends: extends.map(String::from).or(Some("main".to_string())),
+            model: None,
+            reasoning_effort: None,
+            developer_instructions: None,
+            workspace: None,
+            tools: None,
+            skills: None,
+            subagents: None,
+        };
+
+        service.save_agent(id, &config).map_err(|e| {
+            ConfigServiceError::io(
+                "failed to save agent config",
+                std::io::Error::other(e.to_string()),
+            )
+        })?;
+
+        let _ = service.ensure_workspace(id).map_err(|e| {
+            tracing::warn!("failed to create workspace: {}", e);
+        });
+
+        let agents = service.list_agents().map_err(|e| {
+            ConfigServiceError::io(
+                "failed to list agents",
+                std::io::Error::other(e.to_string()),
+            )
+        })?;
+
+        let agent_info =
+            agents
+                .into_iter()
+                .find(|a| a.id == id)
+                .map(|a| codex_app_server_protocol::AgentInfo {
+                    id: a.id,
+                    name: a.name,
+                    description: a.description,
+                    config_file: None,
+                    nickname_candidates: None,
+                    workspace: a.workspace_path,
+                    extends: a.extends,
+                    has_workspace: a.has_workspace,
+                });
+
+        Ok(AgentCreateResponse {
+            success: true,
+            message: Some(format!("Agent {} created successfully", id)),
+            agent: agent_info,
+        })
+    }
+
+    pub async fn agent_delete(
+        &self,
+        id: &str,
+        agent_dir: Option<&str>,
+    ) -> Result<AgentDeleteResponse, ConfigServiceError> {
+        tracing::info!("agent_delete called for: {}", id);
+
+        let agents_dir = if let Some(dir) = agent_dir {
+            PathBuf::from(dir)
+        } else {
+            crate::config::find_codex_agents_dir()
+                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
+        };
+
+        let service = super::AgentConfigService::new(agents_dir);
+
+        service.delete_agent(id).map_err(|e| {
+            ConfigServiceError::io(
+                "failed to delete agent",
+                std::io::Error::other(e.to_string()),
+            )
+        })?;
+
+        Ok(AgentDeleteResponse {
+            success: true,
+            message: Some(format!("Agent {} deleted successfully", id)),
+        })
+    }
+
+    pub async fn agent_list_isolated(
+        &self,
+        agent_dir: Option<&str>,
+    ) -> Result<AgentListResponse, ConfigServiceError> {
+        tracing::info!("agent_list_isolated called with agent_dir: {:?}", agent_dir);
+
+        let agents_dir = if let Some(dir) = agent_dir {
+            PathBuf::from(dir)
+        } else {
+            crate::config::find_codex_agents_dir()
+                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
+        };
+
+        let service = super::AgentConfigService::new(agents_dir);
+
+        let agents = service.list_agents().map_err(|e| {
+            ConfigServiceError::io(
+                "failed to list agents",
+                std::io::Error::other(e.to_string()),
+            )
+        })?;
+
+        let v2_agents: Vec<AgentInfo> = agents
+            .into_iter()
+            .map(|a| AgentInfo {
+                id: a.id,
+                name: a.name,
+                description: a.description,
+                config_file: None,
+                nickname_candidates: None,
+                workspace: a.workspace_path,
+                extends: a.extends,
+                has_workspace: a.has_workspace,
+            })
+            .collect();
+
+        Ok(AgentListResponse { agents: v2_agents })
+    }
+
+    pub async fn agent_read_isolated(
+        &self,
+        id: &str,
+        agent_dir: Option<&str>,
+    ) -> Result<AgentReadResponse, ConfigServiceError> {
+        tracing::info!("agent_read_isolated called for: {}", id);
+
+        let agents_dir = if let Some(dir) = agent_dir {
+            PathBuf::from(dir)
+        } else {
+            crate::config::find_codex_agents_dir()
+                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
+        };
+
+        let service = super::AgentConfigService::new(agents_dir);
+
+        let config = service.load_agent(id).map_err(|e| {
+            ConfigServiceError::io("failed to load agent", std::io::Error::other(e.to_string()))
+        })?;
+
+        let workspace_path = service.workspace_path(id);
+        let has_workspace = workspace_path.exists();
+
+        let config_json =
+            serde_json::to_value(&config).unwrap_or(JsonValue::Object(serde_json::Map::new()));
+
+        let workspace_instructions = service.get_workspace_instructions(id).ok();
+
+        Ok(AgentReadResponse {
+            id: id.to_string(),
+            name: config.name,
+            description: config.description,
+            config_file: None,
+            nickname_candidates: None,
+            workspace: if has_workspace {
+                Some(workspace_path.to_string_lossy().to_string())
+            } else {
+                None
+            },
+            config: config_json,
+            model: config.model,
+            developer_instructions: config.developer_instructions,
+            extends: config.extends,
+            has_workspace,
+            workspace_instructions,
+            tools: config.tools.map(|t| ApiAgentToolsConfig {
+                allow: t.allow,
+                deny: t.deny,
+            }),
+            skills: config.skills,
+        })
+    }
+
+    pub async fn agent_update_isolated(
+        &self,
+        id: &str,
+        agent_dir: Option<&str>,
+        name: Option<&str>,
+        description: Option<&str>,
+        model: Option<&str>,
+        developer_instructions: Option<&str>,
+        _nickname_candidates: Option<&[String]>,
+        extends: Option<&str>,
+        workspace: Option<&str>,
+    ) -> Result<AgentUpdateResponse, ConfigServiceError> {
+        tracing::info!("agent_update_isolated called for: {}", id);
+
+        let agents_dir = if let Some(dir) = agent_dir {
+            PathBuf::from(dir)
+        } else {
+            crate::config::find_codex_agents_dir()
+                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
+        };
+
+        let service = super::AgentConfigService::new(agents_dir);
+
+        let mut config = service.load_agent(id).map_err(|e| {
+            ConfigServiceError::io("failed to load agent", std::io::Error::other(e.to_string()))
+        })?;
+
+        if name.is_some() {
+            config.name = name.map(String::from);
+        }
+        if description.is_some() {
+            config.description = description.map(String::from);
+        }
+        if model.is_some() {
+            config.model = model.map(String::from);
+        }
+        if developer_instructions.is_some() {
+            config.developer_instructions = developer_instructions.map(String::from);
+        }
+        if extends.is_some() {
+            config.extends = extends.map(String::from);
+        }
+        if workspace.is_some() {
+            config.workspace = workspace.map(String::from);
+        }
+
+        service.save_agent(id, &config).map_err(|e| {
+            ConfigServiceError::io(
+                "failed to save agent config",
+                std::io::Error::other(e.to_string()),
+            )
+        })?;
+
+        Ok(AgentUpdateResponse {
+            success: true,
+            message: Some(format!("Agent {} updated successfully", id)),
+        })
+    }
+
+    pub async fn agent_workspace_files(
+        &self,
+        id: &str,
+        agent_dir: Option<&str>,
+    ) -> Result<AgentWorkspaceFilesResponse, ConfigServiceError> {
+        tracing::info!("agent_workspace_files called for: {}", id);
+
+        let agents_dir = if let Some(dir) = agent_dir {
+            PathBuf::from(dir)
+        } else {
+            crate::config::find_codex_agents_dir()
+                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
+        };
+
+        let service = super::AgentConfigService::new(agents_dir);
+        let files = service.list_workspace_files(id);
+
+        Ok(AgentWorkspaceFilesResponse {
+            files: files
+                .into_iter()
+                .map(|(filename, content)| AgentWorkspaceFile { filename, content })
+                .collect(),
         })
     }
 

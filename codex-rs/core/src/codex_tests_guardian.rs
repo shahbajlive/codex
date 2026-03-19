@@ -453,6 +453,8 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         metrics_service_name: None,
         inherited_shell_snapshot: None,
         parent_trace: None,
+        agent_tools_allow: None,
+        agent_tools_deny: None,
     })
     .await
     .expect("spawn guardian subagent");

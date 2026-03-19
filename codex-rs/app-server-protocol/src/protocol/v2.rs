@@ -750,6 +750,8 @@ pub struct AgentRoleConfig {
 pub struct AgentListParams {
     #[ts(optional = nullable)]
     pub cwd: Option<String>,
+    #[ts(optional = nullable)]
+    pub agent_dir: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -764,32 +766,159 @@ pub struct AgentListResponse {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct AgentInfo {
-    pub name: String,
+    pub id: String,
+    pub name: Option<String>,
     pub description: Option<String>,
     pub config_file: Option<String>,
     pub nickname_candidates: Option<Vec<String>>,
     pub workspace: Option<String>,
+    #[ts(optional = nullable)]
+    pub extends: Option<String>,
+    pub has_workspace: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct AgentReadParams {
-    pub name: String,
+    pub id: String,
     #[ts(optional = nullable)]
     pub cwd: Option<String>,
+    #[ts(optional = nullable)]
+    pub agent_dir: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct AgentReadResponse {
-    pub name: String,
+    pub id: String,
+    pub name: Option<String>,
     pub description: Option<String>,
     pub config_file: Option<String>,
     pub nickname_candidates: Option<Vec<String>>,
     pub workspace: Option<String>,
     pub config: serde_json::Value,
+    pub model: Option<String>,
+    pub developer_instructions: Option<String>,
+    #[ts(optional = nullable)]
+    pub extends: Option<String>,
+    pub has_workspace: bool,
+    /// Content from bootstrap files in the agent workspace (AGENTS.md, SOUL.md, etc.)
+    #[ts(optional = nullable)]
+    pub workspace_instructions: Option<String>,
+    /// Tools configuration for this agent
+    #[ts(optional = nullable)]
+    pub tools: Option<AgentToolsConfig>,
+    /// Skills enabled for this agent
+    #[ts(optional = nullable)]
+    pub skills: Option<Vec<String>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentUpdateParams {
+    pub id: String,
+    #[ts(optional = nullable)]
+    pub cwd: Option<String>,
+    #[ts(optional = nullable)]
+    pub agent_dir: Option<String>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub model: Option<String>,
+    pub developer_instructions: Option<String>,
+    pub nickname_candidates: Option<Vec<String>>,
+    #[ts(optional = nullable)]
+    pub extends: Option<String>,
+    #[ts(optional = nullable)]
+    pub workspace: Option<String>,
+    pub tools: Option<AgentToolsConfig>,
+    #[ts(optional = nullable)]
+    pub skills: Option<Vec<String>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentToolsConfig {
+    #[ts(optional = nullable)]
+    pub allow: Option<Vec<String>>,
+    #[ts(optional = nullable)]
+    pub deny: Option<Vec<String>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentWorkspaceFile {
+    pub filename: String,
+    pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentWorkspaceFilesParams {
+    pub id: String,
+    #[ts(optional = nullable)]
+    pub agent_dir: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentWorkspaceFilesResponse {
+    pub files: Vec<AgentWorkspaceFile>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentUpdateResponse {
+    pub success: bool,
+    pub message: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentCreateParams {
+    pub id: String,
+    #[ts(optional = nullable)]
+    pub name: Option<String>,
+    #[ts(optional = nullable)]
+    pub description: Option<String>,
+    #[ts(optional = nullable)]
+    pub extends: Option<String>,
+    #[ts(optional = nullable)]
+    pub agent_dir: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentCreateResponse {
+    pub success: bool,
+    pub message: Option<String>,
+    pub agent: Option<AgentInfo>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentDeleteParams {
+    pub id: String,
+    #[ts(optional = nullable)]
+    pub agent_dir: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentDeleteResponse {
+    pub success: bool,
+    pub message: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -2571,6 +2700,11 @@ pub struct ThreadStartParams {
     #[experimental("thread/start.persistFullHistory")]
     #[serde(default)]
     pub persist_extended_history: bool,
+    /// The agent ID to use for this thread. If provided, loads the agent's
+    /// configuration (including workspace instructions from AGENTS.md and SOUL.md)
+    /// and appends them to the developer instructions.
+    #[ts(optional = nullable)]
+    pub agent_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, JsonSchema, TS)]

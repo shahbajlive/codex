@@ -1,0 +1,11 @@
+{
+  name: "Test Engineer",
+  description: "Test Engineer - Testing and QA",
+  model: "lmstudio/qwen3.5-2b",
+  extends: "developer_lead",
+  workspace: null,
+  tools: {
+    allow: null,
+    deny: null,
+  },
+}

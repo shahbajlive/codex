@@ -185,6 +185,12 @@ pub enum CodexErr {
     EnvVar(EnvVarError),
 }
 
+impl From<crate::config::AgentConfigError> for CodexErr {
+    fn from(e: crate::config::AgentConfigError) -> Self {
+        CodexErr::Fatal(format!("agent config error: {e}"))
+    }
+}
+
 impl From<CancelErr> for CodexErr {
     fn from(_: CancelErr) -> Self {
         CodexErr::TurnAborted

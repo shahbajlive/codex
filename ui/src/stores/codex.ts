@@ -10,6 +10,7 @@ import type {
   Model,
   Thread,
   AgentInfo,
+  AgentReadResponse,
 } from "../lib/protocol";
 import {
   applyNotification,
@@ -32,6 +33,8 @@ export const useCodexStore = defineStore("codex", {
     agentThreads: [] as Thread[],
     configuredAgents: [] as AgentInfo[],
     selectedAgentId: null as string | null,
+    selectedAgentConfig: null as AgentReadResponse | null,
+    selectedAgentWorkspaceFiles: [] as { filename: string; content: string }[],
     selectedAgent: null as Thread | null,
     agentTranscript: buildTranscript(null),
     models: [] as Model[],
@@ -40,6 +43,15 @@ export const useCodexStore = defineStore("codex", {
     errorMessage: "",
     initializeResponse: null as InitializeResponse | null,
     resumedThreadId: null as string | null,
+    toolsLoading: false,
+    toolsCatalog: null as {
+      tools: {
+        id: string;
+        label: string;
+        description: string;
+        category: string;
+      }[];
+    } | null,
   }),
   getters: {
     isConnected: (state) => state.connectionStatus === "connected",
@@ -119,7 +131,9 @@ export const useCodexStore = defineStore("codex", {
       if (!client) {
         return;
       }
-      this.configuredAgents = await client.listAgents();
+      const settingsStore = useSettingsStore();
+      const cwd = settingsStore.cwd || undefined;
+      this.configuredAgents = await client.listAgents(cwd);
     },
 
     async createThread() {
@@ -181,6 +195,67 @@ export const useCodexStore = defineStore("codex", {
 
     async selectConfiguredAgent(agentId: string) {
       this.selectedAgentId = agentId;
+      this.selectedAgentWorkspaceFiles = [];
+      if (client && agentId) {
+        try {
+          const settingsStore = useSettingsStore();
+          const cwd = settingsStore.cwd || undefined;
+          const agentConfig = await client.readAgent(agentId, cwd);
+          this.selectedAgentConfig = agentConfig;
+          // Fetch workspace files
+          const workspaceFiles = await client.getAgentWorkspaceFiles(
+            agentId,
+            cwd,
+          );
+          this.selectedAgentWorkspaceFiles = workspaceFiles.files;
+        } catch (e) {
+          console.error("Failed to fetch agent config:", e);
+          this.selectedAgentConfig = null;
+        }
+      }
+    },
+
+    async updateAgent(
+      id: string,
+      name: string | null,
+      model: string | null,
+      developerInstructions: string | null,
+      nicknameCandidates: string[] | null,
+    ) {
+      const settingsStore = useSettingsStore();
+      const agentDir = settingsStore.cwd || undefined;
+      console.log("Store updateAgent called:", {
+        id,
+        name,
+        model,
+        developerInstructions: developerInstructions?.slice(0, 50),
+        nicknameCandidates,
+        agentDir,
+      });
+      if (!client) {
+        console.error("Client not connected!");
+        return { success: false, message: "Not connected" };
+      }
+
+      try {
+        const result = await client.updateAgent({
+          id,
+          agentDir,
+          name,
+          model,
+          developerInstructions,
+          nicknameCandidates,
+        });
+        console.log("Client updateAgent result:", result);
+        if (result.success) {
+          await this.refreshConfiguredAgents();
+          await this.selectConfiguredAgent(id);
+        }
+        return result;
+      } catch (e) {
+        console.error("Failed to update agent:", e);
+        return { success: false, message: String(e) };
+      }
     },
 
     async sendMessage(message: string) {

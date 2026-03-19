@@ -372,6 +372,10 @@ pub(crate) struct CodexSpawnArgs {
     pub(crate) metrics_service_name: Option<String>,
     pub(crate) inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
     pub(crate) parent_trace: Option<W3cTraceContext>,
+    pub(crate) agent_tools_allow: Option<Vec<String>>,
+    pub(crate) agent_tools_deny: Option<Vec<String>>,
+    pub(crate) agent_id: Option<String>,
+    pub(crate) workspace_instructions: Option<String>,
 }
 
 pub(crate) const INITIAL_SUBMIT_ID: &str = "";
@@ -423,7 +427,22 @@ impl Codex {
             metrics_service_name,
             inherited_shell_snapshot,
             parent_trace: _,
+            agent_tools_allow,
+            agent_tools_deny,
+            agent_id: _,
+            workspace_instructions,
         } = args;
+
+        if let Some(workspace_instructions) = workspace_instructions {
+            let developer = config.developer_instructions.unwrap_or_default();
+            if developer.is_empty() {
+                config.developer_instructions = Some(workspace_instructions);
+            } else {
+                config.developer_instructions =
+                    Some(format!("{developer}\n\n{workspace_instructions}"));
+            }
+        }
+
         let (tx_sub, rx_sub) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
         let (tx_event, rx_event) = async_channel::unbounded();
 
@@ -576,6 +595,8 @@ impl Codex {
             dynamic_tools,
             persist_extended_history,
             inherited_shell_snapshot,
+            agent_tools_allow,
+            agent_tools_deny,
         };
 
         // Generate a unique ID for the lifetime of this Codex session.
@@ -875,7 +896,11 @@ impl TurnContext {
         .with_unified_exec_shell_mode(self.tools_config.unified_exec_shell_mode.clone())
         .with_web_search_config(self.tools_config.web_search_config.clone())
         .with_allow_login_shell(self.tools_config.allow_login_shell)
-        .with_agent_roles(config.agent_roles.clone());
+        .with_agent_roles(config.agent_roles.clone())
+        .with_agent_tools(
+            self.tools_config.agent_tools_allow.clone(),
+            self.tools_config.agent_tools_deny.clone(),
+        );
 
         Self {
             sub_id: self.sub_id.clone(),
@@ -1038,6 +1063,8 @@ pub(crate) struct SessionConfiguration {
     dynamic_tools: Vec<DynamicToolSpec>,
     persist_extended_history: bool,
     inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
+    pub(crate) agent_tools_allow: Option<Vec<String>>,
+    pub(crate) agent_tools_deny: Option<Vec<String>>,
 }
 
 impl SessionConfiguration {
@@ -1313,7 +1340,11 @@ impl Session {
         )
         .with_web_search_config(per_turn_config.web_search_config.clone())
         .with_allow_login_shell(per_turn_config.permissions.allow_login_shell)
-        .with_agent_roles(per_turn_config.agent_roles.clone());
+        .with_agent_roles(per_turn_config.agent_roles.clone())
+        .with_agent_tools(
+            session_configuration.agent_tools_allow.clone(),
+            session_configuration.agent_tools_deny.clone(),
+        );
 
         let cwd = session_configuration.cwd.clone();
         let turn_metadata_state = Arc::new(TurnMetadataState::new(

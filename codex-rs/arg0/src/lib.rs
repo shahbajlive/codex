@@ -185,15 +185,37 @@ fn build_runtime() -> anyhow::Result<tokio::runtime::Runtime> {
 
 const ILLEGAL_ENV_VAR_PREFIX: &str = "CODEX_";
 
-/// Load env vars from ~/.codex/.env.
+/// Load env vars from:
+/// 1. .env in current working directory (for local development) - loaded first for overrides
+/// 2. ~/.codex/.env
 ///
 /// Security: Do not allow `.env` files to create or modify any variables
 /// with names starting with `CODEX_`.
 fn load_dotenv() {
-    if let Ok(codex_home) = find_codex_home()
-        && let Ok(iter) = dotenvy::from_path_iter(codex_home.join(".env"))
-    {
-        set_filtered(iter);
+    // Load from .env in current working directory first (for local development overrides)
+    if let Ok(cwd) = std::env::current_dir() {
+        let repo_env = cwd.join(".env");
+        if repo_env.exists() {
+            if let Ok(iter) = dotenvy::from_path_iter(&repo_env) {
+                set_filtered(iter);
+            }
+        }
+    }
+
+    // Load from ~/.codex/.env (or CODEX_HOME/.env if CODEX_HOME is set)
+    let codex_home = if let Ok(home) = std::env::var("CODEX_HOME") {
+        PathBuf::from(home)
+    } else if let Ok(home) = find_codex_home() {
+        home
+    } else {
+        return;
+    };
+
+    let codex_env = codex_home.join(".env");
+    if codex_env.exists() {
+        if let Ok(iter) = dotenvy::from_path_iter(&codex_env) {
+            set_filtered(iter);
+        }
     }
 }
 

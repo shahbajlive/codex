@@ -17,8 +17,18 @@ use crate::outgoing_message::OutgoingMessageSender;
 use crate::outgoing_message::RequestContext;
 use crate::transport::AppServerTransport;
 use async_trait::async_trait;
+use codex_app_server_protocol::AgentCreateParams;
+use codex_app_server_protocol::AgentCreateResponse;
+use codex_app_server_protocol::AgentDeleteParams;
+use codex_app_server_protocol::AgentDeleteResponse;
 use codex_app_server_protocol::AgentListParams;
+use codex_app_server_protocol::AgentListResponse;
 use codex_app_server_protocol::AgentReadParams;
+use codex_app_server_protocol::AgentReadResponse;
+use codex_app_server_protocol::AgentUpdateParams;
+use codex_app_server_protocol::AgentUpdateResponse;
+use codex_app_server_protocol::AgentWorkspaceFilesParams;
+use codex_app_server_protocol::AgentWorkspaceFilesResponse;
 use codex_app_server_protocol::ChatgptAuthTokensRefreshParams;
 use codex_app_server_protocol::ChatgptAuthTokensRefreshReason;
 use codex_app_server_protocol::ChatgptAuthTokensRefreshResponse;
@@ -706,6 +716,76 @@ impl MessageProcessor {
                 )
                 .await;
             }
+            ClientRequest::AgentUpdate { request_id, params } => {
+                self.handle_agent_update(
+                    ConnectionRequestId {
+                        connection_id,
+                        request_id,
+                    },
+                    params,
+                )
+                .await;
+            }
+            ClientRequest::AgentCreate { request_id, params } => {
+                self.handle_agent_create(
+                    ConnectionRequestId {
+                        connection_id,
+                        request_id,
+                    },
+                    params,
+                )
+                .await;
+            }
+            ClientRequest::AgentDelete { request_id, params } => {
+                self.handle_agent_delete(
+                    ConnectionRequestId {
+                        connection_id,
+                        request_id,
+                    },
+                    params,
+                )
+                .await;
+            }
+            ClientRequest::AgentListIsolated { request_id, params } => {
+                self.handle_agent_list_isolated(
+                    ConnectionRequestId {
+                        connection_id,
+                        request_id,
+                    },
+                    params,
+                )
+                .await;
+            }
+            ClientRequest::AgentReadIsolated { request_id, params } => {
+                self.handle_agent_read_isolated(
+                    ConnectionRequestId {
+                        connection_id,
+                        request_id,
+                    },
+                    params,
+                )
+                .await;
+            }
+            ClientRequest::AgentUpdateIsolated { request_id, params } => {
+                self.handle_agent_update_isolated(
+                    ConnectionRequestId {
+                        connection_id,
+                        request_id,
+                    },
+                    params,
+                )
+                .await;
+            }
+            ClientRequest::AgentWorkspaceFiles { request_id, params } => {
+                self.handle_agent_workspace_files(
+                    ConnectionRequestId {
+                        connection_id,
+                        request_id,
+                    },
+                    params,
+                )
+                .await;
+            }
             ClientRequest::FsReadFile { request_id, params } => {
                 self.handle_fs_read_file(
                     ConnectionRequestId {
@@ -843,6 +923,83 @@ impl MessageProcessor {
 
     async fn handle_agent_read(&self, request_id: ConnectionRequestId, params: AgentReadParams) {
         match self.config_api.agent_read(params).await {
+            Ok(response) => self.outgoing.send_response(request_id, response).await,
+            Err(error) => self.outgoing.send_error(request_id, error).await,
+        }
+    }
+
+    async fn handle_agent_update(
+        &self,
+        request_id: ConnectionRequestId,
+        params: AgentUpdateParams,
+    ) {
+        match self.config_api.agent_update(params).await {
+            Ok(response) => self.outgoing.send_response(request_id, response).await,
+            Err(error) => self.outgoing.send_error(request_id, error).await,
+        }
+    }
+
+    async fn handle_agent_create(
+        &self,
+        request_id: ConnectionRequestId,
+        params: AgentCreateParams,
+    ) {
+        match self.config_api.agent_create(params).await {
+            Ok(response) => self.outgoing.send_response(request_id, response).await,
+            Err(error) => self.outgoing.send_error(request_id, error).await,
+        }
+    }
+
+    async fn handle_agent_delete(
+        &self,
+        request_id: ConnectionRequestId,
+        params: AgentDeleteParams,
+    ) {
+        match self.config_api.agent_delete(params).await {
+            Ok(response) => self.outgoing.send_response(request_id, response).await,
+            Err(error) => self.outgoing.send_error(request_id, error).await,
+        }
+    }
+
+    async fn handle_agent_list_isolated(
+        &self,
+        request_id: ConnectionRequestId,
+        params: AgentListParams,
+    ) {
+        match self.config_api.agent_list_isolated(params).await {
+            Ok(response) => self.outgoing.send_response(request_id, response).await,
+            Err(error) => self.outgoing.send_error(request_id, error).await,
+        }
+    }
+
+    async fn handle_agent_read_isolated(
+        &self,
+        request_id: ConnectionRequestId,
+        params: AgentReadParams,
+    ) {
+        match self.config_api.agent_read_isolated(params).await {
+            Ok(response) => self.outgoing.send_response(request_id, response).await,
+            Err(error) => self.outgoing.send_error(request_id, error).await,
+        }
+    }
+
+    async fn handle_agent_update_isolated(
+        &self,
+        request_id: ConnectionRequestId,
+        params: AgentUpdateParams,
+    ) {
+        match self.config_api.agent_update_isolated(params).await {
+            Ok(response) => self.outgoing.send_response(request_id, response).await,
+            Err(error) => self.outgoing.send_error(request_id, error).await,
+        }
+    }
+
+    async fn handle_agent_workspace_files(
+        &self,
+        request_id: ConnectionRequestId,
+        params: AgentWorkspaceFilesParams,
+    ) {
+        match self.config_api.agent_workspace_files(params).await {
             Ok(response) => self.outgoing.send_response(request_id, response).await,
             Err(error) => self.outgoing.send_error(request_id, error).await,
         }

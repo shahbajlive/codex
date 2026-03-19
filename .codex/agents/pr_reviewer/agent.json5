@@ -1,0 +1,11 @@
+{
+  name: "PR Reviewer",
+  description: "PR Reviewer - Code review and quality assurance",
+  model: "lmstudio/qwen3.5-2b",
+  extends: "developer_lead",
+  workspace: null,
+  tools: {
+    allow: null,
+    deny: null,
+  },
+}

@@ -916,7 +916,15 @@ impl CodexMessageProcessor {
             | ClientRequest::ExternalAgentConfigImport { .. } => {
                 warn!("ExternalAgentConfig request reached CodexMessageProcessor unexpectedly");
             }
-            ClientRequest::AgentList { .. } | ClientRequest::AgentRead { .. } => {
+            ClientRequest::AgentList { .. }
+            | ClientRequest::AgentRead { .. }
+            | ClientRequest::AgentUpdate { .. }
+            | ClientRequest::AgentCreate { .. }
+            | ClientRequest::AgentDelete { .. }
+            | ClientRequest::AgentListIsolated { .. }
+            | ClientRequest::AgentReadIsolated { .. }
+            | ClientRequest::AgentUpdateIsolated { .. }
+            | ClientRequest::AgentWorkspaceFiles { .. } => {
                 warn!("Agent request reached CodexMessageProcessor unexpectedly");
             }
             ClientRequest::GetAccountRateLimits {
@@ -1873,6 +1881,7 @@ impl CodexMessageProcessor {
             personality,
             ephemeral,
             persist_extended_history,
+            agent_id,
         } = params;
         let mut typesafe_overrides = self.build_thread_config_overrides(
             model,
@@ -1911,6 +1920,7 @@ impl CodexMessageProcessor {
                 service_name,
                 experimental_raw_events,
                 request_trace,
+                agent_id,
             )
             .await;
         };
@@ -1976,6 +1986,7 @@ impl CodexMessageProcessor {
         service_name: Option<String>,
         experimental_raw_events: bool,
         request_trace: Option<W3cTraceContext>,
+        agent_id: Option<String>,
     ) {
         let config = match derive_config_from_params(
             &cli_overrides,
@@ -2032,6 +2043,7 @@ impl CodexMessageProcessor {
                 persist_extended_history,
                 service_name,
                 request_trace,
+                agent_id,
             )
             .instrument(tracing::info_span!(
                 "app_server.thread_start.create_thread",

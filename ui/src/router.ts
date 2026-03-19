@@ -113,5 +113,14 @@ export const router = createRouter({
       name: "settings",
       component: SettingsPage,
     },
+    {
+      path: "/config",
+      name: "config",
+      component: PlaceholderPage,
+      props: {
+        title: "Config",
+        subtitle: "Edit config.toml and advanced settings.",
+      },
+    },
   ],
 });

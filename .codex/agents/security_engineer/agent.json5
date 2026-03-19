@@ -1,0 +1,11 @@
+{
+  name: "Security Engineer",
+  description: "Security Engineer - Security review and analysis",
+  model: "lmstudio/qwen3.5-2b",
+  extends: "developer_lead",
+  workspace: null,
+  tools: {
+    allow: null,
+    deny: null,
+  },
+}

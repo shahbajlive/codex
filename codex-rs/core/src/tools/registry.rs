@@ -390,6 +390,22 @@ impl ToolRegistryBuilder {
         let registry = ToolRegistry::new(self.handlers);
         (self.specs, registry)
     }
+
+    pub fn filter_tools<F>(&mut self, mut filter: F)
+    where
+        F: FnMut(&str) -> bool,
+    {
+        self.specs.retain(|spec| filter(spec.spec.name()));
+        let names_to_remove: Vec<String> = self
+            .handlers
+            .keys()
+            .filter(|name| !filter(name))
+            .cloned()
+            .collect();
+        for name in names_to_remove {
+            self.handlers.remove(&name);
+        }
+    }
 }
 
 fn unsupported_tool_call_message(

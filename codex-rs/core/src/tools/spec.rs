@@ -279,6 +279,24 @@ pub(crate) struct ToolsConfig {
     pub experimental_supported_tools: Vec<String>,
     pub agent_jobs_tools: bool,
     pub agent_jobs_worker_tools: bool,
+    pub agent_tools_allow: Option<Vec<String>>,
+    pub agent_tools_deny: Option<Vec<String>>,
+}
+
+impl ToolsConfig {
+    pub(crate) fn is_tool_allowed(&self, tool_name: &str) -> bool {
+        if let Some(deny) = &self.agent_tools_deny {
+            if deny.contains(&tool_name.to_string()) {
+                return false;
+            }
+        }
+
+        if let Some(allow) = &self.agent_tools_allow {
+            allow.contains(&tool_name.to_string())
+        } else {
+            true
+        }
+    }
 }
 
 pub(crate) struct ToolsConfigParams<'a> {
@@ -411,6 +429,8 @@ impl ToolsConfig {
             experimental_supported_tools: model_info.experimental_supported_tools.clone(),
             agent_jobs_tools: include_agent_jobs,
             agent_jobs_worker_tools,
+            agent_tools_allow: None,
+            agent_tools_deny: None,
         }
     }
 
@@ -449,6 +469,16 @@ impl ToolsConfig {
 
     pub fn with_web_search_config(mut self, web_search_config: Option<WebSearchConfig>) -> Self {
         self.web_search_config = web_search_config;
+        self
+    }
+
+    pub fn with_agent_tools(
+        mut self,
+        allow: Option<Vec<String>>,
+        deny: Option<Vec<String>>,
+    ) -> Self {
+        self.agent_tools_allow = allow;
+        self.agent_tools_deny = deny;
         self
     }
 
@@ -3012,6 +3042,10 @@ pub(crate) fn build_specs_with_discoverable_tools(
                 }
             }
         }
+    }
+
+    if config.agent_tools_allow.is_some() || config.agent_tools_deny.is_some() {
+        builder.filter_tools(|name| config.is_tool_allowed(name));
     }
 
     builder

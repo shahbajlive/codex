@@ -1,0 +1,11 @@
+{
+  name: "Main",
+  description: "Main agent - workspace orchestrator",
+  model: "lmstudio/qwen3.5-0.8b",
+  extends: null,
+  workspace: null,
+  tools: {
+    allow: null,
+    deny: null,
+  },
+}

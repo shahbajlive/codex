@@ -1,0 +1,7 @@
+{
+  name: "Developer Lead",
+  description: "Engineering interface lead",
+  extends: "main",
+  model: "gpt-5.3-codex",
+  tools: {},
+}

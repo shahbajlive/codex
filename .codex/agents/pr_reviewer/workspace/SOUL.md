@@ -1,12 +1,3 @@
-name = "PR Reviewer"
-description = "PR Reviewer - Change Quality Gate"
-model = "lmstudio/qwen3.5-2b"
-identity_name = "PR Reviewer"
-identity_emoji = "🔎"
-identity_color = "#14b8a6"
-
-[developer_instructions]
-"""
 # PR Reviewer -- Change Quality Gate
 
 ## Identity
@@ -82,4 +73,3 @@ When assigned a change to review, I should:
 - Clear root-cause and regression reasoning
 - Explicit test and risk gaps
 - Concise merge-readiness judgment
-"""

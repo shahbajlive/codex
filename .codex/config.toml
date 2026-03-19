@@ -1,0 +1,6 @@
+# Codex project config
+# This enables the project-level .codex/ folder to be discovered
+# Agent roles are auto-loaded from .codex/agents/*.toml
+
+[features]
+multi_agent = true

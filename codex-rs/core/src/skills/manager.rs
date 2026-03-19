@@ -336,6 +336,19 @@ fn normalize_extra_user_roots(extra_user_roots: &[PathBuf]) -> Vec<PathBuf> {
     normalized
 }
 
+pub fn filter_skills_by_allowlist(
+    skills: Vec<crate::skills::SkillMetadata>,
+    allowlist: Option<&Vec<String>>,
+) -> Vec<crate::skills::SkillMetadata> {
+    match allowlist {
+        Some(list) if !list.is_empty() => skills
+            .into_iter()
+            .filter(|skill| list.contains(&skill.name))
+            .collect(),
+        _ => skills,
+    }
+}
+
 #[cfg(test)]
 #[path = "manager_tests.rs"]
 mod tests;

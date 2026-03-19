@@ -7,8 +7,14 @@ import { useCodexStore } from "../stores/codex";
 
 const codexStore = useCodexStore();
 const router = useRouter();
-const { configuredAgents, agentTranscript, busy, selectedAgentId } =
-  storeToRefs(codexStore);
+const {
+  configuredAgents,
+  busy,
+  selectedAgentId,
+  selectedAgentConfig,
+  selectedAgentWorkspaceFiles,
+  models,
+} = storeToRefs(codexStore);
 
 function selectAgent(agentId: string) {
   codexStore.selectConfiguredAgent(agentId);
@@ -31,7 +37,9 @@ async function openConversation(agentId: string) {
       :loading="busy"
       :agents="configuredAgents"
       :selected-agent-id="selectedAgentId"
-      :transcript="agentTranscript"
+      :selected-agent-config="selectedAgentConfig"
+      :workspace-files="selectedAgentWorkspaceFiles"
+      :models="models"
       @refresh="codexStore.refreshConfiguredAgents"
       @select="selectAgent"
       @open-conversation="openConversation"

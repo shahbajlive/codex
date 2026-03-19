@@ -1,0 +1,11 @@
+{
+  name: "Backend Engineer",
+  description: "Backend Engineer - Server-side development",
+  model: "lmstudio/qwen3.5-2b",
+  extends: "developer_lead",
+  workspace: null,
+  tools: {
+    allow: null,
+    deny: null,
+  },
+}

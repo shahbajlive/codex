@@ -1,10 +1,18 @@
 use crate::error_code::INTERNAL_ERROR_CODE;
 use crate::error_code::INVALID_REQUEST_ERROR_CODE;
 use async_trait::async_trait;
+use codex_app_server_protocol::AgentCreateParams;
+use codex_app_server_protocol::AgentCreateResponse;
+use codex_app_server_protocol::AgentDeleteParams;
+use codex_app_server_protocol::AgentDeleteResponse;
 use codex_app_server_protocol::AgentListParams;
 use codex_app_server_protocol::AgentListResponse;
 use codex_app_server_protocol::AgentReadParams;
 use codex_app_server_protocol::AgentReadResponse;
+use codex_app_server_protocol::AgentUpdateParams;
+use codex_app_server_protocol::AgentUpdateResponse;
+use codex_app_server_protocol::AgentWorkspaceFilesParams;
+use codex_app_server_protocol::AgentWorkspaceFilesResponse;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigReadParams;
 use codex_app_server_protocol::ConfigReadResponse;
@@ -173,7 +181,99 @@ impl ConfigApi {
         params: AgentReadParams,
     ) -> Result<AgentReadResponse, JSONRPCErrorError> {
         self.config_service()
-            .agent_read(&params.name, params.cwd.as_deref())
+            .agent_read(&params.id, params.cwd.as_deref())
+            .await
+            .map_err(map_error)
+    }
+
+    pub(crate) async fn agent_update(
+        &self,
+        params: AgentUpdateParams,
+    ) -> Result<AgentUpdateResponse, JSONRPCErrorError> {
+        self.config_service()
+            .agent_update(
+                &params.id,
+                params.cwd.as_deref(),
+                params.model.as_deref(),
+                params.developer_instructions.as_deref(),
+                params.nickname_candidates.as_deref(),
+            )
+            .await
+            .map_err(map_error)
+    }
+
+    pub(crate) async fn agent_create(
+        &self,
+        params: AgentCreateParams,
+    ) -> Result<AgentCreateResponse, JSONRPCErrorError> {
+        self.config_service()
+            .agent_create(
+                &params.id,
+                params.name.as_deref(),
+                params.description.as_deref(),
+                params.extends.as_deref(),
+                params.agent_dir.as_deref(),
+            )
+            .await
+            .map_err(map_error)
+    }
+
+    pub(crate) async fn agent_delete(
+        &self,
+        params: AgentDeleteParams,
+    ) -> Result<AgentDeleteResponse, JSONRPCErrorError> {
+        self.config_service()
+            .agent_delete(&params.id, params.agent_dir.as_deref())
+            .await
+            .map_err(map_error)
+    }
+
+    pub(crate) async fn agent_list_isolated(
+        &self,
+        params: AgentListParams,
+    ) -> Result<AgentListResponse, JSONRPCErrorError> {
+        self.config_service()
+            .agent_list_isolated(params.agent_dir.as_deref())
+            .await
+            .map_err(map_error)
+    }
+
+    pub(crate) async fn agent_read_isolated(
+        &self,
+        params: AgentReadParams,
+    ) -> Result<AgentReadResponse, JSONRPCErrorError> {
+        self.config_service()
+            .agent_read_isolated(&params.id, params.agent_dir.as_deref())
+            .await
+            .map_err(map_error)
+    }
+
+    pub(crate) async fn agent_update_isolated(
+        &self,
+        params: AgentUpdateParams,
+    ) -> Result<AgentUpdateResponse, JSONRPCErrorError> {
+        self.config_service()
+            .agent_update_isolated(
+                &params.id,
+                params.agent_dir.as_deref(),
+                params.name.as_deref(),
+                params.description.as_deref(),
+                params.model.as_deref(),
+                params.developer_instructions.as_deref(),
+                params.nickname_candidates.as_deref(),
+                params.extends.as_deref(),
+                params.workspace.as_deref(),
+            )
+            .await
+            .map_err(map_error)
+    }
+
+    pub(crate) async fn agent_workspace_files(
+        &self,
+        params: AgentWorkspaceFilesParams,
+    ) -> Result<AgentWorkspaceFilesResponse, JSONRPCErrorError> {
+        self.config_service()
+            .agent_workspace_files(&params.id, params.agent_dir.as_deref())
             .await
             .map_err(map_error)
     }

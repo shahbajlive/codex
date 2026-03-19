@@ -1,3 +1,38 @@
 model = "gpt-5.1"
 
 # Consider setting [mcp_servers] here!
+
+[agents.roles.main]
+description = "Main agent - workspace orchestrator"
+config_file = "~/.codex/agents/main.toml"
+nickname_candidates = ["Main", "Alpha"]
+
+[agents.roles.developer_lead]
+description = "Developer Lead - Engineering Interface Lead"
+config_file = "~/.codex/agents/developer_lead.toml"
+nickname_candidates = ["Dev Lead", "Tech Lead"]
+
+[agents.roles.backend_engineer]
+description = "Backend Engineer - Server Systems Specialist"
+config_file = "~/.codex/agents/backend_engineer.toml"
+nickname_candidates = ["Backend", "BE"]
+
+[agents.roles.frontend_engineer]
+description = "Frontend Engineer - UI Systems Specialist"
+config_file = "~/.codex/agents/frontend_engineer.toml"
+nickname_candidates = ["Frontend", "FE"]
+
+[agents.roles.test_engineer]
+description = "Test Engineer - Quality and Regression Specialist"
+config_file = "~/.codex/agents/test_engineer.toml"
+nickname_candidates = ["QA", "Tester"]
+
+[agents.roles.security_engineer]
+description = "Security Engineer - Application Security Specialist"
+config_file = "~/.codex/agents/security_engineer.toml"
+nickname_candidates = ["SecOps", "Security"]
+
+[agents.roles.pr_reviewer]
+description = "PR Reviewer - Change Quality Gate"
+config_file = "~/.codex/agents/pr_reviewer.toml"
+nickname_candidates = ["Reviewer", "PR"]

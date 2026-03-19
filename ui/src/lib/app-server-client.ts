@@ -2,6 +2,9 @@ import type { CodexTransport } from "./transport";
 import type {
   AgentInfo,
   AgentListResponse,
+  AgentReadResponse,
+  AgentUpdateParams,
+  AgentUpdateResponse,
   ApprovalPolicy,
   CodexNotification,
   InitializeResponse,
@@ -122,12 +125,36 @@ export class CodexAppServerClient {
     return response.data;
   }
 
-  async listAgents(): Promise<AgentInfo[]> {
+  async listAgents(cwd?: string): Promise<AgentInfo[]> {
     const response = await this.transport.request<AgentListResponse>(
-      "agent/list",
-      {},
+      "agent/listIsolated",
+      { agentDir: cwd || null },
     );
     return response.agents;
+  }
+
+  async readAgent(id: string, cwd?: string): Promise<AgentReadResponse> {
+    return this.transport.request<AgentReadResponse>("agent/readIsolated", {
+      id,
+      agentDir: cwd || null,
+    });
+  }
+
+  async updateAgent(params: AgentUpdateParams): Promise<AgentUpdateResponse> {
+    return this.transport.request<AgentUpdateResponse>(
+      "agent/updateIsolated",
+      params,
+    );
+  }
+
+  async getAgentWorkspaceFiles(
+    id: string,
+    agentDir?: string,
+  ): Promise<{ files: { filename: string; content: string }[] }> {
+    return this.transport.request("agent/workspaceFiles", {
+      id,
+      agentDir: agentDir || null,
+    });
   }
 
   async readThread(threadId: string): Promise<Thread> {

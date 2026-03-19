@@ -8,6 +8,7 @@ use crate::codex::CodexSpawnArgs;
 use crate::codex::CodexSpawnOk;
 use crate::codex::INITIAL_SUBMIT_ID;
 use crate::codex_thread::CodexThread;
+use crate::config::AgentConfigService;
 use crate::config::Config;
 use crate::error::CodexErr;
 use crate::error::Result as CodexResult;
@@ -157,6 +158,7 @@ pub(crate) struct ThreadManagerState {
     mcp_manager: Arc<McpManager>,
     file_watcher: Arc<FileWatcher>,
     session_source: SessionSource,
+    agent_config_service: Option<AgentConfigService>,
     // Captures submitted ops for testing purpose when test mode is enabled.
     ops_log: Option<SharedCapturedOps>,
 }
@@ -200,6 +202,9 @@ impl ThreadManager {
                 file_watcher,
                 auth_manager,
                 session_source,
+                agent_config_service: crate::config::find_codex_agents_dir()
+                    .ok()
+                    .map(AgentConfigService::new),
                 ops_log: should_use_test_thread_manager_behavior()
                     .then(|| Arc::new(std::sync::Mutex::new(Vec::new()))),
             }),
@@ -259,6 +264,7 @@ impl ThreadManager {
                 file_watcher,
                 auth_manager,
                 session_source: SessionSource::Exec,
+                agent_config_service: None,
                 ops_log: should_use_test_thread_manager_behavior()
                     .then(|| Arc::new(std::sync::Mutex::new(Vec::new()))),
             }),
@@ -280,6 +286,10 @@ impl ThreadManager {
 
     pub fn mcp_manager(&self) -> Arc<McpManager> {
         self.state.mcp_manager.clone()
+    }
+
+    pub fn agent_config_service(&self) -> Option<&AgentConfigService> {
+        self.state.agent_config_service.as_ref()
     }
 
     pub fn subscribe_file_watcher(&self) -> broadcast::Receiver<FileWatcherEvent> {
@@ -360,6 +370,7 @@ impl ThreadManager {
             persist_extended_history,
             /*metrics_service_name*/ None,
             /*parent_trace*/ None,
+            /*agent_id*/ None,
         ))
         .await
     }
@@ -371,7 +382,19 @@ impl ThreadManager {
         persist_extended_history: bool,
         metrics_service_name: Option<String>,
         parent_trace: Option<W3cTraceContext>,
+        agent_id: Option<String>,
     ) -> CodexResult<NewThread> {
+        let workspace_instructions = if let Some(agent_id) = agent_id {
+            if let Some(agent_config_service) = self.agent_config_service() {
+                let resolved = agent_config_service.resolve_agent(&agent_id)?;
+                resolved.workspace_instructions
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Box::pin(self.state.spawn_thread(
             config,
             InitialHistory::New,
@@ -381,6 +404,7 @@ impl ThreadManager {
             persist_extended_history,
             metrics_service_name,
             parent_trace,
+            workspace_instructions,
         ))
         .await
     }
@@ -420,6 +444,7 @@ impl ThreadManager {
             persist_extended_history,
             /*metrics_service_name*/ None,
             parent_trace,
+            /*workspace_instructions*/ None,
         ))
         .await
     }
@@ -505,6 +530,7 @@ impl ThreadManager {
             persist_extended_history,
             /*metrics_service_name*/ None,
             parent_trace,
+            /*workspace_instructions*/ None,
         ))
         .await
     }
@@ -590,6 +616,7 @@ impl ThreadManagerState {
             metrics_service_name,
             inherited_shell_snapshot,
             /*parent_trace*/ None,
+            /*workspace_instructions*/ None,
         ))
         .await
     }
@@ -614,6 +641,7 @@ impl ThreadManagerState {
             /*metrics_service_name*/ None,
             inherited_shell_snapshot,
             /*parent_trace*/ None,
+            /*workspace_instructions*/ None,
         ))
         .await
     }
@@ -638,6 +666,7 @@ impl ThreadManagerState {
             /*metrics_service_name*/ None,
             inherited_shell_snapshot,
             /*parent_trace*/ None,
+            /*workspace_instructions*/ None,
         ))
         .await
     }
@@ -654,6 +683,7 @@ impl ThreadManagerState {
         persist_extended_history: bool,
         metrics_service_name: Option<String>,
         parent_trace: Option<W3cTraceContext>,
+        workspace_instructions: Option<String>,
     ) -> CodexResult<NewThread> {
         Box::pin(self.spawn_thread_with_source(
             config,
@@ -666,6 +696,7 @@ impl ThreadManagerState {
             metrics_service_name,
             /*inherited_shell_snapshot*/ None,
             parent_trace,
+            workspace_instructions,
         ))
         .await
     }
@@ -683,6 +714,7 @@ impl ThreadManagerState {
         metrics_service_name: Option<String>,
         inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
         parent_trace: Option<W3cTraceContext>,
+        workspace_instructions: Option<String>,
     ) -> CodexResult<NewThread> {
         let watch_registration = self
             .file_watcher
@@ -705,6 +737,10 @@ impl ThreadManagerState {
             metrics_service_name,
             inherited_shell_snapshot,
             parent_trace,
+            agent_tools_allow: None,
+            agent_tools_deny: None,
+            agent_id: None,
+            workspace_instructions,
         })
         .await?;
         self.finalize_thread_spawn(codex, thread_id, watch_registration)

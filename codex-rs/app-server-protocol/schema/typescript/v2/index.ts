@@ -15,6 +15,8 @@ export type { AgentMessageDeltaNotification } from "./AgentMessageDeltaNotificat
 export type { AgentReadParams } from "./AgentReadParams";
 export type { AgentReadResponse } from "./AgentReadResponse";
 export type { AgentRoleConfig } from "./AgentRoleConfig";
+export type { AgentUpdateParams } from "./AgentUpdateParams";
+export type { AgentUpdateResponse } from "./AgentUpdateResponse";
 export type { AgentsConfig } from "./AgentsConfig";
 export type { AnalyticsConfig } from "./AnalyticsConfig";
 export type { AppBranding } from "./AppBranding";

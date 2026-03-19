@@ -101,7 +101,9 @@ use toml::Value as TomlValue;
 use toml_edit::DocumentMut;
 use toml_edit::value;
 
+pub mod agent_config;
 pub(crate) mod agent_roles;
+pub mod agent_service;
 pub mod edit;
 mod managed_features;
 mod network_proxy_spec;
@@ -110,6 +112,12 @@ pub mod profile;
 pub mod schema;
 pub mod service;
 pub mod types;
+pub use agent_config::AgentConfig;
+pub use agent_config::AgentInfo;
+pub use agent_service::AgentConfigError;
+pub use agent_service::AgentConfigService;
+pub use agent_service::ResolvedAgentConfig;
+
 pub use codex_config::Constrained;
 pub use codex_config::ConstraintError;
 pub use codex_config::ConstraintResult;
@@ -2901,6 +2909,14 @@ fn toml_uses_deprecated_instructions_file(value: &TomlValue) -> bool {
 ///   directory exists.
 pub fn find_codex_home() -> std::io::Result<PathBuf> {
     codex_utils_home_dir::find_codex_home()
+}
+
+const CODEX_AGENTS_DIR_ENV_VAR: &str = "CODEX_AGENTS_DIR";
+
+pub fn find_codex_agents_dir() -> std::io::Result<PathBuf> {
+    std::env::var(CODEX_AGENTS_DIR_ENV_VAR)
+        .map(PathBuf::from)
+        .or_else(|_| find_codex_home().map(|h| h.join("agents")))
 }
 
 /// Returns the path to the folder where Codex logs are stored. Does not verify

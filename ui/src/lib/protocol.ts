@@ -3,6 +3,9 @@ import type { InitializeCapabilities } from "../../../codex-rs/app-server-protoc
 import type { InitializeResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/InitializeResponse";
 import type { AgentInfo } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentInfo";
 import type { AgentListResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentListResponse";
+import type { AgentReadResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentReadResponse";
+import type { AgentUpdateParams } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentUpdateParams";
+import type { AgentUpdateResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentUpdateResponse";
 import type { AgentMessageDeltaNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentMessageDeltaNotification";
 import type { ItemCompletedNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ItemCompletedNotification";
 import type { ItemStartedNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ItemStartedNotification";
@@ -28,6 +31,9 @@ import type { UserInput } from "../../../codex-rs/app-server-protocol/schema/typ
 export type {
   AgentInfo,
   AgentListResponse,
+  AgentReadResponse,
+  AgentUpdateParams,
+  AgentUpdateResponse,
   AgentMessageDeltaNotification,
   ClientInfo,
   InitializeCapabilities,

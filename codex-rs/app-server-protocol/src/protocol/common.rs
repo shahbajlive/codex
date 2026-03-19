@@ -507,6 +507,36 @@ client_request_definitions! {
         params: v2::AgentReadParams,
         response: v2::AgentReadResponse,
     },
+    AgentUpdate => "agent/update" {
+        params: v2::AgentUpdateParams,
+        response: v2::AgentUpdateResponse,
+    },
+    AgentCreate => "agent/create" {
+        params: v2::AgentCreateParams,
+        response: v2::AgentCreateResponse,
+    },
+    AgentDelete => "agent/delete" {
+        params: v2::AgentDeleteParams,
+        response: v2::AgentDeleteResponse,
+    },
+
+    // Isolated agent APIs (for standalone agents in CODEX_AGENTS_DIR)
+    AgentListIsolated => "agent/listIsolated" {
+        params: v2::AgentListParams,
+        response: v2::AgentListResponse,
+    },
+    AgentReadIsolated => "agent/readIsolated" {
+        params: v2::AgentReadParams,
+        response: v2::AgentReadResponse,
+    },
+    AgentUpdateIsolated => "agent/updateIsolated" {
+        params: v2::AgentUpdateParams,
+        response: v2::AgentUpdateResponse,
+    },
+    AgentWorkspaceFiles => "agent/workspaceFiles" {
+        params: v2::AgentWorkspaceFilesParams,
+        response: v2::AgentWorkspaceFilesResponse,
+    },
 
     ConfigRequirementsRead => "configRequirements/read" {
         params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,

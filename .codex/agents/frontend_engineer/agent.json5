@@ -1,0 +1,11 @@
+{
+  name: "Frontend Engineer",
+  description: "Frontend Engineer - UI development",
+  model: "lmstudio/qwen3.5-2b",
+  extends: "developer_lead",
+  workspace: null,
+  tools: {
+    allow: null,
+    deny: null,
+  },
+}
