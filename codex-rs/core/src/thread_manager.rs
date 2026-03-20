@@ -171,18 +171,23 @@ impl ThreadManager {
         collaboration_modes_config: CollaborationModesConfig,
     ) -> Self {
         let codex_home = config.codex_home.clone();
+        let restriction_product = session_source.restriction_product();
         let openai_models_provider = config
             .model_providers
             .get(OPENAI_PROVIDER_ID)
             .cloned()
             .unwrap_or_else(|| ModelProviderInfo::create_openai_provider(/*base_url*/ None));
         let (thread_created_tx, _) = broadcast::channel(THREAD_CREATED_CHANNEL_CAPACITY);
-        let plugins_manager = Arc::new(PluginsManager::new(codex_home.clone()));
+        let plugins_manager = Arc::new(PluginsManager::new_with_restriction_product(
+            codex_home.clone(),
+            restriction_product,
+        ));
         let mcp_manager = Arc::new(McpManager::new(Arc::clone(&plugins_manager)));
-        let skills_manager = Arc::new(SkillsManager::new(
+        let skills_manager = Arc::new(SkillsManager::new_with_restriction_product(
             codex_home.clone(),
             Arc::clone(&plugins_manager),
             config.bundled_skills_enabled(),
+            restriction_product,
         ));
         let file_watcher = build_file_watcher(codex_home.clone(), Arc::clone(&skills_manager));
         Self {
@@ -241,12 +246,17 @@ impl ThreadManager {
         set_thread_manager_test_mode_for_tests(/*enabled*/ true);
         let auth_manager = AuthManager::from_auth_for_testing(auth);
         let (thread_created_tx, _) = broadcast::channel(THREAD_CREATED_CHANNEL_CAPACITY);
-        let plugins_manager = Arc::new(PluginsManager::new(codex_home.clone()));
+        let restriction_product = SessionSource::Exec.restriction_product();
+        let plugins_manager = Arc::new(PluginsManager::new_with_restriction_product(
+            codex_home.clone(),
+            restriction_product,
+        ));
         let mcp_manager = Arc::new(McpManager::new(Arc::clone(&plugins_manager)));
-        let skills_manager = Arc::new(SkillsManager::new(
+        let skills_manager = Arc::new(SkillsManager::new_with_restriction_product(
             codex_home.clone(),
             Arc::clone(&plugins_manager),
             /*bundled_skills_enabled*/ true,
+            restriction_product,
         ));
         let file_watcher = build_file_watcher(codex_home.clone(), Arc::clone(&skills_manager));
         Self {
@@ -274,6 +284,10 @@ impl ThreadManager {
 
     pub fn session_source(&self) -> SessionSource {
         self.state.session_source.clone()
+    }
+
+    pub fn auth_manager(&self) -> Arc<AuthManager> {
+        self.state.auth_manager.clone()
     }
 
     pub fn skills_manager(&self) -> Arc<SkillsManager> {
@@ -404,7 +418,55 @@ impl ThreadManager {
             persist_extended_history,
             metrics_service_name,
             parent_trace,
-            workspace_instructions,
+            /*workspace_instructions*/ None,
+        ))
+        .await
+    }
+
+    pub(crate) async fn resume_thread_from_rollout(
+        &self,
+        config: Config,
+        rollout_path: PathBuf,
+        auth_manager: Arc<AuthManager>,
+        dynamic_tools: Vec<codex_protocol::dynamic_tools::DynamicToolSpec>,
+        persist_extended_history: bool,
+        metrics_service_name: Option<String>,
+        parent_trace: Option<W3cTraceContext>,
+        /*user_shell_override*/ Option<crate::shell::Shell>,
+    ) -> CodexResult<NewThread> {
+        let initial_history = RolloutRecorder::get_rollout_history(&rollout_path).await?;
+        Box::pin(self.state.spawn_thread(
+            config,
+            initial_history,
+            auth_manager,
+            self.agent_control(),
+            Vec::new(),
+            /*persist_extended_history*/ false,
+            /*metrics_service_name*/ None,
+            /*parent_trace*/ None,
+            /*user_shell_override*/ None,
+        ))
+        .await
+    }
+
+    pub(crate) async fn resume_thread_from_rollout_with_user_shell_override_for_tests(
+        &self,
+        config: Config,
+        rollout_path: PathBuf,
+        auth_manager: Arc<AuthManager>,
+        user_shell_override: crate::shell::Shell,
+    ) -> CodexResult<NewThread> {
+        let initial_history = RolloutRecorder::get_rollout_history(&rollout_path).await?;
+        Box::pin(self.state.spawn_thread(
+            config,
+            initial_history,
+            auth_manager,
+            self.agent_control(),
+            Vec::new(),
+            /*persist_extended_history*/ false,
+            /*metrics_service_name*/ None,
+            /*parent_trace*/ None,
+            /*user_shell_override*/ Some(user_shell_override),
         ))
         .await
     }
@@ -444,6 +506,48 @@ impl ThreadManager {
             persist_extended_history,
             /*metrics_service_name*/ None,
             parent_trace,
+            /*workspace_instructions*/ None,
+        ))
+        .await
+    }
+
+    pub(crate) async fn start_thread_with_user_shell_override_for_tests(
+        &self,
+        config: Config,
+        user_shell_override: crate::shell::Shell,
+    ) -> CodexResult<NewThread> {
+        Box::pin(self.state.spawn_thread(
+            config,
+            InitialHistory::New,
+            Arc::clone(&self.state.auth_manager),
+            self.agent_control(),
+            Vec::new(),
+            /*persist_extended_history*/ false,
+            /*metrics_service_name*/ None,
+            /*parent_trace*/ None,
+            /*user_shell_override*/ Some(user_shell_override),
+        ))
+        .await
+    }
+
+    pub(crate) async fn resume_thread_from_rollout_with_user_shell_override_for_tests(
+        &self,
+        config: Config,
+        rollout_path: PathBuf,
+        auth_manager: Arc<AuthManager>,
+        user_shell_override: crate::shell::Shell,
+    ) -> CodexResult<NewThread> {
+        let initial_history = RolloutRecorder::get_rollout_history(&rollout_path).await?;
+        Box::pin(self.state.spawn_thread(
+            config,
+            initial_history,
+            auth_manager,
+            self.agent_control(),
+            Vec::new(),
+            /*persist_extended_history*/ false,
+            /*metrics_service_name*/ None,
+            /*parent_trace*/ None,
+            /*user_shell_override*/ Some(user_shell_override),
             /*workspace_instructions*/ None,
         ))
         .await
@@ -592,10 +696,12 @@ impl ThreadManagerState {
             /*persist_extended_history*/ false,
             /*metrics_service_name*/ None,
             /*inherited_shell_snapshot*/ None,
+            /*inherited_exec_policy*/ None,
         ))
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn spawn_new_thread_with_source(
         &self,
         config: Config,
@@ -604,6 +710,7 @@ impl ThreadManagerState {
         persist_extended_history: bool,
         metrics_service_name: Option<String>,
         inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
+        inherited_exec_policy: Option<Arc<crate::exec_policy::ExecPolicyManager>>,
     ) -> CodexResult<NewThread> {
         Box::pin(self.spawn_thread_with_source(
             config,
@@ -615,6 +722,7 @@ impl ThreadManagerState {
             persist_extended_history,
             metrics_service_name,
             inherited_shell_snapshot,
+            inherited_exec_policy,
             /*parent_trace*/ None,
             /*workspace_instructions*/ None,
         ))
@@ -628,6 +736,7 @@ impl ThreadManagerState {
         agent_control: AgentControl,
         session_source: SessionSource,
         inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
+        inherited_exec_policy: Option<Arc<crate::exec_policy::ExecPolicyManager>>,
     ) -> CodexResult<NewThread> {
         let initial_history = RolloutRecorder::get_rollout_history(&rollout_path).await?;
         Box::pin(self.spawn_thread_with_source(
@@ -640,12 +749,15 @@ impl ThreadManagerState {
             /*persist_extended_history*/ false,
             /*metrics_service_name*/ None,
             inherited_shell_snapshot,
+            inherited_exec_policy,
             /*parent_trace*/ None,
+            /*user_shell_override*/ None,
             /*workspace_instructions*/ None,
         ))
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn fork_thread_with_source(
         &self,
         config: Config,
@@ -654,6 +766,7 @@ impl ThreadManagerState {
         session_source: SessionSource,
         persist_extended_history: bool,
         inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
+        inherited_exec_policy: Option<Arc<crate::exec_policy::ExecPolicyManager>>,
     ) -> CodexResult<NewThread> {
         Box::pin(self.spawn_thread_with_source(
             config,
@@ -665,6 +778,7 @@ impl ThreadManagerState {
             persist_extended_history,
             /*metrics_service_name*/ None,
             inherited_shell_snapshot,
+            inherited_exec_policy,
             /*parent_trace*/ None,
             /*workspace_instructions*/ None,
         ))
@@ -683,6 +797,7 @@ impl ThreadManagerState {
         persist_extended_history: bool,
         metrics_service_name: Option<String>,
         parent_trace: Option<W3cTraceContext>,
+        user_shell_override: Option<crate::shell::Shell>,
         workspace_instructions: Option<String>,
     ) -> CodexResult<NewThread> {
         Box::pin(self.spawn_thread_with_source(
@@ -695,7 +810,9 @@ impl ThreadManagerState {
             persist_extended_history,
             metrics_service_name,
             /*inherited_shell_snapshot*/ None,
+            /*inherited_exec_policy*/ None,
             parent_trace,
+            user_shell_override,
             workspace_instructions,
         ))
         .await
@@ -713,7 +830,9 @@ impl ThreadManagerState {
         persist_extended_history: bool,
         metrics_service_name: Option<String>,
         inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
+        inherited_exec_policy: Option<Arc<crate::exec_policy::ExecPolicyManager>>,
         parent_trace: Option<W3cTraceContext>,
+        user_shell_override: Option<crate::shell::Shell>,
         workspace_instructions: Option<String>,
     ) -> CodexResult<NewThread> {
         let watch_registration = self
@@ -736,6 +855,8 @@ impl ThreadManagerState {
             persist_extended_history,
             metrics_service_name,
             inherited_shell_snapshot,
+            inherited_exec_policy,
+            user_shell_override,
             parent_trace,
             agent_tools_allow: None,
             agent_tools_deny: None,
