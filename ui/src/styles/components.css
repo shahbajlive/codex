@@ -340,7 +340,7 @@
 
 .field textarea {
   font-family: var(--mono);
-  min-height: 160px;
+  min-height: 1000px;
   resize: vertical;
   white-space: pre;
   line-height: 1.5;
@@ -610,7 +610,7 @@
 .agents-main {
   display: grid;
   gap: 16px;
-  align-content: start;
+  align-content: flex-start;
 }
 
 .agent-list {
@@ -785,6 +785,7 @@
 .agent-files-list {
   display: grid;
   gap: 8px;
+  align-content: flex-start;
 }
 
 .agent-file-row {
@@ -1531,4 +1532,43 @@
     width: 11px;
     height: 11px;
   }
+}
+
+/* ===========================================
+   Utility Classes
+   =========================================== */
+
+.mono {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tools-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.tool-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  padding: 10px 12px;
+}
+
+.tool-item span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
