@@ -8,6 +8,10 @@ export type { AdditionalFileSystemPermissions } from "./AdditionalFileSystemPerm
 export type { AdditionalMacOsPermissions } from "./AdditionalMacOsPermissions";
 export type { AdditionalNetworkPermissions } from "./AdditionalNetworkPermissions";
 export type { AdditionalPermissionProfile } from "./AdditionalPermissionProfile";
+export type { AgentCreateParams } from "./AgentCreateParams";
+export type { AgentCreateResponse } from "./AgentCreateResponse";
+export type { AgentDeleteParams } from "./AgentDeleteParams";
+export type { AgentDeleteResponse } from "./AgentDeleteResponse";
 export type { AgentInfo } from "./AgentInfo";
 export type { AgentListParams } from "./AgentListParams";
 export type { AgentListResponse } from "./AgentListResponse";
@@ -15,8 +19,14 @@ export type { AgentMessageDeltaNotification } from "./AgentMessageDeltaNotificat
 export type { AgentReadParams } from "./AgentReadParams";
 export type { AgentReadResponse } from "./AgentReadResponse";
 export type { AgentRoleConfig } from "./AgentRoleConfig";
+export type { AgentToolsConfig } from "./AgentToolsConfig";
 export type { AgentUpdateParams } from "./AgentUpdateParams";
 export type { AgentUpdateResponse } from "./AgentUpdateResponse";
+export type { AgentWorkspaceFile } from "./AgentWorkspaceFile";
+export type { AgentWorkspaceFilesParams } from "./AgentWorkspaceFilesParams";
+export type { AgentWorkspaceFilesResponse } from "./AgentWorkspaceFilesResponse";
+export type { AgentWorkspaceFilesUpdateParams } from "./AgentWorkspaceFilesUpdateParams";
+export type { AgentWorkspaceFilesUpdateResponse } from "./AgentWorkspaceFilesUpdateResponse";
 export type { AgentsConfig } from "./AgentsConfig";
 export type { AnalyticsConfig } from "./AnalyticsConfig";
 export type { AppBranding } from "./AppBranding";

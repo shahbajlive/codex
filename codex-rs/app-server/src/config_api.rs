@@ -13,6 +13,8 @@ use codex_app_server_protocol::AgentUpdateParams;
 use codex_app_server_protocol::AgentUpdateResponse;
 use codex_app_server_protocol::AgentWorkspaceFilesParams;
 use codex_app_server_protocol::AgentWorkspaceFilesResponse;
+use codex_app_server_protocol::AgentWorkspaceFilesUpdateParams;
+use codex_app_server_protocol::AgentWorkspaceFilesUpdateResponse;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigReadParams;
 use codex_app_server_protocol::ConfigReadResponse;
@@ -274,6 +276,16 @@ impl ConfigApi {
     ) -> Result<AgentWorkspaceFilesResponse, JSONRPCErrorError> {
         self.config_service()
             .agent_workspace_files(&params.id, params.agent_dir.as_deref())
+            .await
+            .map_err(map_error)
+    }
+
+    pub(crate) async fn agent_update_workspace_files(
+        &self,
+        params: AgentWorkspaceFilesUpdateParams,
+    ) -> Result<AgentWorkspaceFilesUpdateResponse, JSONRPCErrorError> {
+        self.config_service()
+            .agent_update_workspace_files(&params.id, params.agent_dir.as_deref(), params.files)
             .await
             .map_err(map_error)
     }

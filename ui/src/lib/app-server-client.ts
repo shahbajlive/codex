@@ -159,6 +159,18 @@ export class CodexAppServerClient {
     });
   }
 
+  async saveAgentWorkspaceFiles(
+    id: string,
+    files: { filename: string; content: string }[],
+    agentDir?: string,
+  ): Promise<void> {
+    await this.transport.request("agent/workspaceFiles/update", {
+      id,
+      agentDir: agentDir || null,
+      files,
+    });
+  }
+
   async readThread(threadId: string): Promise<Thread> {
     const response = await this.transport.request<ThreadReadResponse>(
       "thread/read",

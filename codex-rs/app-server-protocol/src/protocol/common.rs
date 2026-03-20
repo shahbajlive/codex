@@ -537,6 +537,10 @@ client_request_definitions! {
         params: v2::AgentWorkspaceFilesParams,
         response: v2::AgentWorkspaceFilesResponse,
     },
+    AgentUpdateWorkspaceFiles => "agent/workspaceFiles/update" {
+        params: v2::AgentWorkspaceFilesUpdateParams,
+        response: v2::AgentWorkspaceFilesUpdateResponse,
+    },
 
     ConfigRequirementsRead => "configRequirements/read" {
         params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,

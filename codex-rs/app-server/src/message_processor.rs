@@ -18,17 +18,12 @@ use crate::outgoing_message::RequestContext;
 use crate::transport::AppServerTransport;
 use async_trait::async_trait;
 use codex_app_server_protocol::AgentCreateParams;
-use codex_app_server_protocol::AgentCreateResponse;
 use codex_app_server_protocol::AgentDeleteParams;
-use codex_app_server_protocol::AgentDeleteResponse;
 use codex_app_server_protocol::AgentListParams;
-use codex_app_server_protocol::AgentListResponse;
 use codex_app_server_protocol::AgentReadParams;
-use codex_app_server_protocol::AgentReadResponse;
 use codex_app_server_protocol::AgentUpdateParams;
-use codex_app_server_protocol::AgentUpdateResponse;
 use codex_app_server_protocol::AgentWorkspaceFilesParams;
-use codex_app_server_protocol::AgentWorkspaceFilesResponse;
+use codex_app_server_protocol::AgentWorkspaceFilesUpdateParams;
 use codex_app_server_protocol::ChatgptAuthTokensRefreshParams;
 use codex_app_server_protocol::ChatgptAuthTokensRefreshReason;
 use codex_app_server_protocol::ChatgptAuthTokensRefreshResponse;
@@ -786,6 +781,16 @@ impl MessageProcessor {
                 )
                 .await;
             }
+            ClientRequest::AgentUpdateWorkspaceFiles { request_id, params } => {
+                self.handle_agent_update_workspace_files(
+                    ConnectionRequestId {
+                        connection_id,
+                        request_id,
+                    },
+                    params,
+                )
+                .await;
+            }
             ClientRequest::FsReadFile { request_id, params } => {
                 self.handle_fs_read_file(
                     ConnectionRequestId {
@@ -1000,6 +1005,17 @@ impl MessageProcessor {
         params: AgentWorkspaceFilesParams,
     ) {
         match self.config_api.agent_workspace_files(params).await {
+            Ok(response) => self.outgoing.send_response(request_id, response).await,
+            Err(error) => self.outgoing.send_error(request_id, error).await,
+        }
+    }
+
+    async fn handle_agent_update_workspace_files(
+        &self,
+        request_id: ConnectionRequestId,
+        params: AgentWorkspaceFilesUpdateParams,
+    ) {
+        match self.config_api.agent_update_workspace_files(params).await {
             Ok(response) => self.outgoing.send_response(request_id, response).await,
             Err(error) => self.outgoing.send_error(request_id, error).await,
         }

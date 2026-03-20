@@ -875,6 +875,24 @@ pub struct AgentWorkspaceFilesResponse {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
+pub struct AgentWorkspaceFilesUpdateParams {
+    pub id: String,
+    #[ts(optional = nullable)]
+    pub agent_dir: Option<String>,
+    pub files: Vec<AgentWorkspaceFile>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentWorkspaceFilesUpdateResponse {
+    pub success: bool,
+    pub message: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
 pub struct AgentUpdateResponse {
     pub success: bool,
     pub message: Option<String>,

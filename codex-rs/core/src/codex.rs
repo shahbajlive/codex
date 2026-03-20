@@ -375,6 +375,7 @@ pub(crate) struct CodexSpawnArgs {
     pub(crate) parent_trace: Option<W3cTraceContext>,
     pub(crate) agent_tools_allow: Option<Vec<String>>,
     pub(crate) agent_tools_deny: Option<Vec<String>>,
+    #[allow(dead_code)]
     pub(crate) agent_id: Option<String>,
     pub(crate) workspace_instructions: Option<String>,
     pub(crate) agent_skills_allow: Option<Vec<String>>,
@@ -2399,7 +2400,7 @@ impl Session {
             .skills_for_config(&per_turn_config);
         if let Some(ref allowlist) = session_configuration.agent_skills_allow {
             skills_outcome.skills =
-                crate::skills::filter_skills_by_allowlist(skills_outcome.skills, Some(allowlist));
+                filter_skills_by_allowlist(skills_outcome.skills, Some(allowlist));
         }
         let skills_outcome = Arc::new(skills_outcome);
         let mut turn_context: TurnContext = Self::make_turn_context(

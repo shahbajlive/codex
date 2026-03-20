@@ -114,6 +114,110 @@
       "title": "AccountUpdatedNotification",
       "type": "object"
     },
+    "AgentCreateParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "extends": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "AgentCreateParams",
+      "type": "object"
+    },
+    "AgentCreateResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "agent": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AgentInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "success": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "AgentCreateResponse",
+      "type": "object"
+    },
+    "AgentDeleteParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "AgentDeleteParams",
+      "type": "object"
+    },
+    "AgentDeleteResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "success": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "AgentDeleteResponse",
+      "type": "object"
+    },
     "AgentInfo": {
       "properties": {
         "configFile": {
@@ -128,8 +232,23 @@
             "null"
           ]
         },
-        "name": {
+        "extends": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hasWorkspace": {
+          "type": "boolean"
+        },
+        "id": {
           "type": "string"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "nicknameCandidates": {
           "items": {
@@ -148,13 +267,20 @@
         }
       },
       "required": [
-        "name"
+        "hasWorkspace",
+        "id"
       ],
       "type": "object"
     },
     "AgentListParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "cwd": {
           "type": [
             "string",
@@ -207,18 +333,24 @@
     "AgentReadParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "cwd": {
           "type": [
             "string",
             "null"
           ]
         },
-        "name": {
+        "id": {
           "type": "string"
         }
       },
       "required": [
-        "name"
+        "id"
       ],
       "title": "AgentReadParams",
       "type": "object"
@@ -245,6 +377,18 @@
             "null"
           ]
         },
+        "extends": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hasWorkspace": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
         "model": {
           "type": [
             "string",
@@ -252,7 +396,10 @@
           ]
         },
         "name": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "nicknameCandidates": {
           "items": {
@@ -263,7 +410,35 @@
             "null"
           ]
         },
+        "skills": {
+          "description": "Skills enabled for this agent",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "tools": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AgentToolsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Tools configuration for this agent"
+        },
         "workspace": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workspaceInstructions": {
+          "description": "Content from bootstrap files in the agent workspace (AGENTS.md, SOUL.md, etc.)",
           "type": [
             "string",
             "null"
@@ -272,7 +447,8 @@
       },
       "required": [
         "config",
-        "name"
+        "hasWorkspace",
+        "id"
       ],
       "title": "AgentReadResponse",
       "type": "object"
@@ -303,10 +479,45 @@
       },
       "type": "object"
     },
+    "AgentToolsConfig": {
+      "properties": {
+        "allow": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "deny": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "AgentUpdateParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
           "type": [
             "string",
             "null"
@@ -318,6 +529,15 @@
             "null"
           ]
         },
+        "extends": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
         "model": {
           "type": [
             "string",
@@ -325,7 +545,10 @@
           ]
         },
         "name": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "nicknameCandidates": {
           "items": {
@@ -335,10 +558,35 @@
             "array",
             "null"
           ]
+        },
+        "skills": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "tools": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AgentToolsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
-        "name"
+        "id"
       ],
       "title": "AgentUpdateParams",
       "type": "object"
@@ -360,6 +608,101 @@
         "success"
       ],
       "title": "AgentUpdateResponse",
+      "type": "object"
+    },
+    "AgentWorkspaceFile": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content",
+        "filename"
+      ],
+      "type": "object"
+    },
+    "AgentWorkspaceFilesParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "AgentWorkspaceFilesParams",
+      "type": "object"
+    },
+    "AgentWorkspaceFilesResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "files": {
+          "items": {
+            "$ref": "#/definitions/AgentWorkspaceFile"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "files"
+      ],
+      "title": "AgentWorkspaceFilesResponse",
+      "type": "object"
+    },
+    "AgentWorkspaceFilesUpdateParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "files": {
+          "items": {
+            "$ref": "#/definitions/AgentWorkspaceFile"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "files",
+        "id"
+      ],
+      "title": "AgentWorkspaceFilesUpdateParams",
+      "type": "object"
+    },
+    "AgentWorkspaceFilesUpdateResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "success": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "AgentWorkspaceFilesUpdateResponse",
       "type": "object"
     },
     "AgentsConfig": {
@@ -2411,6 +2754,174 @@
             "params"
           ],
           "title": "Agent/updateRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "agent/create"
+              ],
+              "title": "Agent/createRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AgentCreateParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Agent/createRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "agent/delete"
+              ],
+              "title": "Agent/deleteRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AgentDeleteParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Agent/deleteRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "agent/listIsolated"
+              ],
+              "title": "Agent/listIsolatedRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AgentListParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Agent/listIsolatedRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "agent/readIsolated"
+              ],
+              "title": "Agent/readIsolatedRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AgentReadParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Agent/readIsolatedRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "agent/updateIsolated"
+              ],
+              "title": "Agent/updateIsolatedRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AgentUpdateParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Agent/updateIsolatedRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "agent/workspaceFiles"
+              ],
+              "title": "Agent/workspaceFilesRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AgentWorkspaceFilesParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Agent/workspaceFilesRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "agent/workspaceFiles/update"
+              ],
+              "title": "Agent/workspaceFiles/updateRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AgentWorkspaceFilesUpdateParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Agent/workspaceFiles/updateRequest",
           "type": "object"
         },
         {
@@ -11314,6 +11825,13 @@
     "ThreadStartParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "agentId": {
+          "description": "The agent ID to use for this thread. If provided, loads the agent's configuration (including workspace instructions from AGENTS.md and SOUL.md) and appends them to the developer instructions.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "approvalPolicy": {
           "anyOf": [
             {

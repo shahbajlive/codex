@@ -302,6 +302,20 @@ impl AgentConfigService {
         }
         files
     }
+
+    pub fn save_workspace_files(
+        &self,
+        id: &str,
+        files: Vec<(String, String)>,
+    ) -> Result<(), AgentConfigError> {
+        let workspace = self.workspace_path(id);
+        std::fs::create_dir_all(&workspace)?;
+        for (filename, content) in files {
+            let path = workspace.join(&filename);
+            std::fs::write(&path, &content)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

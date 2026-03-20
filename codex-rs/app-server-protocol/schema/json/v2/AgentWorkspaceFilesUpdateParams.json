@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "AgentWorkspaceFile": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content",
+        "filename"
+      ],
+      "type": "object"
+    }
+  },
+  "properties": {
+    "agentDir": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "files": {
+      "items": {
+        "$ref": "#/definitions/AgentWorkspaceFile"
+      },
+      "type": "array"
+    },
+    "id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "files",
+    "id"
+  ],
+  "title": "AgentWorkspaceFilesUpdateParams",
+  "type": "object"
+}

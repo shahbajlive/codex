@@ -33,6 +33,15 @@
             "null"
           ]
         },
+        "nicknameCandidates": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "workspace": {
           "type": [
             "string",

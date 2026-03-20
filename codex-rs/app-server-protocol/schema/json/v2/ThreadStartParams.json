@@ -104,6 +104,13 @@
     }
   },
   "properties": {
+    "agentId": {
+      "description": "The agent ID to use for this thread. If provided, loads the agent's configuration (including workspace instructions from AGENTS.md and SOUL.md) and appends them to the developer instructions.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "approvalPolicy": {
       "anyOf": [
         {

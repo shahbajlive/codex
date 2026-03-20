@@ -26,6 +26,7 @@ use codex_app_server_protocol::AgentToolsConfig as ApiAgentToolsConfig;
 use codex_app_server_protocol::AgentUpdateResponse;
 use codex_app_server_protocol::AgentWorkspaceFile;
 use codex_app_server_protocol::AgentWorkspaceFilesResponse;
+use codex_app_server_protocol::AgentWorkspaceFilesUpdateResponse;
 use codex_app_server_protocol::Config as ApiConfig;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigLayerMetadata;
@@ -691,6 +692,37 @@ impl ConfigService {
                 .into_iter()
                 .map(|(filename, content)| AgentWorkspaceFile { filename, content })
                 .collect(),
+        })
+    }
+
+    pub async fn agent_update_workspace_files(
+        &self,
+        id: &str,
+        agent_dir: Option<&str>,
+        files: Vec<AgentWorkspaceFile>,
+    ) -> Result<AgentWorkspaceFilesUpdateResponse, ConfigServiceError> {
+        tracing::info!("agent_update_workspace_files called for: {}", id);
+
+        let agents_dir = if let Some(dir) = agent_dir {
+            PathBuf::from(dir)
+        } else {
+            crate::config::find_codex_agents_dir()
+                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
+        };
+
+        let service = super::AgentConfigService::new(agents_dir);
+        let files: Vec<(String, String)> =
+            files.into_iter().map(|f| (f.filename, f.content)).collect();
+        service.save_workspace_files(id, files).map_err(|e| {
+            ConfigServiceError::io(
+                "failed to save workspace files",
+                std::io::Error::other(e.to_string()),
+            )
+        })?;
+
+        Ok(AgentWorkspaceFilesUpdateResponse {
+            success: true,
+            message: None,
         })
     }
 

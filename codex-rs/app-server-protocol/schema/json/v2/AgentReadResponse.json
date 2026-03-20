@@ -1,5 +1,30 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "AgentToolsConfig": {
+      "properties": {
+        "allow": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "deny": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
   "properties": {
     "config": true,
     "configFile": {
@@ -20,6 +45,18 @@
         "null"
       ]
     },
+    "extends": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hasWorkspace": {
+      "type": "boolean"
+    },
+    "id": {
+      "type": "string"
+    },
     "model": {
       "type": [
         "string",
@@ -27,7 +64,10 @@
       ]
     },
     "name": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "nicknameCandidates": {
       "items": {
@@ -38,7 +78,35 @@
         "null"
       ]
     },
+    "skills": {
+      "description": "Skills enabled for this agent",
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "tools": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/AgentToolsConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Tools configuration for this agent"
+    },
     "workspace": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workspaceInstructions": {
+      "description": "Content from bootstrap files in the agent workspace (AGENTS.md, SOUL.md, etc.)",
       "type": [
         "string",
         "null"
@@ -47,7 +115,8 @@
   },
   "required": [
     "config",
-    "name"
+    "hasWorkspace",
+    "id"
   ],
   "title": "AgentReadResponse",
   "type": "object"

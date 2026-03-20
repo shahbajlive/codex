@@ -5,8 +5,66 @@
       "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
       "type": "string"
     },
+    "AgentCreateParams": {
+      "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "extends": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "AgentDeleteParams": {
+      "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
     "AgentListParams": {
       "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "cwd": {
           "type": [
             "string",
@@ -18,24 +76,65 @@
     },
     "AgentReadParams": {
       "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "cwd": {
           "type": [
             "string",
             "null"
           ]
         },
-        "name": {
+        "id": {
           "type": "string"
         }
       },
       "required": [
-        "name"
+        "id"
       ],
+      "type": "object"
+    },
+    "AgentToolsConfig": {
+      "properties": {
+        "allow": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "deny": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "AgentUpdateParams": {
       "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
           "type": [
             "string",
             "null"
@@ -47,6 +146,15 @@
             "null"
           ]
         },
+        "extends": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
         "model": {
           "type": [
             "string",
@@ -54,7 +162,10 @@
           ]
         },
         "name": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "nicknameCandidates": {
           "items": {
@@ -64,10 +175,91 @@
             "array",
             "null"
           ]
+        },
+        "skills": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "tools": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AgentToolsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
-        "name"
+        "id"
+      ],
+      "type": "object"
+    },
+    "AgentWorkspaceFile": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content",
+        "filename"
+      ],
+      "type": "object"
+    },
+    "AgentWorkspaceFilesParams": {
+      "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "AgentWorkspaceFilesUpdateParams": {
+      "properties": {
+        "agentDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "files": {
+          "items": {
+            "$ref": "#/definitions/AgentWorkspaceFile"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "files",
+        "id"
       ],
       "type": "object"
     },
@@ -3042,6 +3234,13 @@
     },
     "ThreadStartParams": {
       "properties": {
+        "agentId": {
+          "description": "The agent ID to use for this thread. If provided, loads the agent's configuration (including workspace instructions from AGENTS.md and SOUL.md) and appends them to the developer instructions.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "approvalPolicy": {
           "anyOf": [
             {
@@ -4850,6 +5049,174 @@
         "params"
       ],
       "title": "Agent/updateRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "agent/create"
+          ],
+          "title": "Agent/createRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AgentCreateParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Agent/createRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "agent/delete"
+          ],
+          "title": "Agent/deleteRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AgentDeleteParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Agent/deleteRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "agent/listIsolated"
+          ],
+          "title": "Agent/listIsolatedRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AgentListParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Agent/listIsolatedRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "agent/readIsolated"
+          ],
+          "title": "Agent/readIsolatedRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AgentReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Agent/readIsolatedRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "agent/updateIsolated"
+          ],
+          "title": "Agent/updateIsolatedRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AgentUpdateParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Agent/updateIsolatedRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "agent/workspaceFiles"
+          ],
+          "title": "Agent/workspaceFilesRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AgentWorkspaceFilesParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Agent/workspaceFilesRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "agent/workspaceFiles/update"
+          ],
+          "title": "Agent/workspaceFiles/updateRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AgentWorkspaceFilesUpdateParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Agent/workspaceFiles/updateRequest",
       "type": "object"
     },
     {
