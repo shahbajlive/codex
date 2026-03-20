@@ -1,28 +1,21 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
-import { useRouter } from "vue-router";
 import AgentsPane from "../components/AgentsPane.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { useCodexStore } from "../stores/codex";
+import { useAgentsStore } from "../stores/agents";
 
 const codexStore = useCodexStore();
-const router = useRouter();
-const {
-  configuredAgents,
-  busy,
-  selectedAgentId,
-  selectedAgentConfig,
-  selectedAgentWorkspaceFiles,
-  models,
-} = storeToRefs(codexStore);
+const agentsStore = useAgentsStore();
 
-function selectAgent(agentId: string) {
-  codexStore.selectConfiguredAgent(agentId);
+const { models } = storeToRefs(codexStore);
+
+function refreshAgents() {
+  agentsStore.refreshAgents();
 }
 
-async function openConversation(agentId: string) {
-  await codexStore.openAgentConversation(agentId);
-  await router.push("/chat");
+function selectAgent(agentId: string) {
+  agentsStore.selectAgent(agentId);
 }
 </script>
 
@@ -34,15 +27,9 @@ async function openConversation(agentId: string) {
     />
 
     <AgentsPane
-      :loading="busy"
-      :agents="configuredAgents"
-      :selected-agent-id="selectedAgentId"
-      :selected-agent-config="selectedAgentConfig"
-      :workspace-files="selectedAgentWorkspaceFiles"
       :models="models"
-      @refresh="codexStore.refreshConfiguredAgents"
+      @refresh="refreshAgents"
       @select="selectAgent"
-      @open-conversation="openConversation"
     />
   </section>
 </template>

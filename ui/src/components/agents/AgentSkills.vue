@@ -1,21 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
-import type { SkillMetadata } from "../../lib/protocol";
-import { useCodexStore } from "../../stores/codex";
+import { ref, computed, onMounted } from "vue";
+import { useAgentsStore } from "../../stores/agents";
 
-const props = defineProps<{
-  skills?: string[];
-  workspace?: string;
-  loading?: boolean;
-  saving?: boolean;
-}>();
-
-const emit = defineEmits<{
-  save: [skills: string[] | undefined];
-  discard: [];
-}>();
-
-const codexStore = useCodexStore();
+const agentsStore = useAgentsStore();
 
 const filterText = ref("");
 const error = ref<string | null>(null);
@@ -29,15 +16,13 @@ const SKILL_SCOPE_GROUPS = [
 type SkillGroup = {
   id: string;
   label: string;
-  skills: SkillMetadata[];
+  skills: Array<{ name: string; description: string; scope: string }>;
 };
-
-const skillCatalog = computed(() => codexStore.skillCatalog ?? []);
 
 const filteredSkills = computed(() => {
   const q = filterText.value.trim().toLowerCase();
-  if (!q) return skillCatalog.value;
-  return skillCatalog.value.filter(
+  if (!q) return agentsStore.skillCatalog;
+  return agentsStore.skillCatalog.filter(
     (s) =>
       s.name.toLowerCase().includes(q) ||
       s.description.toLowerCase().includes(q),
@@ -47,9 +32,13 @@ const filteredSkills = computed(() => {
 const skillGroups = computed<SkillGroup[]>(() => {
   const groups: SkillGroup[] = [];
   for (const group of SKILL_SCOPE_GROUPS) {
-    const groupSkills = filteredSkills.value.filter((s) =>
-      group.scopes.includes(s.scope),
-    );
+    const groupSkills = filteredSkills.value
+      .filter((s) => group.scopes.includes(s.scope))
+      .map((s) => ({
+        name: s.name,
+        description: s.description,
+        scope: s.scope,
+      }));
     if (groupSkills.length > 0) {
       groups.push({ id: group.id, label: group.label, skills: groupSkills });
     }
@@ -57,122 +46,50 @@ const skillGroups = computed<SkillGroup[]>(() => {
   return groups;
 });
 
-const enabledCount = computed(() => {
-  if (usingAllowlist.value) {
-    return allowSet.value.size;
-  }
-  return skillCatalog.value.length;
-});
-
-const totalCount = computed(() => skillCatalog.value.length);
-
-// allowSet: the skills that ARE enabled
-// When not using allowlist, all skills are enabled
-// When using allowlist, only skills in allowSet are enabled
-const allowSet = ref<Set<string>>(new Set());
-const usingAllowlist = ref(false);
-
-watch(
-  () => props.skills,
-  (skills) => {
-    allowSet.value = new Set(skills ?? []);
-    usingAllowlist.value = skills !== undefined;
-  },
-  { immediate: true },
+const usingAllowlist = computed(
+  () => (agentsStore.config?.skills.length ?? 0) > 0,
 );
 
-const dirty = computed(() => {
-  if (usingAllowlist.value) return true;
-  if (allowSet.value.size !== totalCount.value) return true;
-  return false;
+const enabledCount = computed(() => {
+  if (usingAllowlist.value) {
+    return agentsStore.config?.skills.length ?? 0;
+  }
+  return agentsStore.skillCatalog.length;
 });
 
-function isSkillEnabled(skillName: string): boolean {
-  if (usingAllowlist.value) {
-    return allowSet.value.has(skillName);
-  }
-  return true;
-}
-
-function toggleSkill(skillName: string, enabled: boolean) {
-  if (!usingAllowlist.value && enabled) {
-    return;
-  }
-  if (!usingAllowlist.value && !enabled) {
-    usingAllowlist.value = true;
-    allowSet.value = new Set(skillCatalog.value.map((s) => s.name));
-    allowSet.value.delete(skillName);
-  } else {
-    if (enabled) {
-      allowSet.value.add(skillName);
-    } else {
-      allowSet.value.delete(skillName);
-    }
-  }
-}
-
-function onUseAll() {
-  allowSet.value = new Set();
-  usingAllowlist.value = false;
-  emit("save", undefined);
-}
-
-function onDisableAll() {
-  allowSet.value = new Set();
-  usingAllowlist.value = true;
-  emit("save", []);
-}
-
-function onDiscard() {
-  allowSet.value = new Set(props.skills ?? []);
-  usingAllowlist.value = props.skills !== undefined;
-  emit("discard");
-}
-
-function onSave() {
-  const skills = usingAllowlist.value ? [...allowSet.value] : undefined;
-  emit("save", skills);
-}
+const totalCount = computed(() => agentsStore.skillCatalog.length);
 
 async function onRefresh() {
   error.value = null;
   try {
-    await codexStore.loadSkillCatalog(props.workspace);
+    await agentsStore.loadSkillCatalog();
   } catch (e) {
     error.value = String(e);
   }
 }
+
+onMounted(() => {
+  if (agentsStore.skillCatalog.length === 0) {
+    onRefresh();
+  }
+});
 </script>
 
 <template>
-  <div>
-    <div class="row" style="justify-content: space-between">
+  <form class="card">
+    <div class="card-header">
       <div>
         <div class="card-title">Skills</div>
         <div class="card-sub">
           Per-agent skill allowlist.
-          <span v-if="totalCount > 0" class="mono">
-            {{ enabledCount }}/{{ totalCount }}
-          </span>
+          <span v-if="totalCount > 0" class="mono"
+            >{{ enabledCount }}/{{ totalCount }}</span
+          >
         </div>
       </div>
-      <div class="row" style="gap: 8px">
-        <button type="button" class="btn btn--sm" @click="onUseAll">
-          Use All
-        </button>
-        <button type="button" class="btn btn--sm" @click="onDisableAll">
-          Disable All
-        </button>
+      <div class="row">
         <button type="button" class="btn btn--sm" @click="onRefresh">
-          {{ loading ? "Loading…" : "Refresh" }}
-        </button>
-        <button
-          type="button"
-          class="btn btn--sm primary"
-          :disabled="saving || !dirty"
-          @click="onSave"
-        >
-          {{ saving ? "Saving…" : "Save" }}
+          {{ agentsStore.skillsLoading ? "Loading…" : "Refresh" }}
         </button>
       </div>
     </div>
@@ -181,8 +98,7 @@ async function onRefresh() {
       This agent uses a custom skill allowlist.
     </div>
     <div v-else class="callout info" style="margin-top: 12px">
-      All skills are enabled. Disabling any skill will create a per-agent
-      allowlist.
+      All skills are enabled.
     </div>
 
     <div v-if="error" class="callout danger" style="margin-top: 12px">
@@ -198,7 +114,7 @@ async function onRefresh() {
     </div>
 
     <div
-      v-if="skillGroups.length === 0 && !loading"
+      v-if="skillGroups.length === 0 && !agentsStore.skillsLoading"
       class="muted"
       style="margin-top: 16px"
     >
@@ -232,14 +148,9 @@ async function onRefresh() {
               <div class="list-meta">
                 <label class="cfg-toggle">
                   <input
+                    :checked="agentsStore.isSkillEnabled(skill.name)"
+                    @change="agentsStore.toggleSkill(skill.name)"
                     type="checkbox"
-                    :checked="isSkillEnabled(skill.name)"
-                    @change="
-                      toggleSkill(
-                        skill.name,
-                        ($event.target as HTMLInputElement).checked,
-                      )
-                    "
                   />
                   <span class="cfg-toggle__track"></span>
                 </label>
@@ -249,15 +160,5 @@ async function onRefresh() {
         </details>
       </div>
     </div>
-
-    <div
-      v-if="dirty"
-      class="row"
-      style="justify-content: flex-end; gap: 8px; margin-top: 16px"
-    >
-      <button type="button" class="btn btn--sm" @click="onDiscard">
-        Discard
-      </button>
-    </div>
-  </div>
+  </form>
 </template>

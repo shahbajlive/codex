@@ -11,6 +11,9 @@ import type { ItemCompletedNotification } from "../../../codex-rs/app-server-pro
 import type { ItemStartedNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ItemStartedNotification";
 import type { Model } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/Model";
 import type { ModelListResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ModelListResponse";
+import type { SkillMetadata } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/SkillMetadata";
+import type { SkillsListResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/SkillsListResponse";
+import type { SkillsListParams } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/SkillsListParams";
 import type { Thread } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/Thread";
 import type { ThreadItem } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem";
 import type { ThreadListParams } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadListParams";
@@ -42,6 +45,9 @@ export type {
   ItemStartedNotification,
   Model,
   ModelListResponse,
+  SkillMetadata,
+  SkillsListParams,
+  SkillsListResponse,
   Thread,
   ThreadItem,
   ThreadListParams,

@@ -12,6 +12,8 @@ import type {
   ModelListResponse,
   PersonalityMode,
   SandboxMode,
+  SkillMetadata,
+  SkillsListResponse,
   Thread,
   ThreadListResponse,
   ThreadReadResponse,
@@ -241,6 +243,31 @@ export class CodexAppServerClient {
       },
     );
     return response.data;
+  }
+
+  async listSkills(cwd?: string): Promise<SkillMetadata[]> {
+    const response = await this.transport.request<SkillsListResponse>(
+      "skills/list",
+      {
+        cwd: cwd || null,
+        bypassCache: false,
+      },
+    );
+    return response.data.flatMap((entry) => entry.skills);
+  }
+
+  async writeFile(path: string, dataBase64: string): Promise<void> {
+    await this.transport.request("fs/writeFile", {
+      path,
+      dataBase64,
+    });
+  }
+
+  async createDirectory(path: string, recursive?: boolean): Promise<void> {
+    await this.transport.request("fs/createDirectory", {
+      path,
+      recursive: recursive ?? true,
+    });
   }
 }
 

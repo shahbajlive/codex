@@ -38,6 +38,18 @@
   line-height: 1.5;
 }
 
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.card-header > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ===========================================
    Stats - Bold values, subtle labels
    =========================================== */

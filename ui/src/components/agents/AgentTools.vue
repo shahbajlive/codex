@@ -1,24 +1,45 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
-import { useForm, useIsFormDirty } from "vee-validate";
+import { computed } from "vue";
+import { useAgentsStore } from "../../stores/agents";
+
+const agentsStore = useAgentsStore();
 
 interface Tool {
   id: string;
   label: string;
   description: string;
-  category: string;
 }
 
-const props = defineProps<{
-  tools: Tool[];
-  configTools: { allow?: string[]; deny?: string[] } | null;
-  saving?: boolean;
-}>();
-
-const emit = defineEmits<{
-  save: [tools: { allow: string[]; deny?: string[] }];
-  discard: [];
-}>();
+const CORE_TOOLS: Tool[] = [
+  { id: "read", label: "Read", description: "Read file contents" },
+  { id: "write", label: "Write", description: "Write to files" },
+  { id: "edit", label: "Edit", description: "Edit files with precision" },
+  { id: "glob", label: "Glob", description: "Find files by pattern" },
+  { id: "grep", label: "Grep", description: "Search file contents" },
+  {
+    id: "index-files",
+    label: "Index Files",
+    description: "Index project files",
+  },
+  {
+    id: "search-files",
+    label: "Search Files",
+    description: "Search project files",
+  },
+  { id: "shell", label: "Shell", description: "Execute shell commands" },
+  { id: "bash", label: "Bash", description: "Run bash commands" },
+  { id: "nodejs", label: "Node.js", description: "Execute Node.js code" },
+  { id: "strace", label: "Strace", description: "Trace system calls" },
+  { id: "ltrace", label: "Ltrace", description: "Trace library calls" },
+  { id: "top", label: "Top", description: "Monitor processes" },
+  { id: "kill", label: "Kill", description: "Terminate processes" },
+  { id: "pkill", label: "Pkill", description: "Kill by name" },
+  { id: "git", label: "Git", description: "Git version control" },
+  { id: "web-fetch", label: "Web Fetch", description: "Fetch web content" },
+  { id: "memory", label: "Memory", description: "Persistent memory" },
+  { id: "skills", label: "Skills", description: "Execute skills" },
+  { id: "ddp", label: "DDP", description: "Distributed data" },
+];
 
 const TOOL_SECTIONS = [
   {
@@ -57,146 +78,43 @@ const TOOL_SECTIONS = [
   },
 ];
 
-const toolSections = computed(() => {
-  const sections = [];
-  for (const section of TOOL_SECTIONS) {
-    const available = props.tools.filter((t) => section.tools.includes(t.id));
-    if (available.length > 0) {
-      sections.push({ ...section, tools: available });
-    }
+const hasExplicitAllow = computed(
+  () => (agentsStore.config?.tools.allowed.length ?? 0) > 0,
+);
+
+const enabledCount = computed(() => {
+  if (hasExplicitAllow.value) {
+    return agentsStore.config?.tools.allowed.length ?? 0;
   }
-  const other = props.tools.filter(
-    (t) => !TOOL_SECTIONS.some((s) => s.tools.includes(t.id)),
-  );
-  if (other.length > 0) {
-    sections.push({ id: "other", label: "Other", tools: other });
-  }
-  return sections;
+  return CORE_TOOLS.length - (agentsStore.config?.tools.denied.length ?? 0);
 });
 
-const allowedTools = computed(() => props.configTools?.allow || []);
-const deniedTools = computed(() => props.configTools?.deny || []);
-const hasExplicitAllow = computed(
-  () => (props.configTools?.allow?.length ?? 0) > 0,
-);
-
-function isToolEnabled(toolId: string): boolean {
-  if (allowedTools.value.includes(toolId)) return true;
-  if (deniedTools.value.includes(toolId)) return false;
-  return true;
-}
-
-const { values, setFieldValue, resetForm } = useForm();
-const isDirty = useIsFormDirty();
-
-const registeredTools = ref<string[]>([]);
-
-function registerTools(tools: Tool[]) {
-  const newIds = tools.map((t) => t.id);
-  const removed = registeredTools.value.filter((id) => !newIds.includes(id));
-  for (const id of removed) {
-    delete values[id as keyof typeof values];
-  }
-  for (const tool of tools) {
-    if (!(tool.id in values)) {
-      values[tool.id as keyof typeof values] = isToolEnabled(tool.id);
-    }
-  }
-  registeredTools.value = newIds;
-}
-
-watch(
-  () => props.tools,
-  (tools) => {
-    registerTools(tools);
-  },
-  { immediate: true },
-);
-
-watch(
-  () => props.configTools,
-  () => {
-    registerTools(props.tools);
-  },
-);
-
-const dirty = computed(() => isDirty.value);
-
-const enabledCount = computed(
-  () => Object.values(values).filter(Boolean).length,
-);
-
-const onDiscard = () => {
-  for (const tool of props.tools) {
-    setFieldValue(tool.id, isToolEnabled(tool.id));
-  }
-  emit("discard");
-};
-
-const onSubmit = () => {
-  const deny: string[] = [];
-  for (const toolId of registeredTools.value) {
-    if (!values[toolId as keyof typeof values]) deny.push(toolId);
-  }
-  emit("save", { allow: [], deny });
-  resetForm({ values: { ...values } });
-};
-
-function enableAll() {
-  for (const toolId of registeredTools.value) {
-    setFieldValue(toolId, true);
-  }
-}
-
-function disableAll() {
-  for (const toolId of registeredTools.value) {
-    setFieldValue(toolId, false);
-  }
-}
+const toolSections = computed(() => {
+  return TOOL_SECTIONS.map((section) => ({
+    ...section,
+    tools: CORE_TOOLS.filter((t) => section.tools.includes(t.id)),
+  }));
+});
 </script>
 
 <template>
-  <form @submit.prevent="onSubmit">
-    <div class="row" style="justify-content: space-between">
+  <form class="card">
+    <div class="card-header">
       <div>
-        <div class="card-title">Tool Access</div>
+        <div class="card-title">Tools</div>
         <div class="card-sub">
-          Per-tool overrides for this agent.
-          <span class="mono">{{ enabledCount }}/{{ tools.length }}</span>
+          Tool access configuration for this agent.
+          <span class="mono">{{ enabledCount }}/{{ CORE_TOOLS.length }}</span>
           enabled.
         </div>
-      </div>
-      <div class="row" style="gap: 8px">
-        <button type="button" class="btn btn--sm" @click="enableAll">
-          Enable All
-        </button>
-        <button type="button" class="btn btn--sm" @click="disableAll">
-          Disable All
-        </button>
       </div>
     </div>
 
     <div v-if="hasExplicitAllow" class="callout info" style="margin-top: 12px">
-      This agent uses an explicit allowlist. Tool overrides are managed in the
-      Config tab.
+      This agent uses an explicit allowlist.
     </div>
 
-    <div class="agent-tools-meta" style="margin-top: 16px">
-      <div class="agent-kv">
-        <div class="label">Configured</div>
-        <div>{{ configTools ? "yes" : "no" }}</div>
-      </div>
-      <div class="agent-kv">
-        <div class="label">Enabled</div>
-        <div class="mono">{{ enabledCount }}/{{ tools.length }}</div>
-      </div>
-      <div v-if="dirty" class="agent-kv">
-        <div class="label">Status</div>
-        <div class="mono">unsaved</div>
-      </div>
-    </div>
-
-    <div class="agent-tools-grid" style="margin-top: 20px">
+    <div class="agent-tools-grid" style="margin-top: 16px">
       <div v-for="section in toolSections" :key="section.id">
         <div class="agent-tools-section">
           <div class="agent-tools-header">{{ section.label }}</div>
@@ -209,22 +127,17 @@ function disableAll() {
               <div>
                 <div class="agent-tool-title mono">
                   {{ tool.label }}
-                  <span class="mono" style="margin-left: 8px; opacity: 0.8">
-                    core
-                  </span>
+                  <span class="mono" style="margin-left: 8px; opacity: 0.8"
+                    >core</span
+                  >
                 </div>
                 <div class="agent-tool-sub">{{ tool.description }}</div>
               </div>
               <label class="cfg-toggle">
                 <input
+                  :checked="agentsStore.isToolEnabled(tool.id)"
+                  @change="agentsStore.toggleTool(tool.id)"
                   type="checkbox"
-                  :checked="values[tool.id]"
-                  @change="
-                    setFieldValue(
-                      tool.id,
-                      ($event.target as HTMLInputElement).checked,
-                    )
-                  "
                   :disabled="hasExplicitAllow"
                 />
                 <span class="cfg-toggle__track"></span>
@@ -236,24 +149,37 @@ function disableAll() {
     </div>
 
     <div
-      v-if="tools.length === 0"
-      class="muted"
-      style="text-align: center; padding: 40px"
+      v-if="
+        (agentsStore.config?.tools.allowed.length ?? 0) > 0 ||
+        (agentsStore.config?.tools.denied.length ?? 0) > 0
+      "
+      style="margin-top: 20px"
     >
-      No tools available.
-    </div>
-
-    <div
-      v-if="dirty"
-      class="row"
-      style="justify-content: flex-end; gap: 8px; margin-top: 16px"
-    >
-      <button type="button" class="btn btn--sm" @click="onDiscard">
-        Discard
-      </button>
-      <button type="submit" class="btn btn--sm primary">
-        {{ saving ? "Saving…" : "Save Changes" }}
-      </button>
+      <div class="label">Configured Allow/Deny</div>
+      <div class="tools-list">
+        <div v-if="(agentsStore.config?.tools.allowed.length ?? 0) > 0">
+          <div class="label" style="margin-top: 12px">Allowed Tools</div>
+          <div
+            v-for="tool in agentsStore.config!.tools.allowed"
+            :key="tool"
+            class="tool-item"
+          >
+            <span class="mono">{{ tool }}</span>
+            <span class="pill pill--live">Allowed</span>
+          </div>
+        </div>
+        <div v-if="(agentsStore.config?.tools.denied.length ?? 0) > 0">
+          <div class="label" style="margin-top: 12px">Denied Tools</div>
+          <div
+            v-for="tool in agentsStore.config!.tools.denied"
+            :key="tool"
+            class="tool-item"
+          >
+            <span class="mono">{{ tool }}</span>
+            <span class="pill danger">Denied</span>
+          </div>
+        </div>
+      </div>
     </div>
   </form>
 </template>

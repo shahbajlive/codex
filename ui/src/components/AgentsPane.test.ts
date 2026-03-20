@@ -2,50 +2,31 @@ import { mount, type VueWrapper } from "@vue/test-utils";
 import { describe, expect, it, beforeEach } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import AgentsPane from "./AgentsPane.vue";
-import type { Thread, AgentReadResponse } from "../lib/protocol";
+import { useAgentsStore } from "../stores/agents";
+import type { AgentInfo } from "../lib/protocol";
 
 const mockAgents = [
   {
-    id: "thr_agent",
-    preview: "Audit the test failures",
-    ephemeral: false,
-    modelProvider: "openai",
-    createdAt: 1,
-    updatedAt: 2,
-    status: { type: "idle" as const },
-    path: null,
-    cwd: "/repo",
-    cliVersion: "0.0.0",
-    source: {
-      subagent: {
-        thread_spawn: {
-          parent_thread_id: "thr_parent",
-          depth: 1,
-          agent_nickname: "Scout",
-          agent_role: "explorer",
-        },
-      },
-    },
-    agentNickname: "Scout",
-    agentRole: "explorer",
-    gitInfo: null,
+    id: "agent-1",
     name: "Scout",
-    turns: [],
+    description: "Test agent",
+    configFile: null,
+    nicknameCandidates: null,
+    workspace: null,
+    extends: null,
+    hasWorkspace: false,
   },
-] satisfies Thread[];
+] satisfies AgentInfo[];
 
 describe("AgentsPane", () => {
   let wrapper: VueWrapper;
 
   beforeEach(() => {
     setActivePinia(createPinia());
+    const agentsStore = useAgentsStore();
+    agentsStore.agents = mockAgents;
     wrapper = mount(AgentsPane, {
       props: {
-        loading: false,
-        agents: mockAgents,
-        selectedAgentId: null,
-        selectedAgentConfig: null,
-        workspaceFiles: [],
         models: [],
       },
     });
@@ -54,7 +35,7 @@ describe("AgentsPane", () => {
   it("renders agents and emits selection", async () => {
     expect(wrapper.text()).toContain("Scout");
     await wrapper.find(".agent-row").trigger("click");
-    expect(wrapper.emitted("select")).toEqual([["thr_agent"]]);
+    expect(wrapper.emitted("select")).toEqual([["agent-1"]]);
   });
 
   it("shows agent header when agent is selected", async () => {
