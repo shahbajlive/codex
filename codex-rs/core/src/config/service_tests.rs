@@ -238,6 +238,55 @@ async fn read_includes_origins_and_layers() {
 }
 
 #[tokio::test]
+async fn agent_update_isolated_resolves_workspace_root_to_codex_agents_dir() {
+    let workspace = tempdir().expect("tempdir");
+    let agents_dir = workspace.path().join(".codex").join("agents");
+    let agent_dir = agents_dir.join("developer_lead");
+    std::fs::create_dir_all(&agent_dir).expect("create agent dir");
+    std::fs::write(
+        agent_dir.join("agent.json5"),
+        r#"{
+  name: \"Developer Lead\",
+  extends: \"main\",
+  model: \"gpt-5.1-codex-max\"
+}"#,
+    )
+    .expect("write agent config");
+
+    let service = ConfigService::new_with_defaults(workspace.path().to_path_buf());
+    service
+        .agent_update_isolated(
+            "developer_lead",
+            Some(workspace.path().to_str().expect("workspace path")),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(&ApiAgentContactsConfig {
+                allow: None,
+                deny: Some(vec!["reviewer".to_string()]),
+            }),
+        )
+        .await
+        .expect("update isolated agent");
+
+    let updated =
+        std::fs::read_to_string(agent_dir.join("agent.json5")).expect("read updated agent config");
+    assert!(
+        updated.contains("contacts"),
+        "missing contacts section: {updated}"
+    );
+    assert!(updated.contains("deny"), "missing deny field: {updated}");
+    assert!(
+        updated.contains("reviewer"),
+        "missing denied contact: {updated}"
+    );
+}
+
+#[tokio::test]
 async fn write_value_reports_override() {
     let tmp = tempdir().expect("tempdir");
     std::fs::write(

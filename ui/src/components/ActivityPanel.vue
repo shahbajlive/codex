@@ -7,29 +7,42 @@ defineProps<{
 </script>
 
 <template>
-  <section class="surface-panel flex flex-col gap-4 p-5">
+  <section class="card stack gap-4">
     <p class="eyebrow">Activity</p>
-    <div v-if="activity.length === 0" class="text-sm text-[var(--muted)]">
+    <div v-if="activity.length === 0" class="muted">
       Tool calls and command execution details will appear here.
     </div>
-    <div v-else class="flex flex-col gap-3">
+    <div v-else class="stack gap-3">
       <div
         v-for="item in activity"
         :key="item.id"
-        class="activity__item rounded-3xl border p-4"
+        class="activity__item"
         :style="{
-          borderColor: 'color-mix(in srgb, var(--border-strong) 30%, transparent)',
-          background: 'color-mix(in srgb, var(--panel-strong) 82%, transparent)',
+          borderRadius: '24px',
+          border: '1px solid var(--border)',
+          padding: '16px',
+          borderColor:
+            'color-mix(in srgb, var(--border-strong) 30%, transparent)',
+          background:
+            'color-mix(in srgb, var(--panel-strong) 82%, transparent)',
         }"
       >
-        <div class="activity__top mb-2 flex items-center justify-between gap-3">
+        <div class="row" style="margin-bottom: 8px; gap: 12px">
           <strong>{{ item.kind === "activity" ? item.label : item.id }}</strong>
-          <span v-if="'status' in item" class="text-xs uppercase tracking-[0.08em] text-[var(--muted)]">
+          <span
+            v-if="'status' in item"
+            class="muted"
+            style="
+              font-size: 12px;
+              text-transform: uppercase;
+              letter-spacing: 0.08em;
+            "
+          >
             {{ item.status }}
           </span>
         </div>
-        <pre class="activity__body text-sm text-[var(--text)]">
-{{ item.kind === "activity" ? item.detail : item.text }}
+        <pre class="activity__body muted"
+          >{{ item.kind === "activity" ? item.detail : item.text }}
         </pre>
       </div>
     </div>

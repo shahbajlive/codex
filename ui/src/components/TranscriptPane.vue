@@ -35,15 +35,38 @@ watch(
 </script>
 
 <template>
-  <section class="surface-panel flex min-h-[calc(100vh-2rem)] flex-col overflow-hidden">
-    <header class="flex items-center justify-between gap-4 border-b px-6 py-5" :style="{ borderColor: 'color-mix(in srgb, var(--border-strong) 34%, transparent)' }">
+  <section
+    class="card"
+    style="
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100vh - 2rem);
+      overflow: hidden;
+    "
+  >
+    <header
+      class="card-header"
+      style="border-bottom: 1px solid; padding: 20px 24px"
+      :style="{
+        borderColor:
+          'color-mix(in srgb, var(--border-strong) 34%, transparent)',
+      }"
+    >
       <div>
         <p class="eyebrow">Thread</p>
-        <h2 class="font-[var(--font-display)] text-2xl font-semibold tracking-[-0.04em] text-[var(--text-strong)]">
+        <h2
+          style="
+            font-family: var(--font-display);
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: -0.04em;
+            color: var(--text-strong);
+          "
+        >
           {{ threadName }}
         </h2>
       </div>
-      <div class="flex gap-2">
+      <div class="row">
         <span
           class="ui-pill"
           :style="
@@ -60,48 +83,82 @@ watch(
         <span
           v-if="busy"
           class="ui-pill"
-          :style="{ color: 'var(--accent)', borderColor: 'color-mix(in srgb, var(--accent) 44%, transparent)' }"
+          :style="{
+            color: 'var(--accent)',
+            borderColor: 'color-mix(in srgb, var(--accent) 44%, transparent)',
+          }"
         >
           Streaming
         </span>
       </div>
     </header>
 
-    <div v-if="hasTranscript" class="flex flex-1 flex-col gap-5 overflow-auto px-6 py-5">
-      <div v-for="turn in transcript" :key="turn.id" class="flex flex-col gap-2.5">
-        <div class="flex items-center justify-between gap-3 text-xs uppercase tracking-[0.1em] text-[var(--muted)]">
+    <div
+      v-if="hasTranscript"
+      class="stack gap-5"
+      style="flex: 1; overflow: auto; padding: 20px 24px"
+    >
+      <div v-for="turn in transcript" :key="turn.id" class="stack gap-2">
+        <div
+          class="row"
+          style="
+            gap: 12px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--muted);
+          "
+        >
           <span>Turn {{ turn.id.slice(0, 8) }}</span>
           <span>{{ turn.status }}</span>
-          <span v-if="turn.error" class="turn__error text-[var(--danger)]">{{ turn.error }}</span>
+          <span v-if="turn.error" style="color: var(--danger)">{{
+            turn.error
+          }}</span>
         </div>
         <div
           v-for="item in turn.items"
           :key="item.id"
-          class="bubble max-w-[min(100%,56rem)] rounded-3xl border px-4 py-3.5"
+          class="bubble"
           :class="item.kind === 'user' ? 'self-end' : 'self-start'"
-          :style="
+          :style="[
+            { maxWidth: '56rem', borderRadius: '24px', padding: '14px 16px' },
             item.kind === 'user'
               ? {
-                  borderColor: 'color-mix(in srgb, var(--accent) 46%, transparent)',
+                  border: '1px solid',
+                  borderColor:
+                    'color-mix(in srgb, var(--accent) 46%, transparent)',
                   background:
                     'linear-gradient(180deg, color-mix(in srgb, var(--accent) 86%, #ffffff), color-mix(in srgb, var(--accent) 78%, #000000))',
                   color: 'var(--accent-foreground)',
                 }
               : item.kind === 'assistant'
                 ? {
-                    borderColor: 'color-mix(in srgb, var(--border-strong) 28%, transparent)',
-                    background: 'color-mix(in srgb, var(--bg-elevated) 86%, transparent)',
+                    border: '1px solid',
+                    borderColor:
+                      'color-mix(in srgb, var(--border-strong) 28%, transparent)',
+                    background:
+                      'color-mix(in srgb, var(--bg-elevated) 86%, transparent)',
                     color: 'var(--chat-text)',
                   }
                 : {
-                    borderColor: 'color-mix(in srgb, var(--accent-2) 26%, transparent)',
-                    background: 'color-mix(in srgb, var(--accent-2-subtle) 85%, var(--bg-elevated))',
+                    border: '1px solid',
+                    borderColor:
+                      'color-mix(in srgb, var(--accent-2) 26%, transparent)',
+                    background:
+                      'color-mix(in srgb, var(--accent-2-subtle) 85%, var(--bg-elevated))',
                     color: 'var(--text)',
-                  }
-          "
+                  },
+          ]"
         >
           <template v-if="item.kind === 'activity'">
-            <div class="bubble__label mb-2 text-sm font-semibold text-[var(--accent-2)]">
+            <div
+              style="
+                margin-bottom: 8px;
+                font-size: 14px;
+                font-weight: 600;
+                color: var(--accent-2);
+              "
+            >
               {{ item.label }}
             </div>
             <pre class="bubble__body">{{ item.detail }}</pre>
@@ -112,27 +169,48 @@ watch(
         </div>
       </div>
     </div>
-    <div v-else class="flex flex-1 items-center justify-center px-8 py-12 text-center text-sm text-[var(--muted)]">
-      <p>Start a thread or select one from the sidebar to see conversation history here.</p>
+    <div
+      v-else
+      class="stack"
+      style="
+        flex: 1;
+        align-items: center;
+        justify-content: center;
+        padding: 48px 32px;
+        text-align: center;
+        color: var(--muted);
+      "
+    >
+      <p>
+        Start a thread or select one from the sidebar to see conversation
+        history here.
+      </p>
     </div>
 
     <form
-      class="flex flex-col gap-3 border-t px-6 py-5"
+      class="stack gap-3"
+      style="border-top: 1px solid; padding: 20px 24px"
       :style="{
-        borderColor: 'color-mix(in srgb, var(--border-strong) 34%, transparent)',
+        borderColor:
+          'color-mix(in srgb, var(--border-strong) 34%, transparent)',
         background: 'color-mix(in srgb, var(--chrome) 72%, transparent)',
       }"
       @submit.prevent="submit"
     >
       <textarea
         v-model="draft"
-        class="ui-input min-h-28 resize-y"
+        class="field"
+        style="min-height: 112px; resize: vertical"
         :disabled="!connected"
         rows="4"
         placeholder="Ask Codex to inspect, explain, or change your codebase."
       />
-      <div class="flex justify-end">
-        <button class="ui-button ui-button-primary" type="submit" :disabled="busy || !connected">
+      <div class="row" style="justify-content: flex-end">
+        <button
+          class="btn primary"
+          type="submit"
+          :disabled="busy || !connected"
+        >
           Send
         </button>
       </div>

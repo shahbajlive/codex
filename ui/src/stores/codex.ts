@@ -60,6 +60,7 @@ export const useCodexStore = defineStore("codex", {
     async connect() {
       this.disconnect();
       this.errorMessage = "";
+      this.connectionStatus = "connecting";
 
       const settings = useSettingsStore();
       const transport = new AppServerWsTransport(settings.url);
@@ -67,22 +68,22 @@ export const useCodexStore = defineStore("codex", {
       setAgentsClient(client);
       setContactsClient(client);
 
-      unsubscribeStatus = client.onStatusChange((status) => {
-        this.connectionStatus = status;
-      });
-      unsubscribeNotifications = client.onNotification((notification) =>
-        this.handleNotification(notification),
-      );
-
       try {
         await client.connect();
         this.initializeResponse = await client.initialize();
+        unsubscribeStatus = client.onStatusChange((status) => {
+          this.connectionStatus = status;
+        });
+        unsubscribeNotifications = client.onNotification((notification) =>
+          this.handleNotification(notification),
+        );
         this.models = await client.listModels();
         await this.refreshThreads();
         await this.refreshConfiguredAgents();
       } catch (error) {
         this.errorMessage =
           error instanceof Error ? error.message : String(error);
+        this.connectionStatus = "disconnected";
       }
     },
 

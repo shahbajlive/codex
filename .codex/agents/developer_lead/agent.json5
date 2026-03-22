@@ -4,4 +4,5 @@
   extends: "main",
   model: "gpt-5.1-codex-max",
   tools: {},
+  contacts: {},
 }

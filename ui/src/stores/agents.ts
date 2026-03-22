@@ -288,20 +288,27 @@ export const useAgentsStore = defineStore("agents", {
 
     toggleContact(contactId: string) {
       if (!this.config) return;
-      const denyIdx = this.config.contacts.denied.indexOf(contactId);
-      if (denyIdx >= 0) {
-        this.config.contacts.denied.splice(denyIdx, 1);
-      } else {
+      const wasEnabled = this.isContactEnabled(contactId);
+
+      if (this.config.contacts.allowed.length > 0) {
         const allowIdx = this.config.contacts.allowed.indexOf(contactId);
-        if (allowIdx >= 0) {
-          this.config.contacts.allowed.splice(allowIdx, 1);
-        } else {
-          if (this.config.contacts.allowed.length > 0) {
-            this.config.contacts.denied.push(contactId);
-          } else {
-            this.config.contacts.allowed.push(contactId);
+        if (wasEnabled) {
+          if (allowIdx >= 0) {
+            this.config.contacts.allowed.splice(allowIdx, 1);
           }
+        } else if (allowIdx < 0) {
+          this.config.contacts.allowed.push(contactId);
         }
+        return;
+      }
+
+      const denyIdx = this.config.contacts.denied.indexOf(contactId);
+      if (wasEnabled) {
+        if (denyIdx < 0) {
+          this.config.contacts.denied.push(contactId);
+        }
+      } else if (denyIdx >= 0) {
+        this.config.contacts.denied.splice(denyIdx, 1);
       }
     },
   },

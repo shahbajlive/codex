@@ -22,7 +22,11 @@ export const useContactsStore = defineStore("contacts", {
 
   actions: {
     async refresh() {
-      if (!clientRef.client) return;
+      if (!clientRef.client) {
+        this.error =
+          "Not connected to app-server. Check the WebSocket URL in settings.";
+        return;
+      }
       this.loading = true;
       this.error = null;
       try {

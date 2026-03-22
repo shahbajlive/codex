@@ -112,7 +112,32 @@ async fn websocket_transport_serves_health_endpoints_on_same_listener() -> Resul
 }
 
 #[tokio::test]
-async fn websocket_transport_rejects_requests_with_origin_header() -> Result<()> {
+async fn websocket_transport_accepts_unit_params_requests_with_omitted_params() -> Result<()> {
+    let server = create_mock_responses_server_sequence_unchecked(Vec::new()).await;
+    let codex_home = TempDir::new()?;
+    create_config_toml(codex_home.path(), &server.uri(), "never")?;
+
+    let (mut process, bind_addr) = spawn_websocket_server(codex_home.path()).await?;
+
+    let mut ws = connect_websocket(bind_addr).await?;
+    send_initialize_request(&mut ws, 1, "ws_contacts_client").await?;
+    let init = read_response_for_id(&mut ws, 1).await?;
+    assert_eq!(init.id, RequestId::Integer(1));
+
+    send_request(&mut ws, "contact/list", 2, None).await?;
+    let contacts = read_response_for_id(&mut ws, 2).await?;
+    assert_eq!(contacts.id, RequestId::Integer(2));
+    assert_eq!(contacts.result, json!({ "data": [], "nextCursor": null }));
+
+    process
+        .kill()
+        .await
+        .context("failed to stop websocket app-server process")?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn websocket_transport_allows_localhost_origin_and_rejects_other_origins() -> Result<()> {
     let server = create_mock_responses_server_sequence_unchecked(Vec::new()).await;
     let codex_home = TempDir::new()?;
     create_config_toml(codex_home.path(), &server.uri(), "never")?;
@@ -140,7 +165,24 @@ async fn websocket_transport_rejects_requests_with_origin_header() -> Result<()>
     };
     assert_eq!(healthz.status(), StatusCode::FORBIDDEN);
 
+    let localhost_healthz = client
+        .get(format!("http://{bind_addr}/healthz"))
+        .header(ORIGIN.as_str(), "http://localhost:5174")
+        .send()
+        .await
+        .with_context(|| {
+            format!("failed to GET http://{bind_addr}/healthz with localhost Origin header")
+        })?;
+    assert_eq!(localhost_healthz.status(), StatusCode::OK);
+
     let url = format!("ws://{bind_addr}");
+    let mut localhost_request = url.clone().into_client_request()?;
+    localhost_request
+        .headers_mut()
+        .insert(ORIGIN, HeaderValue::from_static("http://localhost:5174"));
+    let (mut localhost_socket, _) = connect_async(localhost_request).await?;
+    localhost_socket.close(None).await?;
+
     let mut request = url.into_client_request()?;
     request
         .headers_mut()

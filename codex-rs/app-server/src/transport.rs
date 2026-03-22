@@ -11,8 +11,10 @@ use axum::extract::State;
 use axum::extract::ws::Message as WebSocketMessage;
 use axum::extract::ws::WebSocket;
 use axum::extract::ws::WebSocketUpgrade;
+use axum::http::HeaderValue;
 use axum::http::Request;
 use axum::http::StatusCode;
+use axum::http::Uri;
 use axum::http::header::ORIGIN;
 use axum::middleware;
 use axum::middleware::Next;
@@ -101,16 +103,36 @@ async fn reject_requests_with_origin_header(
     request: Request<Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    if request.headers().contains_key(ORIGIN) {
+    if let Some(origin) = request.headers().get(ORIGIN)
+        && !is_allowed_localhost_origin(origin)
+    {
         warn!(
             method = %request.method(),
             uri = %request.uri(),
-            "rejecting websocket listener request with Origin header"
+            origin = ?origin,
+            "rejecting websocket listener request with disallowed Origin header"
         );
-        Err(StatusCode::FORBIDDEN)
-    } else {
-        Ok(next.run(request).await)
+        return Err(StatusCode::FORBIDDEN);
     }
+
+    Ok(next.run(request).await)
+}
+
+fn is_allowed_localhost_origin(origin: &HeaderValue) -> bool {
+    let Ok(origin) = origin.to_str() else {
+        return false;
+    };
+    let Ok(uri) = origin.parse::<Uri>() else {
+        return false;
+    };
+    let Some(authority) = uri.authority() else {
+        return false;
+    };
+
+    matches!(
+        authority.host(),
+        "localhost" | "127.0.0.1" | "[::1]" | "::1"
+    )
 }
 
 async fn websocket_upgrade_handler(

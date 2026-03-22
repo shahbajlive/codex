@@ -68,7 +68,7 @@ onBeforeUnmount(() => {
     <AppSidebar />
 
     <main :class="['content', { 'content--hidden': rightSidebarOpen }]">
-      <div v-if="errorMessage" class="banner mb-4">
+      <div v-if="errorMessage" class="banner mb-4" style="margin-bottom: 16px">
         {{ errorMessage }}
       </div>
       <RouterView />

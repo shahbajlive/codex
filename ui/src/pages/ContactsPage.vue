@@ -16,6 +16,7 @@ const addMode = ref<"picker" | "manual">("picker");
 const manualId = ref("");
 const manualThreadId = ref("");
 const addingError = ref<string | null>(null);
+const selectedAgentId = ref<string | null>(null);
 
 const existingContactIds = computed(
   () => new Set(contacts.value.map((c) => c.id)),
@@ -29,10 +30,16 @@ async function addFromAgent(agentId: string) {
   addingError.value = null;
   try {
     await contactsStore.addContactFromAgent(agentId);
+    selectedAgentId.value = null;
     showAddForm.value = false;
   } catch (err) {
     addingError.value = err instanceof Error ? err.message : String(err);
   }
+}
+
+async function confirmAddFromAgent() {
+  if (!selectedAgentId.value) return;
+  await addFromAgent(selectedAgentId.value);
 }
 
 async function addManual() {
@@ -58,18 +65,39 @@ async function removeContact(id: string) {
 async function loadData() {
   if (codexStore.connectionStatus === "connected") {
     await Promise.all([contactsStore.refresh(), agentsStore.refreshAgents()]);
+  } else if (
+    codexStore.connectionStatus === "disconnected" ||
+    codexStore.connectionStatus === "idle"
+  ) {
+    contactsStore.refresh();
   }
 }
 
 onMounted(loadData);
+
 watch(
   () => codexStore.connectionStatus,
   (status) => {
     if (status === "connected" && contacts.value.length === 0) {
       loadData();
+    } else if (status === "disconnected") {
+      loadData();
     }
   },
 );
+
+watch(showAddForm, (open) => {
+  if (!open) {
+    selectedAgentId.value = null;
+    addingError.value = null;
+  }
+});
+
+watch(addMode, (mode) => {
+  if (mode === "manual") {
+    selectedAgentId.value = null;
+  }
+});
 </script>
 
 <template>
@@ -79,7 +107,7 @@ watch(
       subtitle="Global address book for inter-agent messaging."
     />
 
-    <section class="surface-panel">
+    <section class="card">
       <div class="card-header">
         <div>
           <div class="card-title">Contact List</div>
@@ -89,7 +117,7 @@ watch(
           </div>
         </div>
         <button
-          class="btn btn-primary"
+          class="btn primary"
           :disabled="loading"
           @click="showAddForm = !showAddForm"
         >
@@ -99,8 +127,15 @@ watch(
 
       <div v-if="error" class="field-error">{{ error }}</div>
 
-      <div v-if="showAddForm" class="add-contact-form">
-        <div class="add-mode-tabs">
+      <div
+        v-if="showAddForm"
+        style="
+          padding: 12px 0;
+          border-bottom: 1px solid var(--border);
+          margin-bottom: 12px;
+        "
+      >
+        <div class="agent-tabs" style="margin-bottom: 12px">
           <button
             class="agent-tab"
             :class="{ active: addMode === 'picker' }"
@@ -125,12 +160,17 @@ watch(
           >
             All agents are already contacts.
           </div>
-          <div v-else class="agent-picker-list">
+          <div
+            v-else
+            class="agent-list"
+            style="max-height: 300px; overflow-y: auto"
+          >
             <button
               v-for="agent in availableAgents"
               :key="agent.id"
               class="agent-row"
-              @click="addFromAgent(agent.id)"
+              :class="{ active: selectedAgentId === agent.id }"
+              @click="selectedAgentId = agent.id"
             >
               <div class="agent-avatar">
                 {{ (agent.name || agent.id)[0]!.toUpperCase() }}
@@ -141,29 +181,38 @@ watch(
               </div>
             </button>
           </div>
+          <div class="row row--spread" style="margin-top: 12px">
+            <div class="card-sub muted">
+              Select an agent, then confirm to add its public thread as a
+              contact.
+            </div>
+            <button
+              class="btn primary"
+              :disabled="!selectedAgentId"
+              @click="confirmAddFromAgent"
+            >
+              Add Contact
+            </button>
+          </div>
         </div>
 
-        <div v-if="addMode === 'manual'" class="manual-form">
+        <div v-if="addMode === 'manual'" class="stack">
           <div class="field">
-            <label class="field-label">Agent ID</label>
-            <input
-              v-model="manualId"
-              class="field-input"
-              placeholder="e.g. planner"
-            />
+            <span>Agent ID</span>
+            <input v-model="manualId" placeholder="e.g. planner" />
           </div>
           <div class="field">
-            <label class="field-label">Public Thread ID</label>
+            <span>Public Thread ID</span>
             <input
               v-model="manualThreadId"
-              class="field-input mono"
+              class="mono"
               placeholder="e.g. 67e55044-10b1-426f-9247-bb680e5fe0c8"
             />
           </div>
-          <div class="field-row">
+          <div class="row row--spread">
             <button class="btn" @click="showAddForm = false">Cancel</button>
             <button
-              class="btn btn-primary"
+              class="btn primary"
               :disabled="!manualId.trim() || !manualThreadId.trim()"
               @click="addManual"
             >
@@ -192,18 +241,18 @@ watch(
       </div>
 
       <div v-else class="tools-list">
-        <div class="table-head">
+        <div
+          class="row muted"
+          style="padding: 0 12px 8px; font-size: 12px; font-weight: 500"
+        >
           <div>Agent ID</div>
-          <div>Public Thread ID</div>
-          <div></div>
+          <div style="flex: 1">Public Thread ID</div>
+          <div style="width: 72px"></div>
         </div>
         <div v-for="contact in contacts" :key="contact.id" class="tool-item">
           <span class="mono">{{ contact.id }}</span>
           <span class="mono muted">{{ contact.publicThreadId }}</span>
-          <button
-            class="btn btn-danger btn-sm"
-            @click="removeContact(contact.id)"
-          >
+          <button class="btn danger btn--sm" @click="removeContact(contact.id)">
             Remove
           </button>
         </div>
@@ -211,42 +260,3 @@ watch(
     </section>
   </section>
 </template>
-
-<style scoped>
-.add-mode-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.agent-picker-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.manual-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.add-contact-form {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 12px;
-}
-
-.table-head {
-  display: grid;
-  grid-template-columns: 1fr 2fr auto;
-  gap: 12px;
-  align-items: center;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--muted);
-  padding: 0 12px 8px;
-}
-</style>

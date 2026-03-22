@@ -77,6 +77,7 @@ use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::W3cTraceContext;
 use codex_state::log_db::LogDbLayer;
 use futures::FutureExt;
+use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio::sync::watch;
 use tokio::time::Duration;
@@ -309,7 +310,20 @@ impl MessageProcessor {
             Arc::clone(&self.outgoing),
             request_context.clone(),
             async {
-                let request_json = match serde_json::to_value(&request) {
+                let request_json = match (|| {
+                    let mut request_json = serde_json::Map::from_iter([
+                        ("id".to_string(), serde_json::to_value(&request.id)?),
+                        ("method".to_string(), serde_json::to_value(&request.method)?),
+                        (
+                            "params".to_string(),
+                            request.params.clone().unwrap_or(Value::Null),
+                        ),
+                    ]);
+                    if let Some(trace) = request.trace.as_ref() {
+                        request_json.insert("trace".to_string(), serde_json::to_value(trace)?);
+                    }
+                    Ok::<Value, serde_json::Error>(Value::Object(request_json))
+                })() {
                     Ok(request_json) => request_json,
                     Err(err) => {
                         let error = JSONRPCErrorError {

@@ -28,16 +28,14 @@ const settings = computed(() => ({
       subtitle="Manage app-server connection details and runtime defaults."
     />
 
-    <section class="surface-panel p-5">
-      <SettingsPanel
-        :settings="settings"
-        :models="models"
-        :platform-summary="platformSummary"
-        :connection-status="connectionStatus"
-        @update="settingsStore.updateSettings"
-        @connect="codexStore.connect"
-        @disconnect="codexStore.disconnect"
-      />
-    </section>
+    <SettingsPanel
+      :settings="settings"
+      :models="models"
+      :platform-summary="platformSummary"
+      :connection-status="connectionStatus"
+      @update="settingsStore.updateSettings"
+      @connect="codexStore.connect"
+      @disconnect="codexStore.disconnect"
+    />
   </section>
 </template>

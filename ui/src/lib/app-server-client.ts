@@ -81,7 +81,7 @@ export class CodexAppServerClient {
           version: "0.1.0",
         },
         capabilities: {
-          experimentalApi: false,
+          experimentalApi: true,
           optOutNotificationMethods: null,
         },
       },

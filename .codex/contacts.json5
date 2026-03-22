@@ -1,0 +1,28 @@
+{
+  "contacts": [
+    {
+      "id": "backend_engineer",
+      "publicThreadId": "019d14db-b955-7103-85f2-bedd06122080"
+    },
+    {
+      "id": "developer_lead",
+      "publicThreadId": "019d14bb-423f-79c2-814d-ba5efcc7c3d4"
+    },
+    {
+      "id": "frontend_engineer",
+      "publicThreadId": "019d14db-dcbb-7963-8c9b-6fe2f65c57a0"
+    },
+    {
+      "id": "pr_reviewer",
+      "publicThreadId": "019d14db-fe8a-78d2-9e70-24f6e3eeec55"
+    },
+    {
+      "id": "security_engineer",
+      "publicThreadId": "019d14db-eaee-7883-bca1-167be688e68a"
+    },
+    {
+      "id": "test_engineer",
+      "publicThreadId": "019d14db-cb29-7221-9417-6a4873d02707"
+    }
+  ]
+}

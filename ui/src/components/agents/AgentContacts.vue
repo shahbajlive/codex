@@ -1,29 +1,16 @@
 <script setup lang="ts">
-import { onMounted, watch } from "vue";
+import { onMounted } from "vue";
 import { useAgentsStore } from "../../stores/agents";
-import { useCodexStore } from "../../stores/codex";
 
 const agentsStore = useAgentsStore();
-const codexStore = useCodexStore();
 
 async function loadContacts() {
-  if (
-    codexStore.connectionStatus === "connected" &&
-    agentsStore.contactsList.length === 0
-  ) {
+  if (agentsStore.contactsList.length === 0) {
     await agentsStore.refreshContacts();
   }
 }
 
 onMounted(loadContacts);
-watch(
-  () => codexStore.connectionStatus,
-  (status) => {
-    if (status === "connected") {
-      loadContacts();
-    }
-  },
-);
 </script>
 
 <template>
@@ -37,7 +24,7 @@ watch(
       </div>
     </div>
 
-    <div v-if="agentsStore.contactsList.length === 0" style="margin: 12px 0">
+    <div v-if="agentsStore.contactsList.length === 0" class="stack">
       <div class="card-sub muted">No contacts configured globally.</div>
       <div class="card-sub muted">
         Add contacts in the
@@ -46,10 +33,10 @@ watch(
     </div>
 
     <div v-else class="tools-list">
-      <div class="contacts-header">
-        <div>Contact</div>
-        <div>Thread ID</div>
-        <div>Enabled</div>
+      <div class="tool-item label muted" aria-hidden="true">
+        <span>Contact</span>
+        <span>Thread ID</span>
+        <span>Enabled</span>
       </div>
       <div
         v-for="contact in agentsStore.contactsList"
@@ -69,25 +56,9 @@ watch(
       </div>
     </div>
 
-    <div style="margin-top: 16px">
-      <div class="card-sub muted">
-        Toggle controls whether this agent can communicate with each contact.
-        When no contacts are explicitly allowed/denied, all contacts are
-        accessible.
-      </div>
+    <div class="card-sub muted">
+      Toggle controls whether this agent can communicate with each contact. When
+      no contacts are explicitly allowed/denied, all contacts are accessible.
     </div>
   </form>
 </template>
-
-<style scoped>
-.contacts-header {
-  display: grid;
-  grid-template-columns: 1fr 2fr auto;
-  gap: 12px;
-  align-items: center;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--muted);
-  padding: 0 12px 8px;
-}
-</style>

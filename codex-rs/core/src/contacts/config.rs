@@ -116,6 +116,12 @@ impl ContactsConfig {
         }
 
         let content = std::fs::read_to_string(&path)?;
+        if content.trim().is_empty() {
+            return Ok(Self {
+                path: Some(path),
+                ..Self::default()
+            });
+        }
         let file: ContactsFile = json5::from_str(&content)?;
         let mut contacts = BTreeMap::new();
 
@@ -201,6 +207,13 @@ mod tests {
     #[test]
     fn load_missing_file_returns_empty_config() {
         let dir = TempDir::new().expect("temp dir");
+        let config = ContactsConfig::load(dir.path()).expect("load contacts");
+        assert!(config.list().is_empty());
+    }
+
+    #[test]
+    fn load_empty_file_returns_empty_config() {
+        let dir = temp_dir_with_contacts("");
         let config = ContactsConfig::load(dir.path()).expect("load contacts");
         assert!(config.list().is_empty());
     }
