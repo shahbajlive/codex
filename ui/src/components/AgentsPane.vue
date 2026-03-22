@@ -56,7 +56,6 @@ const panels = [
 <template>
   <div class="agents-layout">
     <section class="card agents-sidebar">
-<!--      TODO: justify content: space between-->
       <div class="row" style="justify-content: space-between">
         <div>
           <div class="card-title">Agents</div>

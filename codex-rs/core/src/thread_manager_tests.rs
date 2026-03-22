@@ -185,3 +185,61 @@ async fn new_uses_configured_openai_provider_for_model_refresh() {
     let _ = manager.list_models(RefreshStrategy::Online).await;
     assert_eq!(models_mock.requests().len(), 1);
 }
+
+#[tokio::test]
+async fn start_thread_with_agent_id_uses_agent_tools_and_skills_config() {
+    let workspace = tempdir().expect("workspace");
+    let agent_dir = workspace
+        .path()
+        .join(".codex")
+        .join("agents")
+        .join("developer_lead");
+    std::fs::create_dir_all(&agent_dir).expect("create agent dir");
+    std::fs::write(
+        agent_dir.join("agent.json5"),
+        r#"{
+  name: "Developer Lead",
+  extends: "main",
+  model: "agent-model",
+  approvalPolicy: "untrusted",
+  sandboxMode: "danger-full-access",
+  tools: { allow: ["bash"], deny: ["webfetch"] },
+  skills: ["skill-a"],
+}"#,
+    )
+    .expect("write agent config");
+
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config();
+    config.codex_home = temp_dir.path().join("codex-home");
+    config.cwd = workspace.path().to_path_buf();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+
+    let manager = ThreadManager::with_models_provider_and_home_for_tests(
+        CodexAuth::from_api_key("dummy"),
+        config.model_provider.clone(),
+        config.codex_home.clone(),
+    );
+    let thread = manager
+        .start_thread_with_tools_and_service_name(
+            config,
+            Vec::new(),
+            false,
+            None,
+            None,
+            Some("developer_lead".to_string()),
+        )
+        .await
+        .expect("start thread");
+
+    let snapshot = thread.thread.config_snapshot().await;
+    assert_eq!(snapshot.agent_tools_allow, Some(vec!["bash".to_string()]));
+    assert_eq!(
+        snapshot.agent_tools_deny,
+        Some(vec!["webfetch".to_string()])
+    );
+    assert_eq!(
+        snapshot.agent_skills_allow,
+        Some(vec!["skill-a".to_string()])
+    );
+}

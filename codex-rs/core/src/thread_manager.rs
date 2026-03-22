@@ -10,6 +10,7 @@ use crate::codex::INITIAL_SUBMIT_ID;
 use crate::codex_thread::CodexThread;
 use crate::config::AgentConfigService;
 use crate::config::Config;
+use crate::config::ResolvedAgentConfig;
 use crate::error::CodexErr;
 use crate::error::Result as CodexResult;
 use crate::file_watcher::FileWatcher;
@@ -48,6 +49,18 @@ use tokio::sync::RwLock;
 use tokio::sync::broadcast;
 use tracing::warn;
 
+#[derive(Debug, Clone)]
+pub(crate) struct AgentRuntimeOverrides {
+    agent_id: String,
+    approval_policy: Option<crate::protocol::AskForApproval>,
+    model: Option<String>,
+    sandbox_mode: Option<codex_protocol::config_types::SandboxMode>,
+    skills_allow: Option<Vec<String>>,
+    tools_allow: Option<Vec<String>>,
+    tools_deny: Option<Vec<String>>,
+    workspace_instructions: Option<String>,
+}
+
 const THREAD_CREATED_CHANNEL_CAPACITY: usize = 1024;
 /// Test-only override for enabling thread-manager behaviors used by integration
 /// tests.
@@ -74,6 +87,50 @@ struct TempCodexHomeGuard {
 impl Drop for TempCodexHomeGuard {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+fn agent_runtime_overrides(
+    agent_id: String,
+    resolved: ResolvedAgentConfig,
+) -> AgentRuntimeOverrides {
+    let tools_allow = resolved
+        .tools
+        .as_ref()
+        .and_then(|tools| tools.allow.clone());
+    let tools_deny = resolved.tools.as_ref().and_then(|tools| tools.deny.clone());
+
+    AgentRuntimeOverrides {
+        approval_policy: resolved.approval_policy,
+        agent_id,
+        model: resolved.model,
+        sandbox_mode: resolved.sandbox_mode,
+        skills_allow: resolved.skills,
+        tools_allow,
+        tools_deny,
+        workspace_instructions: resolved.workspace_instructions,
+    }
+}
+
+fn resolve_agent_runtime_overrides(
+    config: &Config,
+    agent_id: &str,
+) -> CodexResult<AgentRuntimeOverrides> {
+    let resolved = crate::config::resolve_agent_config_for_workspace(
+        agent_id,
+        Some(config.cwd.as_path()),
+        config.codex_home.as_path(),
+    )?;
+    Ok(agent_runtime_overrides(agent_id.to_string(), resolved))
+}
+
+fn agent_id_for_session_source(session_source: &SessionSource) -> Option<&str> {
+    match session_source {
+        SessionSource::SubAgent(codex_protocol::protocol::SubAgentSource::ThreadSpawn {
+            agent_role: Some(agent_role),
+            ..
+        }) => Some(agent_role.as_str()),
+        _ => None,
     }
 }
 
@@ -398,16 +455,10 @@ impl ThreadManager {
         parent_trace: Option<W3cTraceContext>,
         agent_id: Option<String>,
     ) -> CodexResult<NewThread> {
-        let workspace_instructions = if let Some(agent_id) = agent_id {
-            if let Some(agent_config_service) = self.agent_config_service() {
-                let resolved = agent_config_service.resolve_agent(&agent_id)?;
-                resolved.workspace_instructions
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let agent_overrides = agent_id
+            .as_deref()
+            .map(|agent_id| resolve_agent_runtime_overrides(&config, agent_id))
+            .transpose()?;
 
         Box::pin(self.state.spawn_thread(
             config,
@@ -419,7 +470,7 @@ impl ThreadManager {
             metrics_service_name,
             parent_trace,
             /*user_shell_override*/ None,
-            workspace_instructions,
+            agent_overrides,
         ))
         .await
     }
@@ -785,7 +836,7 @@ impl ThreadManagerState {
         metrics_service_name: Option<String>,
         parent_trace: Option<W3cTraceContext>,
         user_shell_override: Option<crate::shell::Shell>,
-        workspace_instructions: Option<String>,
+        agent_overrides: Option<AgentRuntimeOverrides>,
     ) -> CodexResult<NewThread> {
         Box::pin(self.spawn_thread_with_source(
             config,
@@ -800,7 +851,7 @@ impl ThreadManagerState {
             /*inherited_exec_policy*/ None,
             parent_trace,
             user_shell_override,
-            workspace_instructions,
+            agent_overrides,
         ))
         .await
     }
@@ -808,7 +859,7 @@ impl ThreadManagerState {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn spawn_thread_with_source(
         &self,
-        config: Config,
+        mut config: Config,
         initial_history: InitialHistory,
         auth_manager: Arc<AuthManager>,
         agent_control: AgentControl,
@@ -820,8 +871,62 @@ impl ThreadManagerState {
         inherited_exec_policy: Option<Arc<crate::exec_policy::ExecPolicyManager>>,
         parent_trace: Option<W3cTraceContext>,
         user_shell_override: Option<crate::shell::Shell>,
-        workspace_instructions: Option<String>,
+        agent_overrides: Option<AgentRuntimeOverrides>,
     ) -> CodexResult<NewThread> {
+        let agent_overrides = match agent_overrides {
+            Some(agent_overrides) => Some(agent_overrides),
+            None => agent_id_for_session_source(&session_source)
+                .map(|agent_id| resolve_agent_runtime_overrides(&config, agent_id))
+                .transpose()?
+                .map(|agent_overrides| {
+                    if let Some(model) = agent_overrides.model.clone() {
+                        config.model = Some(model);
+                    }
+                    if let Some(approval_policy) = agent_overrides.approval_policy.clone() {
+                        config.permissions.approval_policy =
+                            crate::config::Constrained::allow_any(approval_policy);
+                    }
+                    if let Some(sandbox_mode) = agent_overrides.sandbox_mode.clone() {
+                        let mut sandbox_policy = match sandbox_mode {
+                            codex_protocol::config_types::SandboxMode::ReadOnly => {
+                                crate::protocol::SandboxPolicy::new_read_only_policy()
+                            }
+                            codex_protocol::config_types::SandboxMode::WorkspaceWrite => {
+                                crate::protocol::SandboxPolicy::new_workspace_write_policy()
+                            }
+                            codex_protocol::config_types::SandboxMode::DangerFullAccess => {
+                                crate::protocol::SandboxPolicy::DangerFullAccess
+                            }
+                        };
+                        if let crate::protocol::SandboxPolicy::WorkspaceWrite {
+                            writable_roots,
+                            ..
+                        } = &mut sandbox_policy
+                        {
+                            writable_roots.extend(
+                                config
+                                    .permissions
+                                    .sandbox_policy
+                                    .get()
+                                    .get_writable_roots_with_cwd(&config.cwd)
+                                    .iter()
+                                    .map(|root| root.root.clone()),
+                            );
+                        }
+                        config.permissions.sandbox_policy =
+                            crate::config::Constrained::allow_any(sandbox_policy.clone());
+                        config.permissions.file_system_sandbox_policy =
+                            crate::protocol::FileSystemSandboxPolicy::from_legacy_sandbox_policy(
+                                &sandbox_policy,
+                                &config.cwd,
+                            );
+                        config.permissions.network_sandbox_policy =
+                            crate::protocol::NetworkSandboxPolicy::from(&sandbox_policy);
+                    }
+                    agent_overrides
+                }),
+        };
+
         let watch_registration = self
             .file_watcher
             .register_config(&config, self.skills_manager.as_ref());
@@ -845,11 +950,15 @@ impl ThreadManagerState {
             inherited_exec_policy,
             user_shell_override,
             parent_trace,
-            agent_tools_allow: None,
-            agent_tools_deny: None,
-            agent_id: None,
-            workspace_instructions,
-            agent_skills_allow: None,
+            agent_tools_allow: agent_overrides.as_ref().and_then(|o| o.tools_allow.clone()),
+            agent_tools_deny: agent_overrides.as_ref().and_then(|o| o.tools_deny.clone()),
+            agent_id: agent_overrides.as_ref().map(|o| o.agent_id.clone()),
+            workspace_instructions: agent_overrides
+                .as_ref()
+                .and_then(|o| o.workspace_instructions.clone()),
+            agent_skills_allow: agent_overrides
+                .as_ref()
+                .and_then(|o| o.skills_allow.clone()),
         }))
         .await?;
         self.finalize_thread_spawn(codex, thread_id, watch_registration)

@@ -202,6 +202,7 @@ use codex_core::config::ConfigOverrides;
 use codex_core::config::NetworkProxyAuditMetadata;
 use codex_core::config::edit::ConfigEdit;
 use codex_core::config::edit::ConfigEditsBuilder;
+use codex_core::config::resolve_agent_config_for_workspace;
 use codex_core::config::types::McpServerTransportConfig;
 use codex_core::config_loader::CloudRequirementsLoadError;
 use codex_core::config_loader::CloudRequirementsLoadErrorCode;
@@ -1890,6 +1891,33 @@ impl CodexMessageProcessor {
             persist_extended_history,
             agent_id,
         } = params;
+        let mut model = model;
+        let mut approval_policy = approval_policy;
+        let mut sandbox = sandbox;
+        if let Some(agent_id) = agent_id.as_deref()
+            && let Ok(resolved) = resolve_agent_config_for_workspace(
+                agent_id,
+                cwd.as_deref().map(std::path::Path::new),
+                self.config.codex_home.as_path(),
+            )
+        {
+            let codex_core::config::ResolvedAgentConfig {
+                model: resolved_model,
+                approval_policy: resolved_approval_policy,
+                sandbox_mode: resolved_sandbox_mode,
+                ..
+            } = resolved;
+            if model.is_none() {
+                model = resolved_model;
+            }
+            if approval_policy.is_none() {
+                approval_policy =
+                    resolved_approval_policy.map(codex_app_server_protocol::AskForApproval::from);
+            }
+            if sandbox.is_none() {
+                sandbox = resolved_sandbox_mode.map(SandboxMode::from);
+            }
+        }
         let mut typesafe_overrides = self.build_thread_config_overrides(
             model,
             model_provider,
@@ -8646,6 +8674,9 @@ mod tests {
             reasoning_effort: None,
             personality: None,
             session_source: SessionSource::Cli,
+            agent_tools_allow: None,
+            agent_tools_deny: None,
+            agent_skills_allow: None,
         };
 
         assert_eq!(

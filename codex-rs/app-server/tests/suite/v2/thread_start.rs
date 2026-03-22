@@ -4,12 +4,14 @@ use app_test_support::McpProcess;
 use app_test_support::create_mock_responses_server_repeating_assistant;
 use app_test_support::to_response;
 use app_test_support::write_chatgpt_auth;
+use codex_app_server_protocol::AskForApproval;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCMessage;
 use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::McpServerStartupState;
 use codex_app_server_protocol::McpServerStatusUpdatedNotification;
 use codex_app_server_protocol::RequestId;
+use codex_app_server_protocol::SandboxPolicy;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
@@ -191,6 +193,119 @@ model_reasoning_effort = "high"
     } = to_response::<ThreadStartResponse>(resp)?;
 
     assert_eq!(reasoning_effort, Some(ReasoningEffort::High));
+    Ok(())
+}
+
+#[tokio::test]
+async fn thread_start_uses_agent_runtime_config_from_workspace() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+
+    let codex_home = TempDir::new()?;
+    create_config_toml(codex_home.path(), &server.uri())?;
+
+    let workspace = TempDir::new()?;
+    let agent_dir = workspace
+        .path()
+        .join(".codex")
+        .join("agents")
+        .join("developer_lead");
+    std::fs::create_dir_all(&agent_dir)?;
+    std::fs::write(
+        agent_dir.join("agent.json5"),
+        r#"{
+  name: "Developer Lead",
+  extends: "main",
+  model: "agent-model",
+  approvalPolicy: "untrusted",
+  sandboxMode: "danger-full-access",
+}"#,
+    )?;
+    set_project_trust_level(codex_home.path(), workspace.path(), TrustLevel::Trusted)?;
+
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+
+    let req_id = mcp
+        .send_thread_start_request(ThreadStartParams {
+            cwd: Some(workspace.path().to_string_lossy().into_owned()),
+            agent_id: Some("developer_lead".to_string()),
+            ..Default::default()
+        })
+        .await?;
+
+    let resp: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(req_id)),
+    )
+    .await??;
+    let ThreadStartResponse {
+        model,
+        approval_policy,
+        sandbox,
+        ..
+    } = to_response::<ThreadStartResponse>(resp)?;
+
+    assert_eq!(model, "agent-model");
+    assert_eq!(approval_policy, AskForApproval::UnlessTrusted);
+    assert_eq!(sandbox, SandboxPolicy::DangerFullAccess);
+    Ok(())
+}
+
+#[tokio::test]
+async fn thread_start_request_runtime_overrides_beat_agent_defaults() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+
+    let codex_home = TempDir::new()?;
+    create_config_toml(codex_home.path(), &server.uri())?;
+
+    let workspace = TempDir::new()?;
+    let agent_dir = workspace
+        .path()
+        .join(".codex")
+        .join("agents")
+        .join("developer_lead");
+    std::fs::create_dir_all(&agent_dir)?;
+    std::fs::write(
+        agent_dir.join("agent.json5"),
+        r#"{
+  name: "Developer Lead",
+  extends: "main",
+  model: "agent-model",
+  approvalPolicy: "untrusted",
+  sandboxMode: "read-only",
+}"#,
+    )?;
+    set_project_trust_level(codex_home.path(), workspace.path(), TrustLevel::Trusted)?;
+
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+
+    let req_id = mcp
+        .send_thread_start_request(ThreadStartParams {
+            cwd: Some(workspace.path().to_string_lossy().into_owned()),
+            agent_id: Some("developer_lead".to_string()),
+            model: Some("request-model".to_string()),
+            approval_policy: Some(AskForApproval::Never),
+            sandbox: Some(codex_app_server_protocol::SandboxMode::DangerFullAccess),
+            ..Default::default()
+        })
+        .await?;
+
+    let resp: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(req_id)),
+    )
+    .await??;
+    let ThreadStartResponse {
+        model,
+        approval_policy,
+        sandbox,
+        ..
+    } = to_response::<ThreadStartResponse>(resp)?;
+
+    assert_eq!(model, "request-model");
+    assert_eq!(approval_policy, AskForApproval::Never);
+    assert!(matches!(sandbox, SandboxPolicy::DangerFullAccess));
     Ok(())
 }
 

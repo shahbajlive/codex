@@ -1110,6 +1110,9 @@ impl SessionConfiguration {
             reasoning_effort: self.collaboration_mode.reasoning_effort(),
             personality: self.personality,
             session_source: self.session_source.clone(),
+            agent_tools_allow: self.agent_tools_allow.clone(),
+            agent_tools_deny: self.agent_tools_deny.clone(),
+            agent_skills_allow: self.agent_skills_allow.clone(),
         }
     }
 

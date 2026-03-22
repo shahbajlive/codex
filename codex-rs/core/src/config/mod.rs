@@ -3014,6 +3014,26 @@ pub fn find_codex_agents_dir() -> std::io::Result<PathBuf> {
         .or_else(|_| find_codex_home().map(|h| h.join("agents")))
 }
 
+pub fn resolve_agent_config_for_workspace(
+    agent_id: &str,
+    cwd: Option<&Path>,
+    codex_home: &Path,
+) -> Result<ResolvedAgentConfig, AgentConfigError> {
+    if let Some(cwd) = cwd {
+        let workspace_agents_dir = cwd.join(".codex").join("agents");
+        if workspace_agents_dir.exists() {
+            let service = AgentConfigService::new(workspace_agents_dir);
+            match service.resolve_agent(agent_id) {
+                Ok(config) => return Ok(config),
+                Err(AgentConfigError::NotFound(_)) => {}
+                Err(err) => return Err(err),
+            }
+        }
+    }
+
+    AgentConfigService::new(codex_home.join("agents")).resolve_agent(agent_id)
+}
+
 /// Returns the path to the folder where Codex logs are stored. Does not verify
 /// that the directory exists.
 pub fn log_dir(cfg: &Config) -> std::io::Result<PathBuf> {

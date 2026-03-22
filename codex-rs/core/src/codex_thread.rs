@@ -41,6 +41,9 @@ pub struct ThreadConfigSnapshot {
     pub reasoning_effort: Option<ReasoningEffort>,
     pub personality: Option<Personality>,
     pub session_source: SessionSource,
+    pub agent_tools_allow: Option<Vec<String>>,
+    pub agent_tools_deny: Option<Vec<String>>,
+    pub agent_skills_allow: Option<Vec<String>>,
 }
 
 pub struct CodexThread {

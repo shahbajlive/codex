@@ -14,8 +14,10 @@ use codex_features::Feature;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::ErrorEvent;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::protocol::TurnAbortReason;
@@ -996,6 +998,69 @@ async fn spawn_thread_subagent_uses_role_specific_nickname_candidates() {
         panic!("expected thread-spawn sub-agent source");
     };
     assert_eq!(agent_nickname, Some("Atlas".to_string()));
+}
+
+#[tokio::test]
+async fn spawn_thread_subagent_uses_agent_runtime_config() {
+    let mut harness = AgentControlHarness::new().await;
+    let workspace = TempDir::new().expect("workspace");
+    let agent_dir = workspace
+        .path()
+        .join(".codex")
+        .join("agents")
+        .join("explorer");
+    std::fs::create_dir_all(&agent_dir).expect("create agent dir");
+    std::fs::write(
+        agent_dir.join("agent.json5"),
+        r#"{
+  name: "Explorer",
+  extends: "main",
+  model: "agent-model",
+  approvalPolicy: "untrusted",
+  sandboxMode: "danger-full-access",
+  tools: { allow: ["bash"], deny: ["webfetch"] },
+  skills: ["skill-a"],
+}"#,
+    )
+    .expect("write agent config");
+    harness.config.cwd = workspace.path().to_path_buf();
+
+    let (parent_thread_id, _parent_thread) = harness.start_thread().await;
+
+    let child_thread_id = harness
+        .control
+        .spawn_agent(
+            harness.config.clone(),
+            text_input("hello child"),
+            Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                parent_thread_id,
+                depth: 1,
+                agent_nickname: None,
+                agent_role: Some("explorer".to_string()),
+            })),
+        )
+        .await
+        .expect("child spawn should succeed");
+
+    let child_thread = harness
+        .manager
+        .get_thread(child_thread_id)
+        .await
+        .expect("child thread should be registered");
+    let snapshot = child_thread.config_snapshot().await;
+
+    assert_eq!(snapshot.model, "agent-model");
+    assert_eq!(snapshot.approval_policy, AskForApproval::UnlessTrusted);
+    assert_eq!(snapshot.sandbox_policy, SandboxPolicy::DangerFullAccess);
+    assert_eq!(snapshot.agent_tools_allow, Some(vec!["bash".to_string()]));
+    assert_eq!(
+        snapshot.agent_tools_deny,
+        Some(vec!["webfetch".to_string()])
+    );
+    assert_eq!(
+        snapshot.agent_skills_allow,
+        Some(vec!["skill-a".to_string()])
+    );
 }
 
 #[tokio::test]
