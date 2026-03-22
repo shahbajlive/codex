@@ -459,6 +459,8 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         parent_trace: None,
         agent_tools_allow: None,
         agent_tools_deny: None,
+        agent_id: None,
+        workspace_instructions: None,
         agent_skills_allow: None,
     })
     .await

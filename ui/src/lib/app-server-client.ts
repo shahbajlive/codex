@@ -7,6 +7,9 @@ import type {
   AgentUpdateResponse,
   ApprovalPolicy,
   CodexNotification,
+  ContactCreateParams,
+  ContactDeleteParams,
+  ContactListResponse,
   InitializeResponse,
   Model,
   ModelListResponse,
@@ -280,6 +283,35 @@ export class CodexAppServerClient {
       path,
       recursive: recursive ?? true,
     });
+  }
+
+  async listContacts(): Promise<ContactListResponse["data"]> {
+    const response = await this.transport.request<ContactListResponse>(
+      "contact/list",
+      null,
+    );
+    return response.data;
+  }
+
+  async createContact(id: string, publicThreadId: string): Promise<void> {
+    const params: ContactCreateParams = { id, publicThreadId };
+    await this.transport.request("contact/create", params);
+  }
+
+  async deleteContact(id: string): Promise<void> {
+    const params: ContactDeleteParams = { id };
+    await this.transport.request("contact/delete", params);
+  }
+
+  async startThreadForAgent(agentId: string): Promise<Thread> {
+    const response = await this.transport.request<ThreadStartResponse>(
+      "thread/start",
+      {
+        agentId,
+        persistExtendedHistory: true,
+      },
+    );
+    return response.thread;
   }
 }
 

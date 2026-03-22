@@ -38,6 +38,12 @@ use codex_app_server_protocol::CommandExecParams;
 use codex_app_server_protocol::CommandExecResizeParams;
 use codex_app_server_protocol::CommandExecTerminateParams;
 use codex_app_server_protocol::CommandExecWriteParams;
+use codex_app_server_protocol::ContactCreateParams;
+use codex_app_server_protocol::ContactCreateResponse;
+use codex_app_server_protocol::ContactDeleteParams;
+use codex_app_server_protocol::ContactDeleteResponse;
+use codex_app_server_protocol::ContactListResponse;
+use codex_app_server_protocol::ContactRecordResponse;
 use codex_app_server_protocol::ConversationGitInfo;
 use codex_app_server_protocol::ConversationSummary;
 use codex_app_server_protocol::DynamicToolSpec as ApiDynamicToolSpec;
@@ -200,6 +206,7 @@ use codex_core::config::types::McpServerTransportConfig;
 use codex_core::config_loader::CloudRequirementsLoadError;
 use codex_core::config_loader::CloudRequirementsLoadErrorCode;
 use codex_core::config_loader::CloudRequirementsLoader;
+use codex_core::contacts::config::ContactsConfig;
 use codex_core::default_client::set_default_client_residency_requirement;
 use codex_core::error::CodexErr;
 use codex_core::error::Result as CodexResult;
@@ -706,6 +713,21 @@ impl CodexMessageProcessor {
             }
             ClientRequest::SkillsList { request_id, params } => {
                 self.skills_list(to_connection_request_id(request_id), params)
+                    .await;
+            }
+            ClientRequest::ContactList {
+                request_id,
+                params: (),
+            } => {
+                self.contact_list(to_connection_request_id(request_id))
+                    .await;
+            }
+            ClientRequest::ContactCreate { request_id, params } => {
+                self.contact_create(to_connection_request_id(request_id), params)
+                    .await;
+            }
+            ClientRequest::ContactDelete { request_id, params } => {
+                self.contact_delete(to_connection_request_id(request_id), params)
                     .await;
             }
             ClientRequest::PluginList { request_id, params } => {
@@ -5482,6 +5504,139 @@ impl CodexMessageProcessor {
         }
         self.outgoing
             .send_response(request_id, SkillsListResponse { data })
+            .await;
+    }
+
+    async fn contact_list(&self, request_id: ConnectionRequestId) {
+        match ContactsConfig::load(&self.config.codex_home) {
+            Ok(config) => {
+                let data: Vec<ContactRecordResponse> = config
+                    .list()
+                    .into_iter()
+                    .map(|r| ContactRecordResponse {
+                        id: r.agent_id,
+                        public_thread_id: r.public_thread_id.to_string(),
+                    })
+                    .collect();
+                self.outgoing
+                    .send_response(
+                        request_id,
+                        ContactListResponse {
+                            data,
+                            next_cursor: None,
+                        },
+                    )
+                    .await;
+            }
+            Err(error) => {
+                self.outgoing
+                    .send_error(
+                        request_id,
+                        JSONRPCErrorError {
+                            code: -32603,
+                            message: error.to_string(),
+                            data: None,
+                        },
+                    )
+                    .await;
+            }
+        }
+    }
+
+    async fn contact_create(&self, request_id: ConnectionRequestId, params: ContactCreateParams) {
+        let mut config = match ContactsConfig::load(&self.config.codex_home) {
+            Ok(config) => config,
+            Err(error) => {
+                self.outgoing
+                    .send_error(
+                        request_id,
+                        JSONRPCErrorError {
+                            code: -32603,
+                            message: error.to_string(),
+                            data: None,
+                        },
+                    )
+                    .await;
+                return;
+            }
+        };
+        let ContactCreateParams {
+            id,
+            public_thread_id,
+        } = params;
+        let Ok(thread_id) = codex_protocol::ThreadId::from_string(&public_thread_id) else {
+            self.send_invalid_request_error(
+                request_id,
+                format!("invalid publicThreadId: {public_thread_id}"),
+            )
+            .await;
+            return;
+        };
+        config.add(id.clone(), thread_id);
+        if let Err(error) = config.save() {
+            self.outgoing
+                .send_error(
+                    request_id,
+                    JSONRPCErrorError {
+                        code: -32603,
+                        message: error.to_string(),
+                        data: None,
+                    },
+                )
+                .await;
+            return;
+        }
+        self.outgoing
+            .send_response(
+                request_id,
+                ContactCreateResponse {
+                    contact: ContactRecordResponse {
+                        id,
+                        public_thread_id,
+                    },
+                },
+            )
+            .await;
+    }
+
+    async fn contact_delete(&self, request_id: ConnectionRequestId, params: ContactDeleteParams) {
+        let mut config = match ContactsConfig::load(&self.config.codex_home) {
+            Ok(config) => config,
+            Err(error) => {
+                self.outgoing
+                    .send_error(
+                        request_id,
+                        JSONRPCErrorError {
+                            code: -32603,
+                            message: error.to_string(),
+                            data: None,
+                        },
+                    )
+                    .await;
+                return;
+            }
+        };
+        let ContactDeleteParams { id } = params;
+        if !config.remove(&id) {
+            self.send_invalid_request_error(request_id, format!("contact `{id}` not found"))
+                .await;
+            return;
+        }
+        if let Err(error) = config.save() {
+            self.outgoing
+                .send_error(
+                    request_id,
+                    JSONRPCErrorError {
+                        code: -32603,
+                        message: error.to_string(),
+                        data: None,
+                    },
+                )
+                .await;
+            return;
+        }
+        self.outgoing
+            .send_response(request_id, ContactDeleteResponse {})
             .await;
     }
 

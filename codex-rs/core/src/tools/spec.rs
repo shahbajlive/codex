@@ -161,6 +161,45 @@ fn send_input_output_schema() -> JsonValue {
     })
 }
 
+fn contacts_output_schema() -> JsonValue {
+    json!({
+        "type": "object",
+        "properties": {
+            "currentAgentId": {
+                "type": ["string", "null"]
+            },
+            "contacts": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "agentId": { "type": "string" },
+                        "publicThreadId": { "type": "string" }
+                    },
+                    "required": ["agentId", "publicThreadId"],
+                    "additionalProperties": false
+                }
+            },
+            "delivered": {
+                "type": ["object", "null"],
+                "properties": {
+                    "submissionId": { "type": "string" },
+                    "targetId": { "type": "string" },
+                    "targetThreadId": { "type": "string" },
+                    "deliveryKind": {
+                        "type": "string",
+                        "enum": ["public_address", "direct_thread"]
+                    }
+                },
+                "required": ["submissionId", "targetId", "targetThreadId", "deliveryKind"],
+                "additionalProperties": false
+            }
+        },
+        "required": ["currentAgentId", "contacts", "delivered"],
+        "additionalProperties": false
+    })
+}
+
 fn resume_agent_output_schema() -> JsonValue {
     json!({
         "type": "object",
@@ -1406,6 +1445,60 @@ fn create_send_input_tool() -> ToolSpec {
     })
 }
 
+fn create_contacts_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "mode".to_string(),
+            JsonSchema::String {
+                description: Some("Tool mode: `read` to list contacts from CODEX_HOME/contacts.json5, or `send` to deliver a contact message to a public thread or known peer thread.".to_string()),
+            },
+        ),
+        (
+            "query".to_string(),
+            JsonSchema::String {
+                description: Some("Optional search filter used when mode is `read`. Matches agent ids and public thread ids.".to_string()),
+            },
+        ),
+        (
+            "target_id".to_string(),
+            JsonSchema::String {
+                description: Some("Contact agent id to send to when mode is `send`. Must exist in CODEX_HOME/contacts.json5.".to_string()),
+            },
+        ),
+        (
+            "thread_id".to_string(),
+            JsonSchema::String {
+                description: Some("Optional direct peer thread id. Omit this to send to the contact's public thread from CODEX_HOME/contacts.json5.".to_string()),
+            },
+        ),
+        (
+            "reply_thread_id".to_string(),
+            JsonSchema::String {
+                description: Some("Optional thread id the recipient should use for future direct replies. Useful when accepting first contact and sharing a newly created private thread.".to_string()),
+            },
+        ),
+        (
+            "message".to_string(),
+            JsonSchema::String {
+                description: Some("Message body to deliver. The tool wraps it in a structured contact envelope with sender thread and turn metadata.".to_string()),
+            },
+        ),
+    ]);
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "contacts".to_string(),
+        description: "Read the global contact address book from CODEX_HOME/contacts.json5 or send peer messages over Codex threads. Omit `thread_id` to send to a contact's public thread, or provide `thread_id` to continue a direct peer conversation.".to_string(),
+        strict: false,
+        defer_loading: None,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["mode".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+        output_schema: Some(contacts_output_schema()),
+    })
+}
+
 fn create_resume_agent_tool() -> ToolSpec {
     let mut properties = BTreeMap::new();
     properties.insert(
@@ -2601,6 +2694,7 @@ pub(crate) fn build_specs_with_discoverable_tools(
     use crate::tools::handlers::ToolSuggestHandler;
     use crate::tools::handlers::UnifiedExecHandler;
     use crate::tools::handlers::ViewImageHandler;
+    use crate::tools::handlers::contacts::Handler as ContactsHandler;
     use crate::tools::handlers::multi_agents::CloseAgentHandler;
     use crate::tools::handlers::multi_agents::ResumeAgentHandler;
     use crate::tools::handlers::multi_agents::SendInputHandler;
@@ -2986,6 +3080,12 @@ pub(crate) fn build_specs_with_discoverable_tools(
     if config.collab_tools {
         push_tool_spec(
             &mut builder,
+            create_contacts_tool(),
+            /*supports_parallel_tool_calls*/ false,
+            config.code_mode_enabled,
+        );
+        push_tool_spec(
+            &mut builder,
             create_spawn_agent_tool(config),
             /*supports_parallel_tool_calls*/ false,
             config.code_mode_enabled,
@@ -3014,6 +3114,7 @@ pub(crate) fn build_specs_with_discoverable_tools(
             /*supports_parallel_tool_calls*/ false,
             config.code_mode_enabled,
         );
+        builder.register_handler("contacts", Arc::new(ContactsHandler));
         builder.register_handler("spawn_agent", Arc::new(SpawnAgentHandler));
         builder.register_handler("send_input", Arc::new(SendInputHandler));
         builder.register_handler("resume_agent", Arc::new(ResumeAgentHandler));

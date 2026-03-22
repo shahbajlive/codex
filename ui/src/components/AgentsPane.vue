@@ -6,6 +6,7 @@ import AgentOverview from "./agents/AgentOverview.vue";
 import AgentFiles from "./agents/AgentFiles.vue";
 import AgentTools from "./agents/AgentTools.vue";
 import AgentSkills from "./agents/AgentSkills.vue";
+import AgentContacts from "./agents/AgentContacts.vue";
 
 const agentsStore = useAgentsStore();
 const { agents, selectedAgent, dirty } = storeToRefs(agentsStore);
@@ -45,6 +46,7 @@ const panels = [
   { id: "files" as const, label: "Files" },
   { id: "tools" as const, label: "Tools" },
   { id: "skills" as const, label: "Skills" },
+  { id: "contacts" as const, label: "Contacts" },
   { id: "channels" as const, label: "Channels" },
   { id: "cron" as const, label: "Cron Jobs" },
 ];
@@ -145,6 +147,7 @@ const panels = [
         <AgentFiles v-else-if="agentsStore.activeTab === 'files'" />
         <AgentTools v-else-if="agentsStore.activeTab === 'tools'" />
         <AgentSkills v-else-if="agentsStore.activeTab === 'skills'" />
+        <AgentContacts v-else-if="agentsStore.activeTab === 'contacts'" />
 
         <section v-else-if="agentsStore.activeTab === 'channels'" class="card">
           <div class="card-header">

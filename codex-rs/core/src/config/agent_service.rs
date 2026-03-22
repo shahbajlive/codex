@@ -104,6 +104,7 @@ impl AgentConfigService {
             tools: None,
             skills: None,
             subagents: None,
+            contacts: None,
         })
     }
 
@@ -332,6 +333,7 @@ pub struct ResolvedAgentConfig {
     pub tools: Option<crate::config::agent_config::AgentToolsConfig>,
     pub skills: Option<Vec<String>>,
     pub subagents: Option<crate::config::agent_config::SubAgentConfig>,
+    pub contacts: Option<crate::config::agent_config::AgentContactsConfig>,
 }
 
 impl ResolvedAgentConfig {
@@ -349,6 +351,7 @@ impl ResolvedAgentConfig {
             tools: None,
             skills: None,
             subagents: None,
+            contacts: None,
         };
 
         for config in configs.iter().rev() {
@@ -391,6 +394,9 @@ impl ResolvedAgentConfig {
             }
             if resolved.subagents.is_none() {
                 resolved.subagents = config.subagents.clone();
+            }
+            if resolved.contacts.is_none() {
+                resolved.contacts = config.contacts.clone();
             }
         }
 

@@ -1,6 +1,7 @@
 pub(crate) mod agent_jobs;
 pub mod apply_patch;
 mod artifacts;
+pub(crate) mod contacts;
 mod dynamic;
 mod grep_files;
 mod js_repl;

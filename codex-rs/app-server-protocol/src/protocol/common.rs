@@ -296,6 +296,18 @@ client_request_definitions! {
         params: v2::SkillsListParams,
         response: v2::SkillsListResponse,
     },
+    ContactList => "contact/list" {
+        params: (),
+        response: v2::ContactListResponse,
+    },
+    ContactCreate => "contact/create" {
+        params: v2::ContactCreateParams,
+        response: v2::ContactCreateResponse,
+    },
+    ContactDelete => "contact/delete" {
+        params: v2::ContactDeleteParams,
+        response: v2::ContactDeleteResponse,
+    },
     PluginList => "plugin/list" {
         params: v2::PluginListParams,
         response: v2::PluginListResponse,

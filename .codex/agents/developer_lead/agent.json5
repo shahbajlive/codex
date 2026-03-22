@@ -1,11 +1,7 @@
 {
   name: "Developer Lead",
   description: "Engineering interface lead",
-  model: "lmstudio/qwen3.5-0.8b",
   extends: "main",
-  workspace: null,
-  tools: {
-    allow: null,
-    deny: null,
-  },
+  model: "gpt-5.1-codex-max",
+  tools: {},
 }

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import AgentsPage from "./pages/AgentsPage.vue";
 import ChatPage from "./pages/ChatPage.vue";
+import ContactsPage from "./pages/ContactsPage.vue";
 import PlaceholderPage from "./pages/PlaceholderPage.vue";
 import SettingsPage from "./pages/SettingsPage.vue";
 import WorkspaceMessagesRoutePage from "./pages/WorkspaceMessagesRoutePage.vue";
@@ -98,6 +99,11 @@ export const router = createRouter({
       path: "/agents",
       name: "agents",
       component: AgentsPage,
+    },
+    {
+      path: "/contacts",
+      name: "contacts",
+      component: ContactsPage,
     },
     {
       path: "/skills",

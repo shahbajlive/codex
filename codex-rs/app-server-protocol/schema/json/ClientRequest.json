@@ -5,6 +5,29 @@
       "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
       "type": "string"
     },
+    "AgentContactsConfig": {
+      "properties": {
+        "allow": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "deny": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "AgentCreateParams": {
       "properties": {
         "agentDir": {
@@ -126,6 +149,16 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "contacts": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AgentContactsConfig"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "cwd": {
@@ -695,6 +728,32 @@
         "keyPath",
         "mergeStrategy",
         "value"
+      ],
+      "type": "object"
+    },
+    "ContactCreateParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "publicThreadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "publicThreadId"
+      ],
+      "type": "object"
+    },
+    "ContactDeleteParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
       ],
       "type": "object"
     },
@@ -4009,6 +4068,78 @@
         "params"
       ],
       "title": "Skills/listRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "contact/list"
+          ],
+          "title": "Contact/listRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Contact/listRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "contact/create"
+          ],
+          "title": "Contact/createRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ContactCreateParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Contact/createRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "contact/delete"
+          ],
+          "title": "Contact/deleteRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ContactDeleteParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Contact/deleteRequest",
       "type": "object"
     },
     {

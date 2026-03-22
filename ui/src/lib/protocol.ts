@@ -6,7 +6,11 @@ import type { AgentListResponse } from "../../../codex-rs/app-server-protocol/sc
 import type { AgentReadResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentReadResponse";
 import type { AgentUpdateParams } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentUpdateParams";
 import type { AgentUpdateResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentUpdateResponse";
+import type { AgentContactsConfig } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentContactsConfig";
 import type { AgentMessageDeltaNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/AgentMessageDeltaNotification";
+import type { ContactCreateParams } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ContactCreateParams";
+import type { ContactDeleteParams } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ContactDeleteParams";
+import type { ContactListResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ContactListResponse";
 import type { ItemCompletedNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ItemCompletedNotification";
 import type { ItemStartedNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ItemStartedNotification";
 import type { Model } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/Model";
@@ -32,6 +36,7 @@ import type { TurnStartResponse } from "../../../codex-rs/app-server-protocol/sc
 import type { UserInput } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/UserInput";
 
 export type {
+  AgentContactsConfig,
   AgentInfo,
   AgentListResponse,
   AgentReadResponse,
@@ -39,6 +44,9 @@ export type {
   AgentUpdateResponse,
   AgentMessageDeltaNotification,
   ClientInfo,
+  ContactCreateParams,
+  ContactDeleteParams,
+  ContactListResponse,
   InitializeCapabilities,
   InitializeResponse,
   ItemCompletedNotification,

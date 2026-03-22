@@ -265,6 +265,7 @@ impl ConfigApi {
                 params.nickname_candidates.as_deref(),
                 params.extends.as_deref(),
                 params.workspace.as_deref(),
+                params.contacts.as_ref(),
             )
             .await
             .map_err(map_error)

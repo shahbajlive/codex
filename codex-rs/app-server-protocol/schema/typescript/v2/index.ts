@@ -8,6 +8,7 @@ export type { AdditionalFileSystemPermissions } from "./AdditionalFileSystemPerm
 export type { AdditionalMacOsPermissions } from "./AdditionalMacOsPermissions";
 export type { AdditionalNetworkPermissions } from "./AdditionalNetworkPermissions";
 export type { AdditionalPermissionProfile } from "./AdditionalPermissionProfile";
+export type { AgentContactsConfig } from "./AgentContactsConfig";
 export type { AgentCreateParams } from "./AgentCreateParams";
 export type { AgentCreateResponse } from "./AgentCreateResponse";
 export type { AgentDeleteParams } from "./AgentDeleteParams";
@@ -89,6 +90,12 @@ export type { ConfigRequirementsReadResponse } from "./ConfigRequirementsReadRes
 export type { ConfigValueWriteParams } from "./ConfigValueWriteParams";
 export type { ConfigWarningNotification } from "./ConfigWarningNotification";
 export type { ConfigWriteResponse } from "./ConfigWriteResponse";
+export type { ContactCreateParams } from "./ContactCreateParams";
+export type { ContactCreateResponse } from "./ContactCreateResponse";
+export type { ContactDeleteParams } from "./ContactDeleteParams";
+export type { ContactDeleteResponse } from "./ContactDeleteResponse";
+export type { ContactListResponse } from "./ContactListResponse";
+export type { ContactRecordResponse } from "./ContactRecordResponse";
 export type { ContextCompactedNotification } from "./ContextCompactedNotification";
 export type { CreditsSnapshot } from "./CreditsSnapshot";
 export type { DeprecationNoticeNotification } from "./DeprecationNoticeNotification";

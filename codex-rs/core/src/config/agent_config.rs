@@ -33,6 +33,9 @@ pub struct AgentConfig {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subagents: Option<SubAgentConfig>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contacts: Option<AgentContactsConfig>,
 }
 
 fn default_extends() -> Option<String> {
@@ -60,6 +63,16 @@ pub struct SubAgentConfig {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allow_agents: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentContactsConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow: Option<Vec<String>>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deny: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

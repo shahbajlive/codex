@@ -19,6 +19,7 @@ import {
 import { useSettingsStore } from "./settings";
 import { useAgentsStore } from "./agents";
 import { setAgentsClient } from "./agents";
+import { setContactsClient } from "./contacts";
 
 let client: CodexAppServerClient | null = null;
 let unsubscribeNotifications: (() => void) | null = null;
@@ -64,6 +65,7 @@ export const useCodexStore = defineStore("codex", {
       const transport = new AppServerWsTransport(settings.url);
       client = new CodexAppServerClient(transport);
       setAgentsClient(client);
+      setContactsClient(client);
 
       unsubscribeStatus = client.onStatusChange((status) => {
         this.connectionStatus = status;
@@ -92,6 +94,7 @@ export const useCodexStore = defineStore("codex", {
       client?.disconnect();
       client = null;
       setAgentsClient(null);
+      setContactsClient(null);
       this.connectionStatus = "disconnected";
       this.initializeResponse = null;
       this.resumedThreadId = null;

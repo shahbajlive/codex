@@ -26,6 +26,14 @@ fn detects_subagent_notification_fragment_case_insensitively() {
 }
 
 #[test]
+fn detects_contact_notification_fragment_case_insensitively() {
+    assert!(
+        CONTACT_NOTIFICATION_FRAGMENT
+            .matches_text("<CONTACT_NOTIFICATION>{}</contact_notification>")
+    );
+}
+
+#[test]
 fn ignores_regular_user_text() {
     assert!(!is_contextual_user_fragment(&ContentItem::InputText {
         text: "hello".to_string(),
@@ -49,6 +57,10 @@ fn classifies_memory_excluded_fragments() {
         ),
         (
             "<subagent_notification>{\"agent_id\":\"a\",\"status\":\"completed\"}</subagent_notification>",
+            false,
+        ),
+        (
+            "<contact_notification>{\"kind\":\"accepted\"}</contact_notification>",
             false,
         ),
     ];

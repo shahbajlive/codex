@@ -29,6 +29,7 @@ mod commit_attribution;
 pub mod config;
 pub mod config_loader;
 pub mod connectors;
+pub mod contacts;
 mod context_manager;
 mod contextual_user_message;
 pub mod custom_prompts;

@@ -10,6 +10,7 @@ export type AppRouteName =
   | "usage"
   | "cron"
   | "agents"
+  | "contacts"
   | "skills"
   | "settings"
   | "config";
@@ -135,6 +136,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: "agent",
       },
       {
+        name: "contacts",
+        title: "Contacts",
+        subtitle: "Global address book for inter-agent messaging.",
+        path: "/contacts",
+        icon: "agent",
+      },
+      {
         name: "skills",
         title: "Skills",
         subtitle: "Installed skills and execution helpers.",
@@ -212,6 +220,10 @@ export const ROUTE_TITLES: Record<
   "agents": {
     title: "Agents",
     subtitle: "Inspect isolated agents created by Codex collaboration flows.",
+  },
+  "contacts": {
+    title: "Contacts",
+    subtitle: "Global address book for inter-agent messaging.",
   },
   "skills": {
     title: "Skills",

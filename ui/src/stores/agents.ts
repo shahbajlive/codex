@@ -1,8 +1,13 @@
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
-import type { AgentInfo, SkillMetadata } from "../lib/protocol";
+import type {
+  AgentContactsConfig,
+  AgentInfo,
+  SkillMetadata,
+} from "../lib/protocol";
 import type { CodexAppServerClient } from "../lib/app-server-client";
 import { useSettingsStore } from "./settings";
+import type { ContactRecord } from "./contacts";
 
 let clientRef: { client: CodexAppServerClient | null } = { client: null };
 
@@ -18,6 +23,7 @@ type AgentConfig = {
   tools: { allowed: string[]; denied: string[] };
   skills: string[];
   files: { filename: string; content: string }[];
+  contacts: { allowed: string[]; denied: string[] };
 };
 
 function deepClone<T>(obj: T): T {
@@ -39,7 +45,9 @@ export const useAgentsStore = defineStore("agents", {
       | "tools"
       | "skills"
       | "channels"
-      | "cron",
+      | "cron"
+      | "contacts",
+    contactsList: [] as ContactRecord[],
   }),
 
   getters: {
@@ -56,6 +64,8 @@ export const useAgentsStore = defineStore("agents", {
       if (JSON.stringify(c.tools) !== JSON.stringify(o.tools)) return true;
       if (JSON.stringify(c.skills) !== JSON.stringify(o.skills)) return true;
       if (JSON.stringify(c.files) !== JSON.stringify(o.files)) return true;
+      if (JSON.stringify(c.contacts) !== JSON.stringify(o.contacts))
+        return true;
 
       return false;
     },
@@ -88,6 +98,7 @@ export const useAgentsStore = defineStore("agents", {
         tools: { allowed: [], denied: [] },
         skills: [],
         files: [],
+        contacts: { allowed: [], denied: [] },
       };
       this.originalConfig = null;
 
@@ -112,6 +123,10 @@ export const useAgentsStore = defineStore("agents", {
           },
           skills: agentConfig.skills || [],
           files: workspaceFiles.files,
+          contacts: {
+            allowed: agentConfig.contacts?.allow || [],
+            denied: agentConfig.contacts?.deny || [],
+          },
         };
 
         this.config = deepClone(config);
@@ -160,7 +175,9 @@ export const useAgentsStore = defineStore("agents", {
           JSON.stringify(currentConfig.tools) !==
             JSON.stringify(originalConfig.tools) ||
           JSON.stringify(currentConfig.skills) !==
-            JSON.stringify(originalConfig.skills));
+            JSON.stringify(originalConfig.skills) ||
+          JSON.stringify(currentConfig.contacts) !==
+            JSON.stringify(originalConfig.contacts));
 
       const filesDirty =
         originalConfig &&
@@ -195,6 +212,16 @@ export const useAgentsStore = defineStore("agents", {
                 : null,
           },
           skills: this.config.skills.length > 0 ? this.config.skills : null,
+          contacts: {
+            allow:
+              this.config.contacts.allowed.length > 0
+                ? this.config.contacts.allowed
+                : null,
+            deny:
+              this.config.contacts.denied.length > 0
+                ? this.config.contacts.denied
+                : null,
+          },
         });
       }
 
@@ -244,6 +271,38 @@ export const useAgentsStore = defineStore("agents", {
     isSkillEnabled(skillName: string): boolean {
       if (!this.config) return false;
       return this.config.skills.includes(skillName);
+    },
+
+    async refreshContacts() {
+      if (!clientRef?.client) return;
+      this.contactsList = await clientRef.client.listContacts();
+    },
+
+    isContactEnabled(contactId: string): boolean {
+      if (!this.config) return false;
+      if (this.config.contacts.allowed.length > 0) {
+        return this.config.contacts.allowed.includes(contactId);
+      }
+      return !this.config.contacts.denied.includes(contactId);
+    },
+
+    toggleContact(contactId: string) {
+      if (!this.config) return;
+      const denyIdx = this.config.contacts.denied.indexOf(contactId);
+      if (denyIdx >= 0) {
+        this.config.contacts.denied.splice(denyIdx, 1);
+      } else {
+        const allowIdx = this.config.contacts.allowed.indexOf(contactId);
+        if (allowIdx >= 0) {
+          this.config.contacts.allowed.splice(allowIdx, 1);
+        } else {
+          if (this.config.contacts.allowed.length > 0) {
+            this.config.contacts.denied.push(contactId);
+          } else {
+            this.config.contacts.allowed.push(contactId);
+          }
+        }
+      }
     },
   },
 

@@ -4,11 +4,14 @@ use crate::agent::role::DEFAULT_ROLE_NAME;
 use crate::agent::role::resolve_role_config;
 use crate::agent::status::is_final;
 use crate::codex_thread::ThreadConfigSnapshot;
+use crate::contacts::ContactNotification;
+use crate::contacts::ContactNotificationKind;
 use crate::error::CodexErr;
 use crate::error::Result as CodexResult;
 use crate::find_archived_thread_path_by_id_str;
 use crate::find_thread_path_by_id_str;
 use crate::rollout::RolloutRecorder;
+use crate::session_prefix::format_contact_notification_message;
 use crate::session_prefix::format_subagent_context_line;
 use crate::session_prefix::format_subagent_notification_message;
 use crate::shell_snapshot::ShellSnapshot;
@@ -432,6 +435,132 @@ impl AgentControl {
             self.state.release_spawned_thread(agent_id);
         }
         result
+    }
+
+    pub(crate) async fn spawn_detached_agent(
+        &self,
+        config: crate::config::Config,
+        session_source: SessionSource,
+    ) -> CodexResult<ThreadId> {
+        let state = self.upgrade()?;
+        let mut reservation = self.state.reserve_spawn_slot(config.agent_max_threads)?;
+        let inherited_shell_snapshot = self
+            .inherited_shell_snapshot_for_source(&state, Some(&session_source))
+            .await;
+        let inherited_exec_policy = self
+            .inherited_exec_policy_for_source(&state, Some(&session_source), &config)
+            .await;
+        let session_source = match session_source {
+            SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                parent_thread_id,
+                depth,
+                agent_role,
+                ..
+            }) => {
+                let candidate_names = agent_nickname_candidates(&config, agent_role.as_deref());
+                let candidate_name_refs: Vec<&str> =
+                    candidate_names.iter().map(String::as_str).collect();
+                let agent_nickname = reservation.reserve_agent_nickname(&candidate_name_refs)?;
+                SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                    parent_thread_id,
+                    depth,
+                    agent_nickname: Some(agent_nickname),
+                    agent_role,
+                })
+            }
+            other => other,
+        };
+        let new_thread = state
+            .spawn_new_thread_with_source(
+                config,
+                self.clone(),
+                session_source.clone(),
+                /*persist_extended_history*/ false,
+                /*metrics_service_name*/ None,
+                inherited_shell_snapshot,
+                inherited_exec_policy,
+            )
+            .await?;
+        reservation.commit(new_thread.thread_id);
+        state.notify_thread_created(new_thread.thread_id);
+        self.persist_thread_spawn_edge_for_source(
+            new_thread.thread.as_ref(),
+            new_thread.thread_id,
+            Some(&session_source),
+        )
+        .await;
+        Ok(new_thread.thread_id)
+    }
+
+    pub(crate) async fn inject_developer_message_without_turn(
+        &self,
+        thread_id: ThreadId,
+        message: String,
+    ) -> CodexResult<()> {
+        let state = self.upgrade()?;
+        let thread = state.get_thread(thread_id).await?;
+        thread.inject_developer_message_without_turn(message).await;
+        Ok(())
+    }
+
+    pub(crate) async fn inject_contact_notification(
+        &self,
+        sender_thread_id: ThreadId,
+        notification: ContactNotification,
+    ) -> CodexResult<()> {
+        let state = self.upgrade()?;
+        let thread = state.get_thread(sender_thread_id).await?;
+        thread
+            .inject_user_message_without_turn(format_contact_notification_message(&notification))
+            .await;
+        Ok(())
+    }
+
+    pub(crate) fn start_contact_status_watcher(
+        &self,
+        private_thread_id: ThreadId,
+        sender_thread_id: ThreadId,
+        sender_agent_id: String,
+        recipient_agent_id: String,
+        sender_turn_id: Option<String>,
+    ) {
+        let control = self.clone();
+        tokio::spawn(async move {
+            let Ok(mut status_rx) = control.subscribe_status(private_thread_id).await else {
+                return;
+            };
+            let mut status = status_rx.borrow().clone();
+            while matches!(status, AgentStatus::PendingInit) {
+                if status_rx.changed().await.is_err() {
+                    return;
+                }
+                status = status_rx.borrow().clone();
+            }
+
+            loop {
+                let notification = ContactNotification {
+                    kind: ContactNotificationKind::Status,
+                    sender_agent_id: sender_agent_id.clone(),
+                    recipient_agent_id: recipient_agent_id.clone(),
+                    sender_thread_id: sender_thread_id.to_string(),
+                    recipient_thread_id: private_thread_id.to_string(),
+                    sender_turn_id: sender_turn_id.clone(),
+                    status: Some(status.clone()),
+                };
+                let _ = control
+                    .inject_contact_notification(sender_thread_id, notification)
+                    .await;
+
+                if is_final(&status) {
+                    break;
+                }
+
+                if status_rx.changed().await.is_err() {
+                    break;
+                }
+                status = status_rx.borrow().clone();
+            }
+        });
     }
 
     /// Interrupt the current task for an existing agent thread.

@@ -818,6 +818,9 @@ pub struct AgentReadResponse {
     /// Skills enabled for this agent
     #[ts(optional = nullable)]
     pub skills: Option<Vec<String>>,
+    /// Contacts configuration for this agent
+    #[ts(optional = nullable)]
+    pub contacts: Option<AgentContactsConfig>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -841,6 +844,18 @@ pub struct AgentUpdateParams {
     pub tools: Option<AgentToolsConfig>,
     #[ts(optional = nullable)]
     pub skills: Option<Vec<String>>,
+    #[ts(optional = nullable)]
+    pub contacts: Option<AgentContactsConfig>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AgentContactsConfig {
+    #[ts(optional = nullable)]
+    pub allow: Option<Vec<String>>,
+    #[ts(optional = nullable)]
+    pub deny: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -3246,6 +3261,49 @@ pub struct ThreadLoadedListResponse {
     /// if None, there are no more items to return.
     pub next_cursor: Option<String>,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ContactRecordResponse {
+    pub id: String,
+    pub public_thread_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ContactListResponse {
+    pub data: Vec<ContactRecordResponse>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ContactCreateParams {
+    pub id: String,
+    pub public_thread_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ContactCreateResponse {
+    pub contact: ContactRecordResponse,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ContactDeleteParams {
+    pub id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ContactDeleteResponse {}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -7157,6 +7215,7 @@ mod tests {
             service_tier: None,
             analytics: None,
             apps: None,
+            agents: None,
             additional: HashMap::new(),
         });
 
@@ -7190,6 +7249,7 @@ mod tests {
             service_tier: None,
             analytics: None,
             apps: None,
+            agents: None,
             additional: HashMap::new(),
         });
 
@@ -7245,6 +7305,7 @@ mod tests {
             service_tier: None,
             analytics: None,
             apps: None,
+            agents: None,
             additional: HashMap::new(),
         });
 
@@ -7294,6 +7355,7 @@ mod tests {
             service_tier: None,
             analytics: None,
             apps: None,
+            agents: None,
             additional: HashMap::new(),
         });
 

@@ -15,6 +15,8 @@ pub(crate) const TURN_ABORTED_OPEN_TAG: &str = "<turn_aborted>";
 pub(crate) const TURN_ABORTED_CLOSE_TAG: &str = "</turn_aborted>";
 pub(crate) const SUBAGENT_NOTIFICATION_OPEN_TAG: &str = "<subagent_notification>";
 pub(crate) const SUBAGENT_NOTIFICATION_CLOSE_TAG: &str = "</subagent_notification>";
+pub(crate) const CONTACT_NOTIFICATION_OPEN_TAG: &str = "<contact_notification>";
+pub(crate) const CONTACT_NOTIFICATION_CLOSE_TAG: &str = "</contact_notification>";
 
 #[derive(Clone, Copy)]
 pub(crate) struct ContextualUserFragmentDefinition {
@@ -86,6 +88,11 @@ pub(crate) const SUBAGENT_NOTIFICATION_FRAGMENT: ContextualUserFragmentDefinitio
         SUBAGENT_NOTIFICATION_OPEN_TAG,
         SUBAGENT_NOTIFICATION_CLOSE_TAG,
     );
+pub(crate) const CONTACT_NOTIFICATION_FRAGMENT: ContextualUserFragmentDefinition =
+    ContextualUserFragmentDefinition::new(
+        CONTACT_NOTIFICATION_OPEN_TAG,
+        CONTACT_NOTIFICATION_CLOSE_TAG,
+    );
 
 const CONTEXTUAL_USER_FRAGMENTS: &[ContextualUserFragmentDefinition] = &[
     AGENTS_MD_FRAGMENT,
@@ -94,6 +101,7 @@ const CONTEXTUAL_USER_FRAGMENTS: &[ContextualUserFragmentDefinition] = &[
     USER_SHELL_COMMAND_FRAGMENT,
     TURN_ABORTED_FRAGMENT,
     SUBAGENT_NOTIFICATION_FRAGMENT,
+    CONTACT_NOTIFICATION_FRAGMENT,
 ];
 
 fn is_standard_contextual_user_text(text: &str) -> bool {

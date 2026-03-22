@@ -418,12 +418,13 @@ impl ThreadManager {
             persist_extended_history,
             metrics_service_name,
             parent_trace,
-            /*workspace_instructions*/ None,
+            /*user_shell_override*/ None,
+            workspace_instructions,
         ))
         .await
     }
 
-    pub(crate) async fn resume_thread_from_rollout(
+    pub(crate) async fn resume_thread_from_rollout_with_options(
         &self,
         config: Config,
         rollout_path: PathBuf,
@@ -432,7 +433,7 @@ impl ThreadManager {
         persist_extended_history: bool,
         metrics_service_name: Option<String>,
         parent_trace: Option<W3cTraceContext>,
-        /*user_shell_override*/ Option<crate::shell::Shell>,
+        user_shell_override: Option<crate::shell::Shell>,
     ) -> CodexResult<NewThread> {
         let initial_history = RolloutRecorder::get_rollout_history(&rollout_path).await?;
         Box::pin(self.state.spawn_thread(
@@ -440,12 +441,33 @@ impl ThreadManager {
             initial_history,
             auth_manager,
             self.agent_control(),
+            dynamic_tools,
+            persist_extended_history,
+            metrics_service_name,
+            parent_trace,
+            user_shell_override,
+            /*workspace_instructions*/ None,
+        ))
+        .await
+    }
+
+    pub async fn resume_thread_from_rollout(
+        &self,
+        config: Config,
+        rollout_path: PathBuf,
+        auth_manager: Arc<AuthManager>,
+        parent_trace: Option<W3cTraceContext>,
+    ) -> CodexResult<NewThread> {
+        self.resume_thread_from_rollout_with_options(
+            config,
+            rollout_path,
+            auth_manager,
             Vec::new(),
             /*persist_extended_history*/ false,
             /*metrics_service_name*/ None,
-            /*parent_trace*/ None,
+            parent_trace,
             /*user_shell_override*/ None,
-        ))
+        )
         .await
     }
 
@@ -467,24 +489,7 @@ impl ThreadManager {
             /*metrics_service_name*/ None,
             /*parent_trace*/ None,
             /*user_shell_override*/ Some(user_shell_override),
-        ))
-        .await
-    }
-
-    pub async fn resume_thread_from_rollout(
-        &self,
-        config: Config,
-        rollout_path: PathBuf,
-        auth_manager: Arc<AuthManager>,
-        parent_trace: Option<W3cTraceContext>,
-    ) -> CodexResult<NewThread> {
-        let initial_history = RolloutRecorder::get_rollout_history(&rollout_path).await?;
-        Box::pin(self.resume_thread_with_history(
-            config,
-            initial_history,
-            auth_manager,
-            /*persist_extended_history*/ false,
-            parent_trace,
+            /*workspace_instructions*/ None,
         ))
         .await
     }
@@ -506,6 +511,7 @@ impl ThreadManager {
             persist_extended_history,
             /*metrics_service_name*/ None,
             parent_trace,
+            /*user_shell_override*/ None,
             /*workspace_instructions*/ None,
         ))
         .await
@@ -520,28 +526,6 @@ impl ThreadManager {
             config,
             InitialHistory::New,
             Arc::clone(&self.state.auth_manager),
-            self.agent_control(),
-            Vec::new(),
-            /*persist_extended_history*/ false,
-            /*metrics_service_name*/ None,
-            /*parent_trace*/ None,
-            /*user_shell_override*/ Some(user_shell_override),
-        ))
-        .await
-    }
-
-    pub(crate) async fn resume_thread_from_rollout_with_user_shell_override_for_tests(
-        &self,
-        config: Config,
-        rollout_path: PathBuf,
-        auth_manager: Arc<AuthManager>,
-        user_shell_override: crate::shell::Shell,
-    ) -> CodexResult<NewThread> {
-        let initial_history = RolloutRecorder::get_rollout_history(&rollout_path).await?;
-        Box::pin(self.state.spawn_thread(
-            config,
-            initial_history,
-            auth_manager,
             self.agent_control(),
             Vec::new(),
             /*persist_extended_history*/ false,
@@ -634,6 +618,7 @@ impl ThreadManager {
             persist_extended_history,
             /*metrics_service_name*/ None,
             parent_trace,
+            /*user_shell_override*/ None,
             /*workspace_instructions*/ None,
         ))
         .await
@@ -724,6 +709,7 @@ impl ThreadManagerState {
             inherited_shell_snapshot,
             inherited_exec_policy,
             /*parent_trace*/ None,
+            /*user_shell_override*/ None,
             /*workspace_instructions*/ None,
         ))
         .await
@@ -780,6 +766,7 @@ impl ThreadManagerState {
             inherited_shell_snapshot,
             inherited_exec_policy,
             /*parent_trace*/ None,
+            /*user_shell_override*/ None,
             /*workspace_instructions*/ None,
         ))
         .await
@@ -840,7 +827,7 @@ impl ThreadManagerState {
             .register_config(&config, self.skills_manager.as_ref());
         let CodexSpawnOk {
             codex, thread_id, ..
-        } = Codex::spawn(CodexSpawnArgs {
+        } = Box::pin(Codex::spawn(CodexSpawnArgs {
             config,
             auth_manager,
             models_manager: Arc::clone(&self.models_manager),
@@ -863,7 +850,7 @@ impl ThreadManagerState {
             agent_id: None,
             workspace_instructions,
             agent_skills_allow: None,
-        })
+        }))
         .await?;
         self.finalize_thread_spawn(codex, thread_id, watch_registration)
             .await

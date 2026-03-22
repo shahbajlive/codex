@@ -438,7 +438,7 @@ impl Codex {
             persist_extended_history,
             metrics_service_name,
             inherited_shell_snapshot,
-            user_shell_override,
+            user_shell_override: shell_override,
             inherited_exec_policy,
             parent_trace: _,
             agent_tools_allow,
@@ -614,6 +614,7 @@ impl Codex {
             dynamic_tools,
             persist_extended_history,
             inherited_shell_snapshot,
+            user_shell_override: shell_override,
             agent_tools_allow,
             agent_tools_deny,
             agent_skills_allow,
@@ -1085,6 +1086,7 @@ pub(crate) struct SessionConfiguration {
     dynamic_tools: Vec<DynamicToolSpec>,
     persist_extended_history: bool,
     inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
+    user_shell_override: Option<shell::Shell>,
     pub(crate) agent_tools_allow: Option<Vec<String>>,
     pub(crate) agent_tools_deny: Option<Vec<String>>,
     pub(crate) agent_skills_allow: Option<Vec<String>>,
@@ -4568,6 +4570,15 @@ mod handlers {
             // new_turn_with_sub_id already emits the error event.
             return;
         };
+        if Box::pin(crate::contacts::try_handle_public_contact_input(
+            sess,
+            &current_context,
+            &items,
+        ))
+        .await
+        {
+            return;
+        }
         sess.maybe_emit_unknown_model_warning_for_turn(current_context.as_ref())
             .await;
         current_context.session_telemetry.user_prompt(&items);

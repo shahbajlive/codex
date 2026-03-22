@@ -1,6 +1,11 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "()": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Null",
+      "type": "null"
+    },
     "AdditionalFileSystemPermissions": {
       "properties": {
         "read": {
@@ -641,6 +646,78 @@
             "params"
           ],
           "title": "Skills/listRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "contact/list"
+              ],
+              "title": "Contact/listRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Contact/listRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "contact/create"
+              ],
+              "title": "Contact/createRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ContactCreateParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Contact/createRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "contact/delete"
+              ],
+              "title": "Contact/deleteRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ContactDeleteParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Contact/deleteRequest",
           "type": "object"
         },
         {
@@ -5114,6 +5191,29 @@
         "title": "AccountUpdatedNotification",
         "type": "object"
       },
+      "AgentContactsConfig": {
+        "properties": {
+          "allow": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "deny": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "AgentCreateParams": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
@@ -5365,6 +5465,17 @@
               "null"
             ]
           },
+          "contacts": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/AgentContactsConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Contacts configuration for this agent"
+          },
           "description": {
             "type": [
               "string",
@@ -5509,6 +5620,16 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "contacts": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/AgentContactsConfig"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "cwd": {
@@ -7700,6 +7821,91 @@
           "version"
         ],
         "title": "ConfigWriteResponse",
+        "type": "object"
+      },
+      "ContactCreateParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "publicThreadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "publicThreadId"
+        ],
+        "title": "ContactCreateParams",
+        "type": "object"
+      },
+      "ContactCreateResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "contact": {
+            "$ref": "#/definitions/v2/ContactRecordResponse"
+          }
+        },
+        "required": [
+          "contact"
+        ],
+        "title": "ContactCreateResponse",
+        "type": "object"
+      },
+      "ContactDeleteParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ContactDeleteParams",
+        "type": "object"
+      },
+      "ContactDeleteResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "ContactDeleteResponse",
+        "type": "object"
+      },
+      "ContactListResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/definitions/v2/ContactRecordResponse"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "ContactListResponse",
+        "type": "object"
+      },
+      "ContactRecordResponse": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "publicThreadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "publicThreadId"
+        ],
         "type": "object"
       },
       "ContentItem": {

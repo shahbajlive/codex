@@ -17,6 +17,7 @@ use crate::path_utils;
 use crate::path_utils::SymlinkWritePaths;
 use crate::path_utils::resolve_symlink_write_paths;
 use crate::path_utils::write_atomically;
+use codex_app_server_protocol::AgentContactsConfig as ApiAgentContactsConfig;
 use codex_app_server_protocol::AgentCreateResponse;
 use codex_app_server_protocol::AgentDeleteResponse;
 use codex_app_server_protocol::AgentInfo;
@@ -331,6 +332,7 @@ impl ConfigService {
             workspace_instructions: None,
             tools: None,
             skills: None,
+            contacts: None,
         })
     }
 
@@ -448,6 +450,7 @@ impl ConfigService {
             tools: None,
             skills: None,
             subagents: None,
+            contacts: None,
         };
 
         service.save_agent(id, &config).map_err(|e| {
@@ -608,6 +611,10 @@ impl ConfigService {
                 deny: t.deny,
             }),
             skills: config.skills,
+            contacts: config.contacts.map(|c| ApiAgentContactsConfig {
+                allow: c.allow,
+                deny: c.deny,
+            }),
         })
     }
 
@@ -622,6 +629,7 @@ impl ConfigService {
         _nickname_candidates: Option<&[String]>,
         extends: Option<&str>,
         workspace: Option<&str>,
+        contacts: Option<&ApiAgentContactsConfig>,
     ) -> Result<AgentUpdateResponse, ConfigServiceError> {
         tracing::info!("agent_update_isolated called for: {}", id);
 
@@ -655,6 +663,12 @@ impl ConfigService {
         }
         if workspace.is_some() {
             config.workspace = workspace.map(String::from);
+        }
+        if let Some(c) = contacts {
+            config.contacts = Some(crate::config::agent_config::AgentContactsConfig {
+                allow: c.allow.clone(),
+                deny: c.deny.clone(),
+            });
         }
 
         service.save_agent(id, &config).map_err(|e| {
