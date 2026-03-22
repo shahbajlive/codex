@@ -1,16 +1,7 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
 import { useAgentsStore } from "../../stores/agents";
 
 const agentsStore = useAgentsStore();
-
-async function loadContacts() {
-  if (agentsStore.contactsList.length === 0) {
-    await agentsStore.refreshContacts();
-  }
-}
-
-onMounted(loadContacts);
 </script>
 
 <template>
@@ -22,9 +13,31 @@ onMounted(loadContacts);
           Control which contacts this agent can communicate with.
         </div>
       </div>
+      <div class="row">
+        <button
+          type="button"
+          class="btn btn--sm"
+          @click="agentsStore.refreshContacts()"
+        >
+          {{ agentsStore.contactsLoading ? "Loading…" : "Refresh" }}
+        </button>
+      </div>
     </div>
 
-    <div v-if="agentsStore.contactsList.length === 0" class="stack">
+    <div
+      v-if="agentsStore.contactsError"
+      class="callout danger"
+      style="margin-top: 12px"
+    >
+      {{ agentsStore.contactsError }}
+    </div>
+
+    <div
+      v-if="
+        !agentsStore.contactsLoading && agentsStore.contactsList.length === 0
+      "
+      class="stack"
+    >
       <div class="card-sub muted">No contacts configured globally.</div>
       <div class="card-sub muted">
         Add contacts in the

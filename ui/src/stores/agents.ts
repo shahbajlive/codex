@@ -39,6 +39,8 @@ export const useAgentsStore = defineStore("agents", {
     activeFile: "",
     skillCatalog: [] as SkillMetadata[],
     skillsLoading: false,
+    contactsLoading: false,
+    contactsError: null as string | null,
     activeTab: "overview" as
       | "overview"
       | "files"
@@ -139,6 +141,10 @@ export const useAgentsStore = defineStore("agents", {
       } finally {
         this.skillsLoading = false;
       }
+
+      if (this.activeTab === "contacts") {
+        await this.refreshContacts();
+      }
     },
 
     async loadSkillCatalog() {
@@ -232,6 +238,22 @@ export const useAgentsStore = defineStore("agents", {
       this.activeFile = filename;
     },
 
+    async setActiveTab(
+      tab:
+        | "overview"
+        | "files"
+        | "tools"
+        | "skills"
+        | "channels"
+        | "cron"
+        | "contacts",
+    ) {
+      this.activeTab = tab;
+      if (tab === "contacts") {
+        await this.refreshContacts();
+      }
+    },
+
     updateFileContent(filename: string, content: string) {
       if (!this.config) return;
       const idx = this.config.files.findIndex((f) => f.filename === filename);
@@ -275,7 +297,16 @@ export const useAgentsStore = defineStore("agents", {
 
     async refreshContacts() {
       if (!clientRef?.client) return;
-      this.contactsList = await clientRef.client.listContacts();
+      this.contactsLoading = true;
+      this.contactsError = null;
+      try {
+        this.contactsList = await clientRef.client.listContacts();
+      } catch (e) {
+        this.contactsError = e instanceof Error ? e.message : String(e);
+        this.contactsList = [];
+      } finally {
+        this.contactsLoading = false;
+      }
     },
 
     isContactEnabled(contactId: string): boolean {

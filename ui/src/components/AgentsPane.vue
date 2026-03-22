@@ -137,7 +137,7 @@ const panels = [
             :key="panel.id"
             class="agent-tab"
             :class="{ active: agentsStore.activeTab === panel.id }"
-            @click="agentsStore.activeTab = panel.id"
+            @click="agentsStore.setActiveTab(panel.id)"
           >
             {{ panel.label }}
           </button>
