@@ -246,9 +246,9 @@ async fn agent_update_isolated_resolves_workspace_root_to_codex_agents_dir() {
     std::fs::write(
         agent_dir.join("agent.json5"),
         r#"{
-  name: \"Developer Lead\",
-  extends: \"main\",
-  model: \"gpt-5.1-codex-max\"
+  name: "Developer Lead",
+  extends: "main",
+  model: "gpt-5.1-codex-max"
 }"#,
     )
     .expect("write agent config");
@@ -258,6 +258,8 @@ async fn agent_update_isolated_resolves_workspace_root_to_codex_agents_dir() {
         .agent_update_isolated(
             "developer_lead",
             Some(workspace.path().to_str().expect("workspace path")),
+            None,
+            None,
             None,
             None,
             None,

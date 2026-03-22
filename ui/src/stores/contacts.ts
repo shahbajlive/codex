@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import type { CodexAppServerClient } from "../lib/app-server-client";
 import type { ContactListResponse, Thread } from "../lib/protocol";
+import { useSettingsStore } from "./settings";
 
 let clientRef: { client: CodexAppServerClient | null } = { client: null };
 
@@ -66,8 +67,21 @@ export const useContactsStore = defineStore("contacts", {
       if (!clientRef.client) throw new Error("Not connected");
       this.error = null;
       try {
-        const thread: Thread =
-          await clientRef.client.startThreadForAgent(agentId);
+        const settingsStore = useSettingsStore();
+        const agent = await clientRef.client.readAgent(
+          agentId,
+          settingsStore.cwd || undefined,
+        );
+        const thread: Thread = await clientRef.client.startThreadForAgent(
+          agentId,
+          {
+            approvalPolicy:
+              typeof agent.approvalPolicy === "string"
+                ? agent.approvalPolicy
+                : null,
+            sandboxMode: agent.sandboxMode,
+          },
+        );
         await this.addContact(agentId, thread.id);
         return { id: agentId, publicThreadId: thread.id };
       } catch (err) {

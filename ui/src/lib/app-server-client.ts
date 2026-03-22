@@ -303,11 +303,21 @@ export class CodexAppServerClient {
     await this.transport.request("contact/delete", params);
   }
 
-  async startThreadForAgent(agentId: string): Promise<Thread> {
+  async startThreadForAgent(
+    agentId: string,
+    overrides?: {
+      approvalPolicy?: ApprovalPolicy | null;
+      sandboxMode?: SandboxMode | null;
+    },
+  ): Promise<Thread> {
     const response = await this.transport.request<ThreadStartResponse>(
       "thread/start",
       {
         agentId,
+        approvalPolicy: overrides?.approvalPolicy ?? null,
+        sandbox: overrides?.sandboxMode
+          ? normalizeSandboxMode(overrides.sandboxMode)
+          : null,
         persistExtendedHistory: true,
       },
     );

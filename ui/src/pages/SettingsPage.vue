@@ -25,7 +25,7 @@ const settings = computed(() => ({
   <section class="content-panel">
     <PageHeader
       title="Connection Settings"
-      subtitle="Manage app-server connection details and runtime defaults."
+      subtitle="Manage app-server connection details and global runtime defaults."
     />
 
     <SettingsPanel

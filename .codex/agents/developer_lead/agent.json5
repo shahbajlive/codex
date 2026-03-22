@@ -3,6 +3,8 @@
   description: "Engineering interface lead",
   extends: "main",
   model: "gpt-5.1-codex-max",
+  approvalPolicy: "on-request",
+  sandboxMode: "workspace-write",
   tools: {},
   contacts: {},
 }

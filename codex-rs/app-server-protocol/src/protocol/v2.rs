@@ -805,6 +805,8 @@ pub struct AgentReadResponse {
     pub workspace: Option<String>,
     pub config: serde_json::Value,
     pub model: Option<String>,
+    pub approval_policy: Option<AskForApproval>,
+    pub sandbox_mode: Option<SandboxMode>,
     pub developer_instructions: Option<String>,
     #[ts(optional = nullable)]
     pub extends: Option<String>,
@@ -835,6 +837,10 @@ pub struct AgentUpdateParams {
     pub name: Option<String>,
     pub description: Option<String>,
     pub model: Option<String>,
+    #[ts(optional = nullable)]
+    pub approval_policy: Option<AskForApproval>,
+    #[ts(optional = nullable)]
+    pub sandbox_mode: Option<SandboxMode>,
     pub developer_instructions: Option<String>,
     pub nickname_candidates: Option<Vec<String>>,
     #[ts(optional = nullable)]

@@ -88,29 +88,6 @@ function onSelect<K extends keyof StoredSettings>(key: K, event: Event) {
           <option value="none">none</option>
         </select>
       </label>
-      <label class="field">
-        <span>Approval</span>
-        <select
-          :value="settings.approvalPolicy"
-          @change="onSelect('approvalPolicy', $event)"
-        >
-          <option value="on-request">on-request</option>
-          <option value="on-failure">on-failure</option>
-          <option value="untrusted">untrusted</option>
-          <option value="never">never</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>Sandbox</span>
-        <select
-          :value="settings.sandboxMode"
-          @change="onSelect('sandboxMode', $event)"
-        >
-          <option value="workspace-write">workspace-write</option>
-          <option value="read-only">read-only</option>
-          <option value="danger-full-access">danger-full-access</option>
-        </select>
-      </label>
     </div>
   </div>
 </template>

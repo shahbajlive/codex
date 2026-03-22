@@ -3,6 +3,8 @@ import { toRaw } from "vue";
 import type {
   AgentContactsConfig,
   AgentInfo,
+  ApprovalPolicy,
+  SandboxMode,
   SkillMetadata,
 } from "../lib/protocol";
 import type { CodexAppServerClient } from "../lib/app-server-client";
@@ -18,6 +20,8 @@ export function setAgentsClient(client: CodexAppServerClient | null) {
 type AgentConfig = {
   name: string;
   model: string;
+  approvalPolicy: ApprovalPolicy | "";
+  sandboxMode: SandboxMode | "";
   workspace: string;
   configFile: string;
   tools: { allowed: string[]; denied: string[] };
@@ -63,6 +67,8 @@ export const useAgentsStore = defineStore("agents", {
 
       if (c.name !== o.name) return true;
       if (c.model !== o.model) return true;
+      if (c.approvalPolicy !== o.approvalPolicy) return true;
+      if (c.sandboxMode !== o.sandboxMode) return true;
       if (JSON.stringify(c.tools) !== JSON.stringify(o.tools)) return true;
       if (JSON.stringify(c.skills) !== JSON.stringify(o.skills)) return true;
       if (JSON.stringify(c.files) !== JSON.stringify(o.files)) return true;
@@ -95,6 +101,8 @@ export const useAgentsStore = defineStore("agents", {
       this.config = {
         name: "",
         model: "",
+        approvalPolicy: "",
+        sandboxMode: "",
         workspace: "",
         configFile: "",
         tools: { allowed: [], denied: [] },
@@ -117,6 +125,11 @@ export const useAgentsStore = defineStore("agents", {
         const config: AgentConfig = {
           name: agentConfig.name || "",
           model: agentConfig.model || "",
+          approvalPolicy:
+            typeof agentConfig.approvalPolicy === "string"
+              ? agentConfig.approvalPolicy
+              : "",
+          sandboxMode: agentConfig.sandboxMode || "",
           workspace: agentConfig.workspace || "",
           configFile: agentConfig.configFile || "inline",
           tools: {
@@ -178,6 +191,8 @@ export const useAgentsStore = defineStore("agents", {
         originalConfig &&
         (currentConfig.name !== originalConfig.name ||
           currentConfig.model !== originalConfig.model ||
+          currentConfig.approvalPolicy !== originalConfig.approvalPolicy ||
+          currentConfig.sandboxMode !== originalConfig.sandboxMode ||
           JSON.stringify(currentConfig.tools) !==
             JSON.stringify(originalConfig.tools) ||
           JSON.stringify(currentConfig.skills) !==
@@ -205,6 +220,8 @@ export const useAgentsStore = defineStore("agents", {
           name: this.config.name || null,
           description: null,
           model: this.config.model || null,
+          approvalPolicy: this.config.approvalPolicy || null,
+          sandboxMode: this.config.sandboxMode || null,
           developerInstructions: null,
           nicknameCandidates: null,
           tools: {

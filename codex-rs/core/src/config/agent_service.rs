@@ -98,6 +98,8 @@ impl AgentConfigService {
             description,
             extends: None,
             model,
+            approval_policy: None,
+            sandbox_mode: None,
             reasoning_effort: None,
             developer_instructions,
             workspace: None,
@@ -326,6 +328,8 @@ pub struct ResolvedAgentConfig {
     pub description: Option<String>,
     pub extends: Option<String>,
     pub model: Option<String>,
+    pub approval_policy: Option<crate::protocol::AskForApproval>,
+    pub sandbox_mode: Option<codex_protocol::config_types::SandboxMode>,
     pub reasoning_effort: Option<String>,
     pub developer_instructions: Option<String>,
     pub workspace: Option<String>,
@@ -344,6 +348,8 @@ impl ResolvedAgentConfig {
             description: None,
             extends: None,
             model: None,
+            approval_policy: None,
+            sandbox_mode: None,
             reasoning_effort: None,
             developer_instructions: None,
             workspace: None,
@@ -373,6 +379,12 @@ impl ResolvedAgentConfig {
             }
             if resolved.model.is_none() {
                 resolved.model = config.model.clone();
+            }
+            if resolved.approval_policy.is_none() {
+                resolved.approval_policy = config.approval_policy.clone();
+            }
+            if resolved.sandbox_mode.is_none() {
+                resolved.sandbox_mode = config.sandbox_mode.clone();
             }
             if resolved.reasoning_effort.is_none() {
                 resolved.reasoning_effort = config.reasoning_effort.clone();

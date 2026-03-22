@@ -151,6 +151,16 @@
             "null"
           ]
         },
+        "approvalPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AskForApproval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "contacts": {
           "anyOf": [
             {
@@ -207,6 +217,16 @@
           "type": [
             "array",
             "null"
+          ]
+        },
+        "sandboxMode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SandboxMode"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "skills": {

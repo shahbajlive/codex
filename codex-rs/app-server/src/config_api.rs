@@ -261,6 +261,8 @@ impl ConfigApi {
                 params.name.as_deref(),
                 params.description.as_deref(),
                 params.model.as_deref(),
+                params.approval_policy,
+                params.sandbox_mode,
                 params.developer_instructions.as_deref(),
                 params.nickname_candidates.as_deref(),
                 params.extends.as_deref(),

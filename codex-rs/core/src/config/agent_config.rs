@@ -1,3 +1,5 @@
+use crate::protocol::AskForApproval;
+use codex_protocol::config_types::SandboxMode;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -15,6 +17,12 @@ pub struct AgentConfig {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_policy: Option<AskForApproval>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox_mode: Option<SandboxMode>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,

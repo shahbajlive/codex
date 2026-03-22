@@ -28,6 +28,7 @@ use codex_app_server_protocol::AgentUpdateResponse;
 use codex_app_server_protocol::AgentWorkspaceFile;
 use codex_app_server_protocol::AgentWorkspaceFilesResponse;
 use codex_app_server_protocol::AgentWorkspaceFilesUpdateResponse;
+use codex_app_server_protocol::AskForApproval;
 use codex_app_server_protocol::Config as ApiConfig;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigLayerMetadata;
@@ -39,6 +40,7 @@ use codex_app_server_protocol::ConfigWriteErrorCode;
 use codex_app_server_protocol::ConfigWriteResponse;
 use codex_app_server_protocol::MergeStrategy;
 use codex_app_server_protocol::OverriddenMetadata;
+use codex_app_server_protocol::SandboxMode;
 use codex_app_server_protocol::WriteStatus;
 use codex_config::CONFIG_TOML_FILE;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -86,6 +88,28 @@ pub enum ConfigServiceError {
         #[source]
         source: anyhow::Error,
     },
+}
+
+fn resolve_agents_dir(agent_dir: Option<&str>) -> Result<PathBuf, ConfigServiceError> {
+    if let Some(dir) = agent_dir {
+        let path = PathBuf::from(dir);
+        let looks_like_agents_dir = path.file_name().and_then(|name| name.to_str())
+            == Some("agents")
+            && path
+                .parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str())
+                == Some(".codex");
+
+        return if looks_like_agents_dir {
+            Ok(path)
+        } else {
+            Ok(path.join(".codex").join("agents"))
+        };
+    }
+
+    crate::config::find_codex_agents_dir()
+        .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))
 }
 
 impl ConfigServiceError {
@@ -326,6 +350,8 @@ impl ConfigService {
             workspace: workspace.clone(),
             config: role_config_json,
             model,
+            approval_policy: None,
+            sandbox_mode: None,
             developer_instructions,
             extends: None,
             has_workspace: workspace.is_some(),
@@ -430,12 +456,7 @@ impl ConfigService {
     ) -> Result<AgentCreateResponse, ConfigServiceError> {
         tracing::info!("agent_create called for: {}", id);
 
-        let agents_dir = if let Some(dir) = agent_dir {
-            PathBuf::from(dir)
-        } else {
-            crate::config::find_codex_agents_dir()
-                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
-        };
+        let agents_dir = resolve_agents_dir(agent_dir)?;
 
         let service = super::AgentConfigService::new(agents_dir);
 
@@ -444,6 +465,8 @@ impl ConfigService {
             description: description.map(String::from),
             extends: extends.map(String::from).or(Some("main".to_string())),
             model: None,
+            approval_policy: None,
+            sandbox_mode: None,
             reasoning_effort: None,
             developer_instructions: None,
             workspace: None,
@@ -500,12 +523,7 @@ impl ConfigService {
     ) -> Result<AgentDeleteResponse, ConfigServiceError> {
         tracing::info!("agent_delete called for: {}", id);
 
-        let agents_dir = if let Some(dir) = agent_dir {
-            PathBuf::from(dir)
-        } else {
-            crate::config::find_codex_agents_dir()
-                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
-        };
+        let agents_dir = resolve_agents_dir(agent_dir)?;
 
         let service = super::AgentConfigService::new(agents_dir);
 
@@ -528,12 +546,7 @@ impl ConfigService {
     ) -> Result<AgentListResponse, ConfigServiceError> {
         tracing::info!("agent_list_isolated called with agent_dir: {:?}", agent_dir);
 
-        let agents_dir = if let Some(dir) = agent_dir {
-            PathBuf::from(dir)
-        } else {
-            crate::config::find_codex_agents_dir()
-                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
-        };
+        let agents_dir = resolve_agents_dir(agent_dir)?;
 
         let service = super::AgentConfigService::new(agents_dir);
 
@@ -568,12 +581,7 @@ impl ConfigService {
     ) -> Result<AgentReadResponse, ConfigServiceError> {
         tracing::info!("agent_read_isolated called for: {}", id);
 
-        let agents_dir = if let Some(dir) = agent_dir {
-            PathBuf::from(dir)
-        } else {
-            crate::config::find_codex_agents_dir()
-                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
-        };
+        let agents_dir = resolve_agents_dir(agent_dir)?;
 
         let service = super::AgentConfigService::new(agents_dir);
 
@@ -602,6 +610,8 @@ impl ConfigService {
             },
             config: config_json,
             model: config.model,
+            approval_policy: config.approval_policy.map(AskForApproval::from),
+            sandbox_mode: config.sandbox_mode.map(SandboxMode::from),
             developer_instructions: config.developer_instructions,
             extends: config.extends,
             has_workspace,
@@ -625,6 +635,8 @@ impl ConfigService {
         name: Option<&str>,
         description: Option<&str>,
         model: Option<&str>,
+        approval_policy: Option<AskForApproval>,
+        sandbox_mode: Option<SandboxMode>,
         developer_instructions: Option<&str>,
         _nickname_candidates: Option<&[String]>,
         extends: Option<&str>,
@@ -633,12 +645,7 @@ impl ConfigService {
     ) -> Result<AgentUpdateResponse, ConfigServiceError> {
         tracing::info!("agent_update_isolated called for: {}", id);
 
-        let agents_dir = if let Some(dir) = agent_dir {
-            PathBuf::from(dir)
-        } else {
-            crate::config::find_codex_agents_dir()
-                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
-        };
+        let agents_dir = resolve_agents_dir(agent_dir)?;
 
         let service = super::AgentConfigService::new(agents_dir);
 
@@ -655,6 +662,8 @@ impl ConfigService {
         if model.is_some() {
             config.model = model.map(String::from);
         }
+        config.approval_policy = approval_policy.map(AskForApproval::to_core);
+        config.sandbox_mode = sandbox_mode.map(SandboxMode::to_core);
         if developer_instructions.is_some() {
             config.developer_instructions = developer_instructions.map(String::from);
         }
@@ -691,12 +700,7 @@ impl ConfigService {
     ) -> Result<AgentWorkspaceFilesResponse, ConfigServiceError> {
         tracing::info!("agent_workspace_files called for: {}", id);
 
-        let agents_dir = if let Some(dir) = agent_dir {
-            PathBuf::from(dir)
-        } else {
-            crate::config::find_codex_agents_dir()
-                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
-        };
+        let agents_dir = resolve_agents_dir(agent_dir)?;
 
         let service = super::AgentConfigService::new(agents_dir);
         let files = service.list_workspace_files(id);
@@ -717,12 +721,7 @@ impl ConfigService {
     ) -> Result<AgentWorkspaceFilesUpdateResponse, ConfigServiceError> {
         tracing::info!("agent_update_workspace_files called for: {}", id);
 
-        let agents_dir = if let Some(dir) = agent_dir {
-            PathBuf::from(dir)
-        } else {
-            crate::config::find_codex_agents_dir()
-                .map_err(|e| ConfigServiceError::io("failed to find codex agents dir", e))?
-        };
+        let agents_dir = resolve_agents_dir(agent_dir)?;
 
         let service = super::AgentConfigService::new(agents_dir);
         let files: Vec<(String, String)> =

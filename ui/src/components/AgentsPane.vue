@@ -16,6 +16,7 @@ const emit = defineEmits<{
   select: [agentId: string];
 }>();
 
+// TODO: can we get color from agent and not hardcode.
 function getAgentColor(name: string): string {
   const colors = [
     "#EF4444",
@@ -55,7 +56,8 @@ const panels = [
 <template>
   <div class="agents-layout">
     <section class="card agents-sidebar">
-      <div class="row">
+<!--      TODO: justify content: space between-->
+      <div class="row" style="justify-content: space-between">
         <div>
           <div class="card-title">Agents</div>
           <div class="card-sub">{{ agents.length }} configured.</div>

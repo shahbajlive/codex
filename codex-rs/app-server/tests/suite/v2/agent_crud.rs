@@ -376,7 +376,9 @@ async fn agent_update_tools() -> Result<()> {
         3,
         Some(json!({
             "id": agent_id,
-            "name": "Updated Tools Agent"
+            "name": "Updated Tools Agent",
+            "approvalPolicy": "on-request",
+            "sandboxMode": "workspace-write"
         })),
     )
     .await?;
@@ -403,6 +405,22 @@ async fn agent_update_tools() -> Result<()> {
         read_response.result.get("name").and_then(|n| n.as_str()),
         Some("Updated Tools Agent"),
         "name should be updated"
+    );
+    assert_eq!(
+        read_response
+            .result
+            .get("approvalPolicy")
+            .and_then(|policy| policy.as_str()),
+        Some("on-request"),
+        "approval policy should be updated"
+    );
+    assert_eq!(
+        read_response
+            .result
+            .get("sandboxMode")
+            .and_then(|mode| mode.as_str()),
+        Some("workspace-write"),
+        "sandbox mode should be updated"
     );
 
     let tools = read_response.result.get("tools");

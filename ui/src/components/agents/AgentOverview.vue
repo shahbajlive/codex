@@ -11,7 +11,7 @@ const codexStore = useCodexStore();
     <div class="card-header">
       <div>
         <div class="card-title">Overview</div>
-        <div class="card-sub">Agent identity and model configuration.</div>
+        <div class="card-sub">Agent identity and runtime overrides.</div>
       </div>
     </div>
 
@@ -24,6 +24,25 @@ const codexStore = useCodexStore();
             <option v-for="m in codexStore.models" :key="m.id" :value="m.id">
               {{ m.displayName }}
             </option>
+          </select>
+        </label>
+        <label class="field" style="min-width: 220px; flex: 1">
+          <span>Approval</span>
+          <select v-model="agentsStore.config!.approvalPolicy">
+            <option value="">Global default</option>
+            <option value="on-request">on-request</option>
+            <option value="on-failure">on-failure</option>
+            <option value="untrusted">untrusted</option>
+            <option value="never">never</option>
+          </select>
+        </label>
+        <label class="field" style="min-width: 220px; flex: 1">
+          <span>Sandbox</span>
+          <select v-model="agentsStore.config!.sandboxMode">
+            <option value="">Global default</option>
+            <option value="workspace-write">workspace-write</option>
+            <option value="read-only">read-only</option>
+            <option value="danger-full-access">danger-full-access</option>
           </select>
         </label>
       </div>

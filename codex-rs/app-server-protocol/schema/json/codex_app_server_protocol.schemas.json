@@ -5458,6 +5458,16 @@
       "AgentReadResponse": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
+          "approvalPolicy": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/AskForApproval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "config": true,
           "configFile": {
             "type": [
@@ -5519,6 +5529,16 @@
             "type": [
               "array",
               "null"
+            ]
+          },
+          "sandboxMode": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/SandboxMode"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "skills": {
@@ -5622,6 +5642,16 @@
               "null"
             ]
           },
+          "approvalPolicy": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/AskForApproval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "contacts": {
             "anyOf": [
               {
@@ -5678,6 +5708,16 @@
             "type": [
               "array",
               "null"
+            ]
+          },
+          "sandboxMode": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/SandboxMode"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "skills": {
