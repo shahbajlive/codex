@@ -11,7 +11,9 @@ import type { CodexAppServerClient } from "../lib/app-server-client";
 import { useSettingsStore } from "./settings";
 import type { ContactRecord } from "./contacts";
 
-let clientRef: { client: CodexAppServerClient | null } = { client: null };
+export const clientRef: { client: CodexAppServerClient | null } = {
+  client: null,
+};
 
 export function setAgentsClient(client: CodexAppServerClient | null) {
   clientRef.client = client;
@@ -20,8 +22,10 @@ export function setAgentsClient(client: CodexAppServerClient | null) {
 type AgentConfig = {
   name: string;
   model: string;
+  modelProvider: string;
   approvalPolicy: ApprovalPolicy | "";
   sandboxMode: SandboxMode | "";
+  color: string;
   workspace: string;
   configFile: string;
   tools: { allowed: string[]; denied: string[] };
@@ -67,8 +71,10 @@ export const useAgentsStore = defineStore("agents", {
 
       if (c.name !== o.name) return true;
       if (c.model !== o.model) return true;
+      if (c.modelProvider !== o.modelProvider) return true;
       if (c.approvalPolicy !== o.approvalPolicy) return true;
       if (c.sandboxMode !== o.sandboxMode) return true;
+      if (c.color !== o.color) return true;
       if (JSON.stringify(c.tools) !== JSON.stringify(o.tools)) return true;
       if (JSON.stringify(c.skills) !== JSON.stringify(o.skills)) return true;
       if (JSON.stringify(c.files) !== JSON.stringify(o.files)) return true;
@@ -101,8 +107,10 @@ export const useAgentsStore = defineStore("agents", {
       this.config = {
         name: "",
         model: "",
+        modelProvider: "",
         approvalPolicy: "",
         sandboxMode: "",
+        color: "",
         workspace: "",
         configFile: "",
         tools: { allowed: [], denied: [] },
@@ -125,11 +133,13 @@ export const useAgentsStore = defineStore("agents", {
         const config: AgentConfig = {
           name: agentConfig.name || "",
           model: agentConfig.model || "",
+          modelProvider: agentConfig.modelProvider || "",
           approvalPolicy:
             typeof agentConfig.approvalPolicy === "string"
               ? agentConfig.approvalPolicy
               : "",
           sandboxMode: agentConfig.sandboxMode || "",
+          color: agentConfig.color || "",
           workspace: agentConfig.workspace || "",
           configFile: agentConfig.configFile || "inline",
           tools: {
@@ -191,8 +201,10 @@ export const useAgentsStore = defineStore("agents", {
         originalConfig &&
         (currentConfig.name !== originalConfig.name ||
           currentConfig.model !== originalConfig.model ||
+          currentConfig.modelProvider !== originalConfig.modelProvider ||
           currentConfig.approvalPolicy !== originalConfig.approvalPolicy ||
           currentConfig.sandboxMode !== originalConfig.sandboxMode ||
+          currentConfig.color !== originalConfig.color ||
           JSON.stringify(currentConfig.tools) !==
             JSON.stringify(originalConfig.tools) ||
           JSON.stringify(currentConfig.skills) !==
@@ -220,8 +232,10 @@ export const useAgentsStore = defineStore("agents", {
           name: this.config.name || null,
           description: null,
           model: this.config.model || null,
+          modelProvider: this.config.modelProvider || null,
           approvalPolicy: this.config.approvalPolicy || null,
           sandboxMode: this.config.sandboxMode || null,
+          color: this.config.color || null,
           developerInstructions: null,
           nicknameCandidates: null,
           tools: {

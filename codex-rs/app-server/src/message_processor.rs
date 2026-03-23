@@ -658,6 +658,16 @@ impl MessageProcessor {
                 )
                 .await;
             }
+            ClientRequest::ConfigProviders {
+                request_id,
+                params: _,
+            } => {
+                self.handle_config_providers(ConnectionRequestId {
+                    connection_id,
+                    request_id,
+                })
+                .await;
+            }
             ClientRequest::ExternalAgentConfigDetect { request_id, params } => {
                 self.handle_external_agent_config_detect(
                     ConnectionRequestId {
@@ -897,6 +907,13 @@ impl MessageProcessor {
 
     async fn handle_config_read(&self, request_id: ConnectionRequestId, params: ConfigReadParams) {
         match self.config_api.read(params).await {
+            Ok(response) => self.outgoing.send_response(request_id, response).await,
+            Err(error) => self.outgoing.send_error(request_id, error).await,
+        }
+    }
+
+    async fn handle_config_providers(&self, request_id: ConnectionRequestId) {
+        match self.config_api.providers().await {
             Ok(response) => self.outgoing.send_response(request_id, response).await,
             Err(error) => self.outgoing.send_error(request_id, error).await,
         }

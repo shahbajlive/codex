@@ -9,30 +9,39 @@ import type { AskForApproval } from "./AskForApproval";
 import type { DynamicToolSpec } from "./DynamicToolSpec";
 import type { SandboxMode } from "./SandboxMode";
 
-export type ThreadStartParams = { model?: string | null, modelProvider?: string | null, serviceTier?: ServiceTier | null | null, cwd?: string | null, approvalPolicy?: AskForApproval | null, 
-/**
- * Override where approval requests are routed for review on this thread
- * and subsequent turns.
- */
-approvalsReviewer?: ApprovalsReviewer | null, sandbox?: SandboxMode | null, config?: { [key in string]?: JsonValue } | null, serviceName?: string | null, baseInstructions?: string | null, developerInstructions?: string | null, personality?: Personality | null, ephemeral?: boolean | null, dynamicTools?: Array<DynamicToolSpec> | null, 
-/**
- * Test-only experimental field used to validate experimental gating and
- * schema filtering behavior in a stable way.
- */
-mockExperimentalField?: string | null, 
-/**
- * If true, opt into emitting raw Responses API items on the event stream.
- * This is for internal use only (e.g. Codex Cloud).
- */
-experimentalRawEvents: boolean, 
-/**
- * If true, persist additional rollout EventMsg variants required to
- * reconstruct a richer thread history on resume/fork/read.
- */
-persistExtendedHistory: boolean, 
-/**
- * The agent ID to use for this thread. If provided, loads the agent's
- * configuration (including workspace instructions from AGENTS.md and SOUL.md)
- * and appends them to the developer instructions.
- */
-agentId?: string | null, };
+export type ThreadStartParams = {
+  model?: string | null;
+  modelProvider?: string | null;
+  serviceTier?: ServiceTier | null | null;
+  cwd?: string | null;
+  approvalPolicy?: AskForApproval | null;
+  /**
+   * Override where approval requests are routed for review on this thread
+   * and subsequent turns.
+   */
+  approvalsReviewer?: ApprovalsReviewer | null;
+  sandbox?: SandboxMode | null;
+  config?: { [key in string]?: JsonValue } | null;
+  serviceName?: string | null;
+  baseInstructions?: string | null;
+  developerInstructions?: string | null;
+  personality?: Personality | null;
+  ephemeral?: boolean | null;
+  dynamicTools?: Array<DynamicToolSpec> | null;
+  /**
+   * If true, opt into emitting raw Responses API items on the event stream.
+   * This is for internal use only (e.g. Codex Cloud).
+   */
+  experimentalRawEvents: boolean;
+  /**
+   * If true, persist additional rollout EventMsg variants required to
+   * reconstruct a richer thread history on resume/fork/read.
+   */
+  persistExtendedHistory: boolean;
+  /**
+   * The agent ID to use for this thread. If provided, loads the agent's
+   * configuration (including workspace instructions from AGENTS.md and SOUL.md)
+   * and appends them to the developer instructions.
+   */
+  agentId?: string | null;
+};

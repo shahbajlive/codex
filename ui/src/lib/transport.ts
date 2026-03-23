@@ -2,6 +2,12 @@ import type { RpcNotification } from "./protocol";
 
 export type JsonRpcId = number;
 
+export type RpcRequest = {
+  id: JsonRpcId;
+  method: string;
+  params?: unknown;
+};
+
 export type JsonRpcError = {
   code: number;
   message: string;
@@ -14,10 +20,17 @@ export interface CodexTransport {
   request<TResponse>(method: string, params: unknown): Promise<TResponse>;
   notify(method: string, params?: unknown): void;
   onNotification(listener: (notification: RpcNotification) => void): () => void;
+  onRequest(
+    listener: (request: RpcRequest) => Promise<unknown> | unknown,
+  ): () => void;
   onStatusChange(listener: (status: TransportStatus) => void): () => void;
 }
 
-export type TransportStatus = "idle" | "connecting" | "connected" | "disconnected";
+export type TransportStatus =
+  | "idle"
+  | "connecting"
+  | "connected"
+  | "disconnected";
 
 export class TransportRequestError extends Error {
   readonly rpcError: JsonRpcError;

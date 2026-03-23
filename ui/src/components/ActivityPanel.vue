@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { TranscriptItem } from "../lib/transcript";
+import {
+  renderTranscriptItem,
+  transcriptItemTitle,
+  type TranscriptItem,
+} from "../lib/transcript";
 
 defineProps<{
   activity: TranscriptItem[];
@@ -28,7 +32,7 @@ defineProps<{
         }"
       >
         <div class="row" style="margin-bottom: 8px; gap: 12px">
-          <strong>{{ item.kind === "activity" ? item.label : item.id }}</strong>
+          <strong>{{ transcriptItemTitle(item) || item.id }}</strong>
           <span
             v-if="'status' in item"
             class="muted"
@@ -41,9 +45,7 @@ defineProps<{
             {{ item.status }}
           </span>
         </div>
-        <pre class="activity__body muted"
-          >{{ item.kind === "activity" ? item.detail : item.text }}
-        </pre>
+        <pre class="activity__body muted">{{ renderTranscriptItem(item) }}</pre>
       </div>
     </div>
   </section>

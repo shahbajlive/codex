@@ -41,10 +41,6 @@ function defaults(): StoredSettings {
   return {
     url: "ws://127.0.0.1:8765",
     cwd: "",
-    model: "",
-    personality: "friendly",
-    approvalPolicy: "on-request",
-    sandboxMode: "workspace-write",
     theme: "system",
     navCollapsed: false,
   };

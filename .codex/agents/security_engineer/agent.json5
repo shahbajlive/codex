@@ -1,7 +1,9 @@
 {
   name: "Security Engineer",
   description: "Security Engineer - Security review and analysis",
-  model: "lmstudio/qwen3.5-2b",
+  model_provider: "lmstudio",
+  model: "qwen3.5-2b",
+  color: "#ef4444",
   extends: "developer_lead",
   workspace: null,
   tools: {

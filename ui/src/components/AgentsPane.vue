@@ -16,30 +16,29 @@ const emit = defineEmits<{
   select: [agentId: string];
 }>();
 
-// TODO: can we get color from agent and not hardcode.
-function getAgentColor(name: string): string {
-  const colors = [
-    "#EF4444",
-    "#F97316",
-    "#F59E0B",
-    "#84CC16",
-    "#22C55E",
-    "#14B8A6",
-    "#06B6D4",
-    "#0EA5E9",
-    "#3B82F6",
-    "#6366F1",
-    "#8B5CF6",
-    "#A855F7",
-    "#D946EF",
-    "#EC4899",
-    "#F43F5E",
-  ];
+function agentColor(
+  color: string | null | undefined,
+  name: string | null | undefined,
+): string {
+  return color || hashColor(name ?? "");
+}
+
+const FALLBACK_COLORS = [
+  "#6366f1",
+  "#8b5cf6",
+  "#22c55e",
+  "#f59e0b",
+  "#ef4444",
+  "#06b6d4",
+  "#3b82f6",
+  "#ec4899",
+];
+function hashColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return colors[Math.abs(hash) % colors.length];
+  return FALLBACK_COLORS[Math.abs(hash) % FALLBACK_COLORS.length];
 }
 
 const panels = [
@@ -81,14 +80,14 @@ const panels = [
           <div
             class="agent-avatar"
             :style="{
-              backgroundColor: getAgentColor(agent.name) + '20',
-              color: getAgentColor(agent.name),
+              backgroundColor: agentColor(agent.color, agent.name) + '20',
+              color: agentColor(agent.color, agent.name),
             }"
           >
-            {{ agent.name.slice(0, 1).toUpperCase() }}
+            {{ (agent.name ?? "?").slice(0, 1).toUpperCase() }}
           </div>
           <div class="agent-info">
-            <div class="agent-title">{{ agent.name }}</div>
+            <div class="agent-title">{{ agent.name ?? "—" }}</div>
             <div class="agent-sub mono">{{ agent.id }}</div>
           </div>
         </button>
@@ -101,9 +100,14 @@ const panels = [
           <div class="agent-header-main">
             <div
               class="agent-avatar agent-avatar--lg"
-              :style="{ backgroundColor: getAgentColor(selectedAgent.name) }"
+              :style="{
+                backgroundColor: agentColor(
+                  selectedAgent.color,
+                  selectedAgent.name,
+                ),
+              }"
             >
-              {{ selectedAgent.name.slice(0, 1).toUpperCase() }}
+              {{ (selectedAgent.name ?? "?").slice(0, 1).toUpperCase() }}
             </div>
             <div>
               <div class="card-title">{{ selectedAgent.name }}</div>

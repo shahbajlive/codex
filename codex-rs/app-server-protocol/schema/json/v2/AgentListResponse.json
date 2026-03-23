@@ -3,6 +3,12 @@
   "definitions": {
     "AgentInfo": {
       "properties": {
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "configFile": {
           "type": [
             "string",

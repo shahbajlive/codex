@@ -10,6 +10,7 @@ use codex_app_server_protocol::AskForApproval;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigEdit;
 use codex_app_server_protocol::ConfigLayerSource;
+use codex_app_server_protocol::ConfigProvidersResponse;
 use codex_app_server_protocol::ConfigReadParams;
 use codex_app_server_protocol::ConfigReadResponse;
 use codex_app_server_protocol::ConfigValueWriteParams;
@@ -84,6 +85,51 @@ sandbox_mode = "workspace-write"
     );
     let layers = layers.expect("layers present");
     assert_layers_user_then_optional_system(&layers, user_file)?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn config_providers_includes_built_in_and_custom_entries() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    write_config(
+        &codex_home,
+        r#"
+[model_providers.my_local]
+name = "My Local"
+base_url = "http://localhost:9999/v1"
+"#,
+    )?;
+
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+
+    let request_id = mcp.send_config_providers_request().await?;
+    let resp: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
+    )
+    .await??;
+    let ConfigProvidersResponse { providers } = to_response(resp)?;
+
+    assert_eq!(
+        providers
+            .get("lmstudio")
+            .map(|provider| provider.base_url.clone()),
+        Some(Some("http://localhost:1234/v1".to_string(),))
+    );
+    assert_eq!(
+        providers
+            .get("my_local")
+            .map(|provider| provider.name.as_str()),
+        Some("My Local")
+    );
+    assert_eq!(
+        providers
+            .get("my_local")
+            .map(|provider| provider.base_url.as_deref()),
+        Some(Some("http://localhost:9999/v1"))
+    );
 
     Ok(())
 }

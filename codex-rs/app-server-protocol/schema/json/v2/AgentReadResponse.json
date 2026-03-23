@@ -117,6 +117,12 @@
         }
       ]
     },
+    "color": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "config": true,
     "configFile": {
       "type": [
@@ -160,6 +166,12 @@
       "type": "string"
     },
     "model": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "modelProvider": {
       "type": [
         "string",
         "null"

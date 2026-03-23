@@ -6,6 +6,8 @@ import {
 import { AppServerWsTransport } from "../lib/app-server-ws-transport";
 import type {
   CodexNotification,
+  Config,
+  ConfigProviderInfo,
   InitializeResponse,
   Model,
   Thread,
@@ -25,6 +27,65 @@ let client: CodexAppServerClient | null = null;
 let unsubscribeNotifications: (() => void) | null = null;
 let unsubscribeStatus: (() => void) | null = null;
 
+function mergeProviders(
+  ...providerSets: Array<Record<string, ConfigProviderInfo>>
+): Record<string, ConfigProviderInfo> {
+  const merged: Record<string, ConfigProviderInfo> = {};
+  for (const providerSet of providerSets) {
+    Object.assign(merged, providerSet);
+  }
+  return merged;
+}
+
+function providersFromConfig(
+  config: Config | null,
+): Record<string, ConfigProviderInfo> {
+  const configuredProviders = config?.model_providers;
+  if (!configuredProviders || typeof configuredProviders !== "object") {
+    return {};
+  }
+
+  const providers: Record<string, ConfigProviderInfo> = {};
+  for (const [id, provider] of Object.entries(configuredProviders)) {
+    if (!provider || typeof provider !== "object" || Array.isArray(provider)) {
+      continue;
+    }
+
+    const providerRecord = provider as Record<string, unknown>;
+    providers[id] = {
+      name: typeof providerRecord.name === "string" ? providerRecord.name : id,
+      baseUrl:
+        typeof providerRecord.base_url === "string"
+          ? providerRecord.base_url
+          : null,
+      requiresOpenaiAuth: providerRecord.requires_openai_auth === true,
+      supportsWebsockets: providerRecord.supports_websockets === true,
+    };
+  }
+
+  return providers;
+}
+
+function providersFromModels(
+  models: Model[],
+): Record<string, ConfigProviderInfo> {
+  const providers: Record<string, ConfigProviderInfo> = {};
+  for (const model of models) {
+    const separatorIndex = model.id.indexOf("/");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+    const providerId = model.id.slice(0, separatorIndex);
+    providers[providerId] ??= {
+      name: providerId,
+      baseUrl: null,
+      requiresOpenaiAuth: false,
+      supportsWebsockets: false,
+    };
+  }
+  return providers;
+}
+
 export const useCodexStore = defineStore("codex", {
   state: () => ({
     threads: [] as Thread[],
@@ -32,6 +93,7 @@ export const useCodexStore = defineStore("codex", {
     selectedThread: null as Thread | null,
     transcript: buildTranscript(null),
     models: [] as Model[],
+    providers: {} as Record<string, ConfigProviderInfo>,
     busy: false,
     connectionStatus: "idle" as
       | "idle"
@@ -77,7 +139,29 @@ export const useCodexStore = defineStore("codex", {
         unsubscribeNotifications = client.onNotification((notification) =>
           this.handleNotification(notification),
         );
-        this.models = await client.listModels();
+        const [modelsResult, providersResult, configResult] =
+          await Promise.allSettled([
+            client.listModels(),
+            client.listConfigProviders(),
+            client.readConfig(),
+          ]);
+        const models =
+          modelsResult.status === "fulfilled" ? modelsResult.value : [];
+        const providersFromRpc =
+          providersResult.status === "fulfilled"
+            ? (providersResult.value as Record<string, ConfigProviderInfo>)
+            : {};
+        const providersFromReadConfig =
+          configResult.status === "fulfilled"
+            ? providersFromConfig(configResult.value.config)
+            : {};
+
+        this.models = models;
+        this.providers = mergeProviders(
+          providersFromModels(models),
+          providersFromReadConfig,
+          providersFromRpc,
+        );
         await this.refreshThreads();
         await this.refreshConfiguredAgents();
       } catch (error) {
@@ -98,6 +182,7 @@ export const useCodexStore = defineStore("codex", {
       setContactsClient(null);
       this.connectionStatus = "disconnected";
       this.initializeResponse = null;
+      this.providers = {};
       this.resumedThreadId = null;
     },
 
@@ -105,6 +190,7 @@ export const useCodexStore = defineStore("codex", {
       if (!client) {
         return;
       }
+      // @ts-ignore Pinia state type recursion with complex protocol types
       this.threads = await client.listThreads();
       if (!this.selectedThreadId && this.threads.length > 0) {
         await this.selectThread(this.threads[0]!.id);
@@ -126,7 +212,9 @@ export const useCodexStore = defineStore("codex", {
         const thread = await client.startThread(this.runtimeSettings());
         this.resumedThreadId = thread.id;
         this.selectedThreadId = thread.id;
+        // @ts-ignore Pinia deep type recursion
         this.selectedThread = thread;
+        // @ts-ignore Pinia deep type recursion
         this.transcript = buildTranscript(thread);
         await this.refreshThreads();
       } catch (error) {
@@ -145,7 +233,9 @@ export const useCodexStore = defineStore("codex", {
       try {
         this.busy = true;
         this.selectedThreadId = threadId;
+        // @ts-ignore Pinia deep type recursion
         this.selectedThread = await client.readThread(threadId);
+        // @ts-ignore Pinia deep type recursion
         this.transcript = buildTranscript(this.selectedThread);
       } catch (error) {
         this.errorMessage =
@@ -164,6 +254,7 @@ export const useCodexStore = defineStore("codex", {
         this.busy = true;
         if (!this.selectedThread) {
           const thread = await client.startThread(this.runtimeSettings());
+          // @ts-ignore Pinia deep type recursion
           this.selectedThread = thread;
           this.selectedThreadId = thread.id;
           this.resumedThreadId = thread.id;
@@ -173,11 +264,13 @@ export const useCodexStore = defineStore("codex", {
           this.selectedThread &&
           this.resumedThreadId !== this.selectedThread.id
         ) {
+          // @ts-ignore Pinia deep type recursion
           this.selectedThread = await client.resumeThread(
             this.selectedThread.id,
             this.runtimeSettings(),
           );
           this.resumedThreadId = this.selectedThread.id;
+          // @ts-ignore Pinia deep type recursion
           this.transcript = buildTranscript(this.selectedThread);
         }
 
@@ -190,7 +283,9 @@ export const useCodexStore = defineStore("codex", {
           message,
           this.runtimeSettings(),
         );
+        // @ts-ignore Pinia deep type recursion
         this.selectedThread = attachTurn(this.selectedThread, turn);
+        // @ts-ignore Pinia deep type recursion
         this.transcript = buildTranscript(this.selectedThread);
         await this.refreshThreads();
       } catch (error) {
@@ -219,6 +314,7 @@ export const useCodexStore = defineStore("codex", {
       return {
         cwd: settings.cwd,
         model: settings.model || null,
+        modelProvider: null,
         personality: settings.personality,
         approvalPolicy: settings.approvalPolicy,
         sandboxMode: settings.sandboxMode,

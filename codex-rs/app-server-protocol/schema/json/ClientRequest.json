@@ -161,6 +161,12 @@
             }
           ]
         },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "contacts": {
           "anyOf": [
             {
@@ -199,6 +205,12 @@
           "type": "string"
         },
         "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modelProvider": {
           "type": [
             "string",
             "null"
@@ -4953,6 +4965,29 @@
         "params"
       ],
       "title": "Config/readRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "config/providers"
+          ],
+          "title": "Config/providersRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "id",
+        "method"
+      ],
+      "title": "Config/providersRequest",
       "type": "object"
     },
     {

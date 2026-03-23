@@ -6,4 +6,4 @@ import type { AgentToolsConfig } from "./AgentToolsConfig";
 import type { AskForApproval } from "./AskForApproval";
 import type { SandboxMode } from "./SandboxMode";
 
-export type AgentUpdateParams = { id: string, cwd?: string | null, agentDir?: string | null, name: string | null, description: string | null, model: string | null, approvalPolicy?: AskForApproval | null, sandboxMode?: SandboxMode | null, developerInstructions: string | null, nicknameCandidates: Array<string> | null, extends?: string | null, workspace?: string | null, tools: AgentToolsConfig | null, skills?: Array<string> | null, contacts?: AgentContactsConfig | null, };
+export type AgentUpdateParams = { id: string, cwd?: string | null, agentDir?: string | null, name: string | null, description: string | null, model: string | null, modelProvider?: string | null, approvalPolicy?: AskForApproval | null, sandboxMode?: SandboxMode | null, color?: string | null, developerInstructions: string | null, nicknameCandidates: Array<string> | null, extends?: string | null, workspace?: string | null, tools: AgentToolsConfig | null, skills?: Array<string> | null, contacts?: AgentContactsConfig | null, };

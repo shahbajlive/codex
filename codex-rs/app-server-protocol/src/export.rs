@@ -2676,6 +2676,27 @@ export type Config = { stableField: Keep, unstableField: string | null } & ({ [k
     }
 
     #[test]
+    fn experimental_type_fields_ts_filter_removes_documented_nullable_field() {
+        let mut fields = HashSet::new();
+        fields.insert("mockExperimentalField".to_string());
+
+        let filtered = filter_experimental_type_fields_ts_contents(
+            r#"export type ThreadStartParams = { model?: string | null, config?: { [key in string]?: JsonValue } | null, dynamicTools?: Array<DynamicToolSpec> | null,
+/**
+ * Test-only experimental field used to validate experimental gating and
+ * schema filtering behavior in a stable way.
+ */
+mockExperimentalField?: string | null,
+experimentalRawEvents: boolean, persistExtendedHistory: boolean, agentId?: string | null, };"#
+                .to_string(),
+            &fields,
+        );
+
+        assert_eq!(filtered.contains("mockExperimentalField"), false);
+        assert_eq!(filtered.contains("experimentalRawEvents"), true);
+    }
+
+    #[test]
     fn stable_schema_filter_removes_mock_experimental_method() -> Result<()> {
         let output_dir = std::env::temp_dir().join(format!("codex_schema_{}", Uuid::now_v7()));
         fs::create_dir(&output_dir)?;

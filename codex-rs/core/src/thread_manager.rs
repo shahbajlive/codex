@@ -54,6 +54,7 @@ pub(crate) struct AgentRuntimeOverrides {
     agent_id: String,
     approval_policy: Option<crate::protocol::AskForApproval>,
     model: Option<String>,
+    model_provider: Option<String>,
     sandbox_mode: Option<codex_protocol::config_types::SandboxMode>,
     skills_allow: Option<Vec<String>>,
     tools_allow: Option<Vec<String>>,
@@ -104,6 +105,7 @@ fn agent_runtime_overrides(
         approval_policy: resolved.approval_policy,
         agent_id,
         model: resolved.model,
+        model_provider: resolved.model_provider,
         sandbox_mode: resolved.sandbox_mode,
         skills_allow: resolved.skills,
         tools_allow,
@@ -122,6 +124,65 @@ fn resolve_agent_runtime_overrides(
         config.codex_home.as_path(),
     )?;
     Ok(agent_runtime_overrides(agent_id.to_string(), resolved))
+}
+
+fn apply_agent_runtime_overrides_to_config(
+    config: &mut Config,
+    agent_overrides: &AgentRuntimeOverrides,
+) -> CodexResult<()> {
+    if let Some(model) = agent_overrides.model.clone() {
+        config.model = Some(model);
+    }
+    if let Some(model_provider_id) = agent_overrides.model_provider.clone() {
+        let model_provider = config
+            .model_providers
+            .get(&model_provider_id)
+            .cloned()
+            .ok_or_else(|| {
+                CodexErr::InvalidRequest(format!("Model provider `{model_provider_id}` not found"))
+            })?;
+        config.model_provider_id = model_provider_id;
+        config.model_provider = model_provider;
+    }
+    if let Some(approval_policy) = agent_overrides.approval_policy.clone() {
+        config.permissions.approval_policy = crate::config::Constrained::allow_any(approval_policy);
+    }
+    if let Some(sandbox_mode) = agent_overrides.sandbox_mode.clone() {
+        let mut sandbox_policy = match sandbox_mode {
+            codex_protocol::config_types::SandboxMode::ReadOnly => {
+                crate::protocol::SandboxPolicy::new_read_only_policy()
+            }
+            codex_protocol::config_types::SandboxMode::WorkspaceWrite => {
+                crate::protocol::SandboxPolicy::new_workspace_write_policy()
+            }
+            codex_protocol::config_types::SandboxMode::DangerFullAccess => {
+                crate::protocol::SandboxPolicy::DangerFullAccess
+            }
+        };
+        if let crate::protocol::SandboxPolicy::WorkspaceWrite { writable_roots, .. } =
+            &mut sandbox_policy
+        {
+            writable_roots.extend(
+                config
+                    .permissions
+                    .sandbox_policy
+                    .get()
+                    .get_writable_roots_with_cwd(&config.cwd)
+                    .iter()
+                    .map(|root| root.root.clone()),
+            );
+        }
+        config.permissions.sandbox_policy =
+            crate::config::Constrained::allow_any(sandbox_policy.clone());
+        config.permissions.file_system_sandbox_policy =
+            crate::protocol::FileSystemSandboxPolicy::from_legacy_sandbox_policy(
+                &sandbox_policy,
+                &config.cwd,
+            );
+        config.permissions.network_sandbox_policy =
+            crate::protocol::NetworkSandboxPolicy::from(&sandbox_policy);
+    }
+    Ok(())
 }
 
 fn agent_id_for_session_source(session_source: &SessionSource) -> Option<&str> {
@@ -448,7 +509,7 @@ impl ThreadManager {
 
     pub async fn start_thread_with_tools_and_service_name(
         &self,
-        config: Config,
+        mut config: Config,
         dynamic_tools: Vec<codex_protocol::dynamic_tools::DynamicToolSpec>,
         persist_extended_history: bool,
         metrics_service_name: Option<String>,
@@ -459,6 +520,9 @@ impl ThreadManager {
             .as_deref()
             .map(|agent_id| resolve_agent_runtime_overrides(&config, agent_id))
             .transpose()?;
+        if let Some(agent_overrides) = &agent_overrides {
+            apply_agent_runtime_overrides_to_config(&mut config, agent_overrides)?;
+        }
 
         Box::pin(self.state.spawn_thread(
             config,
@@ -878,53 +942,11 @@ impl ThreadManagerState {
             None => agent_id_for_session_source(&session_source)
                 .map(|agent_id| resolve_agent_runtime_overrides(&config, agent_id))
                 .transpose()?
-                .map(|agent_overrides| {
-                    if let Some(model) = agent_overrides.model.clone() {
-                        config.model = Some(model);
-                    }
-                    if let Some(approval_policy) = agent_overrides.approval_policy.clone() {
-                        config.permissions.approval_policy =
-                            crate::config::Constrained::allow_any(approval_policy);
-                    }
-                    if let Some(sandbox_mode) = agent_overrides.sandbox_mode.clone() {
-                        let mut sandbox_policy = match sandbox_mode {
-                            codex_protocol::config_types::SandboxMode::ReadOnly => {
-                                crate::protocol::SandboxPolicy::new_read_only_policy()
-                            }
-                            codex_protocol::config_types::SandboxMode::WorkspaceWrite => {
-                                crate::protocol::SandboxPolicy::new_workspace_write_policy()
-                            }
-                            codex_protocol::config_types::SandboxMode::DangerFullAccess => {
-                                crate::protocol::SandboxPolicy::DangerFullAccess
-                            }
-                        };
-                        if let crate::protocol::SandboxPolicy::WorkspaceWrite {
-                            writable_roots,
-                            ..
-                        } = &mut sandbox_policy
-                        {
-                            writable_roots.extend(
-                                config
-                                    .permissions
-                                    .sandbox_policy
-                                    .get()
-                                    .get_writable_roots_with_cwd(&config.cwd)
-                                    .iter()
-                                    .map(|root| root.root.clone()),
-                            );
-                        }
-                        config.permissions.sandbox_policy =
-                            crate::config::Constrained::allow_any(sandbox_policy.clone());
-                        config.permissions.file_system_sandbox_policy =
-                            crate::protocol::FileSystemSandboxPolicy::from_legacy_sandbox_policy(
-                                &sandbox_policy,
-                                &config.cwd,
-                            );
-                        config.permissions.network_sandbox_policy =
-                            crate::protocol::NetworkSandboxPolicy::from(&sandbox_policy);
-                    }
-                    agent_overrides
-                }),
+                .map(|agent_overrides| -> CodexResult<AgentRuntimeOverrides> {
+                    apply_agent_runtime_overrides_to_config(&mut config, &agent_overrides)?;
+                    Ok(agent_overrides)
+                })
+                .transpose()?,
         };
 
         let watch_registration = self

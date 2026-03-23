@@ -14,10 +14,7 @@ const { connectionStatus, models, platformSummary } = storeToRefs(codexStore);
 const settings = computed(() => ({
   url: settingsStore.url,
   cwd: settingsStore.cwd,
-  model: settingsStore.model,
-  personality: settingsStore.personality,
-  approvalPolicy: settingsStore.approvalPolicy,
-  sandboxMode: settingsStore.sandboxMode,
+  personality: settingsStore.personality
 }));
 </script>
 

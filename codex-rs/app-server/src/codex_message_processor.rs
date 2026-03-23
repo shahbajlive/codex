@@ -910,6 +910,9 @@ impl CodexMessageProcessor {
             | ClientRequest::FsCopy { .. } => {
                 warn!("Filesystem request reached CodexMessageProcessor unexpectedly");
             }
+            ClientRequest::ConfigProviders { .. } => {
+                warn!("ConfigProviders request reached CodexMessageProcessor unexpectedly");
+            }
             ClientRequest::ConfigRequirementsRead { .. } => {
                 warn!("ConfigRequirementsRead request reached CodexMessageProcessor unexpectedly");
             }
@@ -1892,6 +1895,7 @@ impl CodexMessageProcessor {
             agent_id,
         } = params;
         let mut model = model;
+        let mut model_provider = model_provider;
         let mut approval_policy = approval_policy;
         let mut sandbox = sandbox;
         if let Some(agent_id) = agent_id.as_deref()
@@ -1903,12 +1907,16 @@ impl CodexMessageProcessor {
         {
             let codex_core::config::ResolvedAgentConfig {
                 model: resolved_model,
+                model_provider: resolved_model_provider,
                 approval_policy: resolved_approval_policy,
                 sandbox_mode: resolved_sandbox_mode,
                 ..
             } = resolved;
             if model.is_none() {
                 model = resolved_model;
+            }
+            if model_provider.is_none() {
+                model_provider = resolved_model_provider;
             }
             if approval_policy.is_none() {
                 approval_policy =

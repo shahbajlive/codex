@@ -19,10 +19,16 @@ pub struct AgentConfig {
     pub model: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_provider: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approval_policy: Option<AskForApproval>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox_mode: Option<SandboxMode>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
@@ -90,6 +96,7 @@ pub struct AgentInfo {
     pub name: Option<String>,
     pub description: Option<String>,
     pub extends: Option<String>,
+    pub color: Option<String>,
     pub has_workspace: bool,
     pub workspace_path: Option<String>,
 }
@@ -101,6 +108,7 @@ impl AgentInfo {
             name: None,
             description: None,
             extends: Some("main".to_string()),
+            color: None,
             has_workspace: false,
             workspace_path: None,
         }

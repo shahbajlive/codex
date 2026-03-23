@@ -123,6 +123,12 @@
         }
       ]
     },
+    "color": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "contacts": {
       "anyOf": [
         {
@@ -161,6 +167,12 @@
       "type": "string"
     },
     "model": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "modelProvider": {
       "type": [
         "string",
         "null"

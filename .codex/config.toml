@@ -1,6 +1,11 @@
 # Codex project config
 # This enables the project-level .codex/ folder to be discovered
 # Agent roles are auto-loaded from .codex/agents/*.toml
+model_provider = "lmstudio"
+oss_provider = "lmstudio"
+
+[model_catalog_json_by_provider]
+lmstudio = "model_catalog.json"
 
 [features]
 multi_agent = true

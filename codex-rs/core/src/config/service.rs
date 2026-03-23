@@ -33,6 +33,8 @@ use codex_app_server_protocol::Config as ApiConfig;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigLayerMetadata;
 use codex_app_server_protocol::ConfigLayerSource;
+use codex_app_server_protocol::ConfigProviderInfo;
+use codex_app_server_protocol::ConfigProvidersResponse;
 use codex_app_server_protocol::ConfigReadParams;
 use codex_app_server_protocol::ConfigReadResponse;
 use codex_app_server_protocol::ConfigValueWriteParams;
@@ -46,6 +48,7 @@ use codex_config::CONFIG_TOML_FILE;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use serde_json::Value as JsonValue;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use thiserror::Error;
@@ -242,6 +245,38 @@ impl ConfigService {
         })
     }
 
+    pub async fn read_providers(&self) -> Result<ConfigProvidersResponse, ConfigServiceError> {
+        let layers = self
+            .load_thread_agnostic_config()
+            .await
+            .map_err(|err| ConfigServiceError::io("failed to read configuration layers", err))?;
+
+        let effective_config_toml: ConfigToml = layers
+            .effective_config()
+            .try_into()
+            .map_err(|err| ConfigServiceError::toml("invalid configuration", err))?;
+
+        let openai_base_url = effective_config_toml
+            .openai_base_url
+            .clone()
+            .filter(|value| !value.is_empty());
+        let openai_base_url_from_env = std::env::var(crate::config::OPENAI_BASE_URL_ENV_VAR)
+            .ok()
+            .filter(|value| !value.is_empty());
+        let effective_openai_base_url = openai_base_url.or(openai_base_url_from_env);
+
+        let mut providers = crate::built_in_model_providers(effective_openai_base_url)
+            .into_iter()
+            .map(|(id, provider)| (id, provider.into()))
+            .collect::<HashMap<String, ConfigProviderInfo>>();
+
+        for (id, provider) in effective_config_toml.model_providers {
+            providers.entry(id).or_insert_with(|| provider.into());
+        }
+
+        Ok(ConfigProvidersResponse { providers })
+    }
+
     pub async fn read_requirements(
         &self,
     ) -> Result<Option<ConfigRequirementsToml>, ConfigServiceError> {
@@ -287,6 +322,7 @@ impl ConfigService {
                 nickname_candidates: role.nickname_candidates.clone(),
                 workspace,
                 extends: None,
+                color: None,
                 has_workspace,
             });
         }
@@ -350,8 +386,10 @@ impl ConfigService {
             workspace: workspace.clone(),
             config: role_config_json,
             model,
+            model_provider: None,
             approval_policy: None,
             sandbox_mode: None,
+            color: None,
             developer_instructions,
             extends: None,
             has_workspace: workspace.is_some(),
@@ -465,8 +503,10 @@ impl ConfigService {
             description: description.map(String::from),
             extends: extends.map(String::from).or(Some("main".to_string())),
             model: None,
+            model_provider: None,
             approval_policy: None,
             sandbox_mode: None,
+            color: None,
             reasoning_effort: None,
             developer_instructions: None,
             workspace: None,
@@ -506,6 +546,7 @@ impl ConfigService {
                     nickname_candidates: None,
                     workspace: a.workspace_path,
                     extends: a.extends,
+                    color: a.color,
                     has_workspace: a.has_workspace,
                 });
 
@@ -567,6 +608,7 @@ impl ConfigService {
                 nickname_candidates: None,
                 workspace: a.workspace_path,
                 extends: a.extends,
+                color: a.color,
                 has_workspace: a.has_workspace,
             })
             .collect();
@@ -610,8 +652,10 @@ impl ConfigService {
             },
             config: config_json,
             model: config.model,
+            model_provider: config.model_provider,
             approval_policy: config.approval_policy.map(AskForApproval::from),
             sandbox_mode: config.sandbox_mode.map(SandboxMode::from),
+            color: config.color,
             developer_instructions: config.developer_instructions,
             extends: config.extends,
             has_workspace,
@@ -635,8 +679,10 @@ impl ConfigService {
         name: Option<&str>,
         description: Option<&str>,
         model: Option<&str>,
+        model_provider: Option<&str>,
         approval_policy: Option<AskForApproval>,
         sandbox_mode: Option<SandboxMode>,
+        color: Option<&str>,
         developer_instructions: Option<&str>,
         _nickname_candidates: Option<&[String]>,
         extends: Option<&str>,
@@ -662,8 +708,14 @@ impl ConfigService {
         if model.is_some() {
             config.model = model.map(String::from);
         }
+        if model_provider.is_some() {
+            config.model_provider = model_provider.map(String::from);
+        }
         config.approval_policy = approval_policy.map(AskForApproval::to_core);
         config.sandbox_mode = sandbox_mode.map(SandboxMode::to_core);
+        if color.is_some() {
+            config.color = color.map(String::from);
+        }
         if developer_instructions.is_some() {
             config.developer_instructions = developer_instructions.map(String::from);
         }
@@ -951,6 +1003,17 @@ impl ConfigService {
             self.cloud_requirements.clone(),
         )
         .await
+    }
+}
+
+impl From<crate::ModelProviderInfo> for ConfigProviderInfo {
+    fn from(value: crate::ModelProviderInfo) -> Self {
+        Self {
+            name: value.name,
+            base_url: value.base_url,
+            requires_openai_auth: value.requires_openai_auth,
+            supports_websockets: value.supports_websockets,
+        }
     }
 }
 

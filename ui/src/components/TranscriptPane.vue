@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import type { TranscriptTurn } from "../lib/transcript";
+import {
+  renderTranscriptItem,
+  transcriptItemTitle,
+  type TranscriptTurn,
+} from "../lib/transcript";
 
 const props = defineProps<{
   threadName: string;
@@ -24,6 +28,21 @@ function submit() {
   }
   emit("send", trimmed);
   draft.value = "";
+}
+
+function isUserItem(kind: string) {
+  return kind === "user";
+}
+
+function isActivityItem(kind: string) {
+  return (
+    kind === "reasoning" ||
+    kind === "plan" ||
+    kind === "command" ||
+    kind === "file-change" ||
+    kind === "tool" ||
+    kind === "event"
+  );
 }
 
 watch(
@@ -119,10 +138,10 @@ watch(
           v-for="item in turn.items"
           :key="item.id"
           class="bubble"
-          :class="item.kind === 'user' ? 'self-end' : 'self-start'"
+          :class="isUserItem(item.kind) ? 'self-end' : 'self-start'"
           :style="[
             { maxWidth: '56rem', borderRadius: '24px', padding: '14px 16px' },
-            item.kind === 'user'
+            isUserItem(item.kind)
               ? {
                   border: '1px solid',
                   borderColor:
@@ -140,17 +159,26 @@ watch(
                       'color-mix(in srgb, var(--bg-elevated) 86%, transparent)',
                     color: 'var(--chat-text)',
                   }
-                : {
-                    border: '1px solid',
-                    borderColor:
-                      'color-mix(in srgb, var(--accent-2) 26%, transparent)',
-                    background:
-                      'color-mix(in srgb, var(--accent-2-subtle) 85%, var(--bg-elevated))',
-                    color: 'var(--text)',
-                  },
+                : isActivityItem(item.kind)
+                  ? {
+                      border: '1px solid',
+                      borderColor:
+                        'color-mix(in srgb, var(--accent-2) 26%, transparent)',
+                      background:
+                        'color-mix(in srgb, var(--accent-2-subtle) 85%, var(--bg-elevated))',
+                      color: 'var(--text)',
+                    }
+                  : {
+                      border: '1px solid',
+                      borderColor:
+                        'color-mix(in srgb, var(--border-strong) 24%, transparent)',
+                      background:
+                        'color-mix(in srgb, var(--panel-strong) 82%, transparent)',
+                      color: 'var(--text)',
+                    },
           ]"
         >
-          <template v-if="item.kind === 'activity'">
+          <template v-if="transcriptItemTitle(item)">
             <div
               style="
                 margin-bottom: 8px;
@@ -159,12 +187,12 @@ watch(
                 color: var(--accent-2);
               "
             >
-              {{ item.label }}
+              {{ transcriptItemTitle(item) }}
             </div>
-            <pre class="bubble__body">{{ item.detail }}</pre>
+            <pre class="bubble__body">{{ renderTranscriptItem(item) }}</pre>
           </template>
           <template v-else>
-            <pre class="bubble__body">{{ item.text }}</pre>
+            <pre class="bubble__body">{{ renderTranscriptItem(item) }}</pre>
           </template>
         </div>
       </div>

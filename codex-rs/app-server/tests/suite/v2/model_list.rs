@@ -69,6 +69,11 @@ fn expected_visible_models() -> Vec<Model> {
         .collect()
 }
 
+fn write_config(codex_home: &TempDir, contents: &str) -> Result<()> {
+    std::fs::write(codex_home.path().join("config.toml"), contents)?;
+    Ok(())
+}
+
 #[tokio::test]
 async fn list_models_returns_all_models_with_large_limit() -> Result<()> {
     let codex_home = TempDir::new()?;
@@ -209,5 +214,86 @@ async fn list_models_rejects_invalid_cursor() -> Result<()> {
     assert_eq!(error.id, RequestId::Integer(request_id));
     assert_eq!(error.error.code, INVALID_REQUEST_ERROR_CODE);
     assert_eq!(error.error.message, "invalid cursor: invalid");
+    Ok(())
+}
+
+#[tokio::test]
+async fn list_models_includes_provider_specific_catalog_models() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    let catalog_path = codex_home.path().join("lmstudio-models.json");
+    std::fs::write(
+        &catalog_path,
+        r#"{
+  "models": [
+    {
+      "slug": "qwen3.5-2b",
+      "display_name": "qwen3.5-2b",
+      "description": "Local LM Studio model",
+      "default_reasoning_level": "medium",
+      "supported_reasoning_levels": [],
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 999,
+      "availability_nux": null,
+      "upgrade": null,
+      "base_instructions": "test",
+      "model_messages": null,
+      "supports_reasoning_summaries": false,
+      "default_reasoning_summary": "none",
+      "support_verbosity": false,
+      "default_verbosity": null,
+      "apply_patch_tool_type": null,
+      "web_search_tool_type": "text",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": false,
+      "supports_image_detail_original": false,
+      "context_window": 32768,
+      "auto_compact_token_limit": null,
+      "effective_context_window_percent": 95,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "supports_search_tool": false
+    }
+  ]
+}"#,
+    )?;
+    write_config(
+        &codex_home,
+        r#"
+[model_catalog_json_by_provider]
+lmstudio = "lmstudio-models.json"
+"#,
+    )?;
+    write_models_cache(codex_home.path())?;
+
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+
+    let request_id = mcp
+        .send_list_models_request(ModelListParams {
+            limit: Some(200),
+            cursor: None,
+            include_hidden: None,
+        })
+        .await?;
+
+    let response: JSONRPCResponse = timeout(
+        DEFAULT_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
+    )
+    .await??;
+
+    let ModelListResponse { data: items, .. } = to_response::<ModelListResponse>(response)?;
+
+    assert!(items.iter().any(|item| item.id == "lmstudio/qwen3.5-2b"));
+    assert!(
+        items
+            .iter()
+            .any(|item| item.id == expected_visible_models()[0].id)
+    );
     Ok(())
 }

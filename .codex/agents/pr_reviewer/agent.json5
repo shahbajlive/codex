@@ -1,7 +1,9 @@
 {
   name: "PR Reviewer",
   description: "PR Reviewer - Code review and quality assurance",
-  model: "lmstudio/qwen3.5-2b",
+  model_provider: "lmstudio",
+  model: "qwen3.5-2b",
+  color: "#eab308",
   extends: "developer_lead",
   workspace: null,
   tools: {

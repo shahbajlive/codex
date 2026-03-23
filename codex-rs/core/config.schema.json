@@ -2255,6 +2255,14 @@
       ],
       "description": "Optional path to a JSON model catalog (applied on startup only). Per-thread `config` overrides are accepted but do not reapply this (no-ops)."
     },
+    "model_catalog_json_by_provider": {
+      "additionalProperties": {
+        "$ref": "#/definitions/AbsolutePathBuf"
+      },
+      "default": {},
+      "description": "Optional provider-specific JSON catalogs merged with the active catalog.",
+      "type": "object"
+    },
     "model_context_window": {
       "description": "Size of the context window for the model, in tokens.",
       "format": "int64",

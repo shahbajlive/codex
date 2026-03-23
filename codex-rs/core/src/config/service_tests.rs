@@ -267,6 +267,8 @@ async fn agent_update_isolated_resolves_workspace_root_to_codex_agents_dir() {
             None,
             None,
             None,
+            None,
+            None,
             Some(&ApiAgentContactsConfig {
                 allow: None,
                 deny: Some(vec!["reviewer".to_string()]),

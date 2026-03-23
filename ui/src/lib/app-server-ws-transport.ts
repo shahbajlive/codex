@@ -1,16 +1,27 @@
-import type { CodexTransport, JsonRpcError, TransportStatus } from "./transport";
+import type {
+  CodexTransport,
+  JsonRpcError,
+  RpcRequest,
+  TransportStatus,
+} from "./transport";
 import { TransportRequestError } from "./transport";
 import type { JsonRpcId } from "./transport";
 import type { RpcNotification } from "./protocol";
 
 type PendingRequest = {
-  resolve: (value: unknown) => void;
+  resolve: (value: any) => void;
   reject: (reason?: unknown) => void;
 };
 
 type WebSocketLike = {
-  addEventListener(type: "open" | "close" | "error" | "message", listener: EventListener): void;
-  removeEventListener(type: "open" | "close" | "error" | "message", listener: EventListener): void;
+  addEventListener(
+    type: "open" | "close" | "error" | "message",
+    listener: EventListener,
+  ): void;
+  removeEventListener(
+    type: "open" | "close" | "error" | "message",
+    listener: EventListener,
+  ): void;
   send(data: string): void;
   close(): void;
 };
@@ -23,15 +34,23 @@ export type WsFactory = (url: string) => WebSocketLike;
 
 export class AppServerWsTransport implements CodexTransport {
   private socket: WebSocketLike | null = null;
-  private readonly notifications = new Set<(notification: RpcNotification) => void>();
-  private readonly statusListeners = new Set<(status: TransportStatus) => void>();
+  private readonly notifications = new Set<
+    (notification: RpcNotification) => void
+  >();
+  private readonly requestListeners = new Set<
+    (request: RpcRequest) => Promise<unknown> | unknown
+  >();
+  private readonly statusListeners = new Set<
+    (status: TransportStatus) => void
+  >();
   private readonly pending = new Map<JsonRpcId, PendingRequest>();
   private nextId = 1;
   private status: TransportStatus = "idle";
 
   constructor(
     private readonly url: string,
-    private readonly wsFactory: WsFactory = (socketUrl) => new WebSocket(socketUrl),
+    private readonly wsFactory: WsFactory = (socketUrl) =>
+      new WebSocket(socketUrl),
   ) {}
 
   async connect(): Promise<void> {
@@ -78,7 +97,10 @@ export class AppServerWsTransport implements CodexTransport {
     this.resetSocket();
   }
 
-  async request<TResponse>(method: string, params: unknown): Promise<TResponse> {
+  async request<TResponse>(
+    method: string,
+    params: unknown,
+  ): Promise<TResponse> {
     const socket = this.requireSocket();
     const id = this.nextId++;
 
@@ -94,9 +116,18 @@ export class AppServerWsTransport implements CodexTransport {
     this.requireSocket().send(JSON.stringify({ method, params }));
   }
 
-  onNotification(listener: (notification: RpcNotification) => void): () => void {
+  onNotification(
+    listener: (notification: RpcNotification) => void,
+  ): () => void {
     this.notifications.add(listener);
     return () => this.notifications.delete(listener);
+  }
+
+  onRequest(
+    listener: (request: RpcRequest) => Promise<unknown> | unknown,
+  ): () => void {
+    this.requestListeners.add(listener);
+    return () => this.requestListeners.delete(listener);
   }
 
   onStatusChange(listener: (status: TransportStatus) => void): () => void {
@@ -110,7 +141,7 @@ export class AppServerWsTransport implements CodexTransport {
     this.resetSocket();
   };
 
-  private readonly handleMessage = (event: MessageEventLike) => {
+  private readonly handleMessage = async (event: MessageEventLike) => {
     const raw = event.data;
     if (typeof raw !== "string" || raw.length === 0) {
       return;
@@ -123,6 +154,15 @@ export class AppServerWsTransport implements CodexTransport {
       method?: string;
       params?: unknown;
     };
+
+    if (typeof payload.method === "string" && typeof payload.id === "number") {
+      await this.handleRequest({
+        id: payload.id,
+        method: payload.method,
+        params: payload.params,
+      });
+      return;
+    }
 
     if (typeof payload.method === "string") {
       const notification = {
@@ -170,8 +210,14 @@ export class AppServerWsTransport implements CodexTransport {
 
   private resetSocket() {
     if (this.socket) {
-      this.socket.removeEventListener("close", this.handleClose as EventListener);
-      this.socket.removeEventListener("message", this.handleMessage as EventListener);
+      this.socket.removeEventListener(
+        "close",
+        this.handleClose as EventListener,
+      );
+      this.socket.removeEventListener(
+        "message",
+        this.handleMessage as EventListener,
+      );
     }
     this.socket = null;
     this.setStatus("disconnected");
@@ -181,6 +227,45 @@ export class AppServerWsTransport implements CodexTransport {
     this.status = status;
     for (const listener of this.statusListeners) {
       listener(status);
+    }
+  }
+
+  private async handleRequest(request: RpcRequest) {
+    const socket = this.socket;
+    if (!socket) {
+      return;
+    }
+
+    const listener = this.requestListeners.values().next().value as
+      | ((request: RpcRequest) => Promise<unknown> | unknown)
+      | undefined;
+
+    if (!listener) {
+      socket.send(
+        JSON.stringify({
+          id: request.id,
+          error: {
+            code: -32601,
+            message: `No handler registered for ${request.method}`,
+          },
+        }),
+      );
+      return;
+    }
+
+    try {
+      const result = await listener(request);
+      socket.send(JSON.stringify({ id: request.id, result: result ?? null }));
+    } catch (error) {
+      socket.send(
+        JSON.stringify({
+          id: request.id,
+          error: {
+            code: -32000,
+            message: error instanceof Error ? error.message : String(error),
+          },
+        }),
+      );
     }
   }
 }

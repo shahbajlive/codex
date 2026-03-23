@@ -724,6 +724,11 @@ impl McpProcess {
         self.send_request("config/read", params).await
     }
 
+    pub async fn send_config_providers_request(&mut self) -> anyhow::Result<i64> {
+        self.send_request("config/providers", None::<serde_json::Value>)
+            .await
+    }
+
     pub async fn send_config_value_write_request(
         &mut self,
         params: ConfigValueWriteParams,

@@ -88,6 +88,16 @@ impl AgentConfigService {
             .and_then(|v| v.as_str())
             .map(String::from);
 
+        let model_provider = toml_config
+            .get("model_provider")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let color = toml_config
+            .get("color")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
         let developer_instructions = toml_config
             .get("developer_instructions")
             .and_then(|v| v.as_str())
@@ -98,8 +108,10 @@ impl AgentConfigService {
             description,
             extends: None,
             model,
+            model_provider,
             approval_policy: None,
             sandbox_mode: None,
+            color,
             reasoning_effort: None,
             developer_instructions,
             workspace: None,
@@ -136,6 +148,7 @@ impl AgentConfigService {
                                         name: config.name,
                                         description: config.description,
                                         extends: config.extends,
+                                        color: config.color,
                                         has_workspace,
                                         workspace_path: Some(
                                             path.join("workspace").to_string_lossy().to_string(),
@@ -165,6 +178,7 @@ impl AgentConfigService {
                                     name: config.name,
                                     description: config.description,
                                     extends: config.extends,
+                                    color: config.color,
                                     has_workspace,
                                     workspace_path: if has_workspace {
                                         Some(
@@ -328,6 +342,7 @@ pub struct ResolvedAgentConfig {
     pub description: Option<String>,
     pub extends: Option<String>,
     pub model: Option<String>,
+    pub model_provider: Option<String>,
     pub approval_policy: Option<crate::protocol::AskForApproval>,
     pub sandbox_mode: Option<codex_protocol::config_types::SandboxMode>,
     pub reasoning_effort: Option<String>,
@@ -348,6 +363,7 @@ impl ResolvedAgentConfig {
             description: None,
             extends: None,
             model: None,
+            model_provider: None,
             approval_policy: None,
             sandbox_mode: None,
             reasoning_effort: None,
@@ -379,6 +395,9 @@ impl ResolvedAgentConfig {
             }
             if resolved.model.is_none() {
                 resolved.model = config.model.clone();
+            }
+            if resolved.model_provider.is_none() {
+                resolved.model_provider = config.model_provider.clone();
             }
             if resolved.approval_policy.is_none() {
                 resolved.approval_policy = config.approval_policy.clone();

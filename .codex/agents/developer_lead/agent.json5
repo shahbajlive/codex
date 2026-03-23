@@ -2,9 +2,11 @@
   name: "Developer Lead",
   description: "Engineering interface lead",
   extends: "main",
-  model: "gpt-5.1-codex-max",
+  model: "lmstudio/qwen3.5-0.8b",
+  modelProvider: "lmstudio",
   approvalPolicy: "on-request",
   sandboxMode: "workspace-write",
+  color: "#8b5cf6",
   tools: {},
   contacts: {},
 }

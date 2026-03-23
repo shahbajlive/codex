@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import type { Model } from "../lib/protocol";
 import type { StoredSettings } from "../lib/storage";
 
 const props = defineProps<{
   settings: StoredSettings;
-  models: Model[];
   platformSummary: string;
   connectionStatus: string;
 }>();
@@ -67,15 +65,6 @@ function onSelect<K extends keyof StoredSettings>(key: K, event: Event) {
       <label class="field">
         <span>Working Directory</span>
         <input :value="settings.cwd" @input="onInput('cwd', $event)" />
-      </label>
-      <label class="field">
-        <span>Model</span>
-        <select :value="settings.model" @change="onSelect('model', $event)">
-          <option value="">Default</option>
-          <option v-for="model in models" :key="model.id" :value="model.id">
-            {{ model.displayName }}
-          </option>
-        </select>
       </label>
       <label class="field">
         <span>Personality</span>

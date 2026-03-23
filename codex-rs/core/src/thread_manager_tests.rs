@@ -233,6 +233,7 @@ async fn start_thread_with_agent_id_uses_agent_tools_and_skills_config() {
         .expect("start thread");
 
     let snapshot = thread.thread.config_snapshot().await;
+    assert_eq!(snapshot.model_provider_id, "openai");
     assert_eq!(snapshot.agent_tools_allow, Some(vec!["bash".to_string()]));
     assert_eq!(
         snapshot.agent_tools_deny,
@@ -242,4 +243,116 @@ async fn start_thread_with_agent_id_uses_agent_tools_and_skills_config() {
         snapshot.agent_skills_allow,
         Some(vec!["skill-a".to_string()])
     );
+}
+
+#[tokio::test]
+async fn start_thread_with_agent_id_uses_agent_model_provider_override() {
+    let workspace = tempdir().expect("workspace");
+    let agent_dir = workspace
+        .path()
+        .join(".codex")
+        .join("agents")
+        .join("developer_lead");
+    std::fs::create_dir_all(&agent_dir).expect("create agent dir");
+    std::fs::write(
+        agent_dir.join("agent.json5"),
+        r#"{
+  name: "Developer Lead",
+  extends: "main",
+  model: "custom-lmstudio/qwen3.5-0.8b",
+  modelProvider: "custom-lmstudio"
+}"#,
+    )
+    .expect("write agent config");
+
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config();
+    config.codex_home = temp_dir.path().join("codex-home");
+    config.cwd = workspace.path().to_path_buf();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let mut custom_provider = config.model_providers["lmstudio"].clone();
+    custom_provider.name = "Custom LM Studio".to_string();
+    custom_provider.base_url = Some("http://127.0.0.1:4321/v1".to_string());
+    config
+        .model_providers
+        .insert("custom-lmstudio".to_string(), custom_provider);
+
+    let manager = ThreadManager::with_models_provider_and_home_for_tests(
+        CodexAuth::from_api_key("dummy"),
+        config.model_provider.clone(),
+        config.codex_home.clone(),
+    );
+    let thread = manager
+        .start_thread_with_tools_and_service_name(
+            config,
+            Vec::new(),
+            false,
+            None,
+            None,
+            Some("developer_lead".to_string()),
+        )
+        .await
+        .expect("start thread");
+
+    let snapshot = thread.thread.config_snapshot().await;
+    assert_eq!(snapshot.model_provider_id, "custom-lmstudio");
+}
+
+#[tokio::test]
+async fn start_thread_with_agent_id_inherits_model_provider_from_extended_agent() {
+    let workspace = tempdir().expect("workspace");
+    let agents_dir = workspace.path().join(".codex").join("agents");
+    let main_agent_dir = agents_dir.join("main");
+    let child_agent_dir = agents_dir.join("developer_lead");
+    std::fs::create_dir_all(&main_agent_dir).expect("create main agent dir");
+    std::fs::create_dir_all(&child_agent_dir).expect("create child agent dir");
+    std::fs::write(
+        main_agent_dir.join("agent.json5"),
+        r#"{
+  name: "Main",
+  modelProvider: "custom-lmstudio"
+}"#,
+    )
+    .expect("write parent agent config");
+    std::fs::write(
+        child_agent_dir.join("agent.json5"),
+        r#"{
+  name: "Developer Lead",
+  extends: "main",
+  model: "custom-lmstudio/qwen3.5-0.8b"
+}"#,
+    )
+    .expect("write child agent config");
+
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config();
+    config.codex_home = temp_dir.path().join("codex-home");
+    config.cwd = workspace.path().to_path_buf();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let mut custom_provider = config.model_providers["lmstudio"].clone();
+    custom_provider.name = "Custom LM Studio".to_string();
+    custom_provider.base_url = Some("http://127.0.0.1:4321/v1".to_string());
+    config
+        .model_providers
+        .insert("custom-lmstudio".to_string(), custom_provider);
+
+    let manager = ThreadManager::with_models_provider_and_home_for_tests(
+        CodexAuth::from_api_key("dummy"),
+        config.model_provider.clone(),
+        config.codex_home.clone(),
+    );
+    let thread = manager
+        .start_thread_with_tools_and_service_name(
+            config,
+            Vec::new(),
+            false,
+            None,
+            None,
+            Some("developer_lead".to_string()),
+        )
+        .await
+        .expect("start thread");
+
+    let snapshot = thread.thread.config_snapshot().await;
+    assert_eq!(snapshot.model_provider_id, "custom-lmstudio");
 }

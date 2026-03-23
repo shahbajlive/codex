@@ -79,6 +79,7 @@ use codex_protocol::config_types::WebSearchMode;
 use codex_protocol::config_types::WebSearchToolConfig;
 use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::MacOsSeatbeltProfileExtensions;
+use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::permissions::FileSystemSandboxPolicy;
@@ -939,6 +940,68 @@ fn load_model_catalog(
         .transpose()
 }
 
+fn normalize_provider_catalog_model(
+    provider_id: &str,
+    mut model: ModelInfo,
+) -> std::io::Result<ModelInfo> {
+    let provider_prefix = format!("{provider_id}/");
+    if model.slug.contains('/') {
+        if !model.slug.starts_with(&provider_prefix) {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "provider catalog model `{}` must use the `{provider_id}/` prefix",
+                    model.slug
+                ),
+            ));
+        }
+    } else {
+        model.slug = format!("{provider_id}/{}", model.slug);
+    }
+
+    if let Some(upgrade) = model.upgrade.as_mut() {
+        if upgrade.model.contains('/') {
+            if !upgrade.model.starts_with(&provider_prefix) {
+                return Err(std::io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!(
+                        "provider catalog upgrade target `{}` must use the `{provider_id}/` prefix",
+                        upgrade.model
+                    ),
+                ));
+            }
+        } else {
+            upgrade.model = format!("{provider_id}/{}", upgrade.model);
+        }
+    }
+
+    Ok(model)
+}
+
+fn load_provider_model_catalogs(
+    model_catalog_json_by_provider: HashMap<String, AbsolutePathBuf>,
+) -> std::io::Result<Option<ModelsResponse>> {
+    if model_catalog_json_by_provider.is_empty() {
+        return Ok(None);
+    }
+
+    let mut provider_models = Vec::new();
+    for (provider_id, path) in model_catalog_json_by_provider {
+        let catalog = load_catalog_json(&path)?;
+        provider_models.extend(
+            catalog
+                .models
+                .into_iter()
+                .map(|model| normalize_provider_catalog_model(&provider_id, model))
+                .collect::<std::io::Result<Vec<_>>>()?,
+        );
+    }
+
+    Ok(Some(ModelsResponse {
+        models: provider_models,
+    }))
+}
+
 fn filter_mcp_servers_by_requirements(
     mcp_servers: &mut HashMap<String, McpServerConfig>,
     mcp_requirements: Option<&Sourced<BTreeMap<String, McpServerRequirement>>>,
@@ -1398,6 +1461,10 @@ pub struct ConfigToml {
     /// Optional path to a JSON model catalog (applied on startup only).
     /// Per-thread `config` overrides are accepted but do not reapply this (no-ops).
     pub model_catalog_json: Option<AbsolutePathBuf>,
+
+    /// Optional provider-specific JSON catalogs merged with the active catalog.
+    #[serde(default)]
+    pub model_catalog_json_by_provider: HashMap<String, AbsolutePathBuf>,
 
     /// Optionally specify a personality for the model
     pub personality: Option<Personality>,
@@ -2600,12 +2667,37 @@ impl Config {
         let review_model = override_review_model.or(cfg.review_model);
 
         let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(true);
-        let model_catalog = load_model_catalog(
+        let base_model_catalog = load_model_catalog(
             config_profile
                 .model_catalog_json
                 .clone()
                 .or(cfg.model_catalog_json.clone()),
         )?;
+        let provider_model_catalog =
+            load_provider_model_catalogs(cfg.model_catalog_json_by_provider.clone())?;
+        let model_catalog = match (base_model_catalog, provider_model_catalog) {
+            (Some(mut base_catalog), Some(provider_catalog)) => {
+                base_catalog.models.extend(provider_catalog.models);
+                Some(base_catalog)
+            }
+            (Some(base_catalog), None) => Some(base_catalog),
+            (None, Some(mut provider_catalog)) => {
+                let mut bundled_catalog = ModelsResponse {
+                    models:
+                        crate::models_manager::manager::ModelsManager::load_remote_models_from_file(
+                        )
+                        .map_err(|err| {
+                            std::io::Error::new(
+                                ErrorKind::InvalidData,
+                                format!("failed to load bundled models.json: {err}"),
+                            )
+                        })?,
+                };
+                bundled_catalog.models.append(&mut provider_catalog.models);
+                Some(bundled_catalog)
+            }
+            (None, None) => None,
+        };
 
         let log_dir = cfg
             .log_dir

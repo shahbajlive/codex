@@ -486,7 +486,7 @@ impl ModelsManager {
         *self.remote_models.write().await = existing_models;
     }
 
-    fn load_remote_models_from_file() -> Result<Vec<ModelInfo>, std::io::Error> {
+    pub(crate) fn load_remote_models_from_file() -> Result<Vec<ModelInfo>, std::io::Error> {
         let file_contents = include_str!("../../models.json");
         let response: ModelsResponse = serde_json::from_str(file_contents)?;
         Ok(response.models)
@@ -573,12 +573,12 @@ impl ModelsManager {
         model: &str,
         config: &Config,
     ) -> ModelInfo {
-        let candidates: &[ModelInfo] = if let Some(model_catalog) = config.model_catalog.as_ref() {
-            &model_catalog.models
-        } else {
-            &[]
-        };
-        Self::construct_model_info_from_candidates(model, candidates, config)
+        let candidates = config
+            .model_catalog
+            .as_ref()
+            .map(|model_catalog| model_catalog.models.clone())
+            .unwrap_or_default();
+        Self::construct_model_info_from_candidates(model, &candidates, config)
     }
 }
 

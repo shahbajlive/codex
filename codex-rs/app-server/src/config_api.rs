@@ -16,6 +16,7 @@ use codex_app_server_protocol::AgentWorkspaceFilesResponse;
 use codex_app_server_protocol::AgentWorkspaceFilesUpdateParams;
 use codex_app_server_protocol::AgentWorkspaceFilesUpdateResponse;
 use codex_app_server_protocol::ConfigBatchWriteParams;
+use codex_app_server_protocol::ConfigProvidersResponse;
 use codex_app_server_protocol::ConfigReadParams;
 use codex_app_server_protocol::ConfigReadResponse;
 use codex_app_server_protocol::ConfigRequirements;
@@ -115,6 +116,13 @@ impl ConfigApi {
         params: ConfigReadParams,
     ) -> Result<ConfigReadResponse, JSONRPCErrorError> {
         self.config_service().read(params).await.map_err(map_error)
+    }
+
+    pub(crate) async fn providers(&self) -> Result<ConfigProvidersResponse, JSONRPCErrorError> {
+        self.config_service()
+            .read_providers()
+            .await
+            .map_err(map_error)
     }
 
     pub(crate) async fn config_requirements_read(
@@ -261,8 +269,10 @@ impl ConfigApi {
                 params.name.as_deref(),
                 params.description.as_deref(),
                 params.model.as_deref(),
+                params.model_provider.as_deref(),
                 params.approval_policy,
                 params.sandbox_mode,
+                params.color.as_deref(),
                 params.developer_instructions.as_deref(),
                 params.nickname_candidates.as_deref(),
                 params.extends.as_deref(),

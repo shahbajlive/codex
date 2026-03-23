@@ -14,6 +14,7 @@ const mockAgents = [
     nicknameCandidates: null,
     workspace: null,
     extends: null,
+    color: null,
     hasWorkspace: false,
   },
 ] satisfies AgentInfo[];

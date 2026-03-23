@@ -24,6 +24,7 @@ use codex_protocol::permissions::FileSystemSandboxPolicy;
 use codex_protocol::permissions::FileSystemSpecialPath;
 use codex_protocol::permissions::NetworkSandboxPolicy;
 use serde::Deserialize;
+use std::collections::HashMap;
 use tempfile::tempdir;
 
 use super::*;
@@ -31,7 +32,6 @@ use core_test_support::test_absolute_path;
 use pretty_assertions::assert_eq;
 
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -4118,6 +4118,47 @@ fn model_catalog_json_rejects_empty_catalog() -> std::io::Result<()> {
     assert!(
         err.to_string().contains("must contain at least one model"),
         "unexpected error: {err}"
+    );
+    Ok(())
+}
+
+#[test]
+fn model_catalog_json_by_provider_loads_and_prefixes_models() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let catalog_path = codex_home.path().join("lmstudio-catalog.json");
+    let mut catalog: ModelsResponse =
+        serde_json::from_str(include_str!("../../models.json")).expect("valid models.json");
+    catalog.models = catalog.models.into_iter().take(1).collect();
+    catalog.models[0].slug = "qwen-test".to_string();
+    std::fs::write(
+        &catalog_path,
+        serde_json::to_string(&catalog).expect("serialize catalog"),
+    )?;
+
+    let cfg = ConfigToml {
+        model_catalog_json_by_provider: HashMap::from([(
+            "lmstudio".to_string(),
+            AbsolutePathBuf::from_absolute_path(catalog_path)?,
+        )]),
+        ..Default::default()
+    };
+
+    let config = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        codex_home.path().to_path_buf(),
+    )?;
+
+    assert_eq!(
+        config
+            .model_catalog
+            .as_ref()
+            .and_then(|catalog| catalog
+                .models
+                .iter()
+                .find(|model| model.slug == "lmstudio/qwen-test"))
+            .map(|model| model.slug.clone()),
+        Some("lmstudio/qwen-test".to_string())
     );
     Ok(())
 }
