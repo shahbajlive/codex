@@ -95,7 +95,10 @@ pub const DEFAULT_IN_PROCESS_CHANNEL_CAPACITY: usize = CHANNEL_CAPACITY;
 type PendingClientRequestResponse = std::result::Result<Result, JSONRPCErrorError>;
 
 fn server_notification_requires_delivery(notification: &ServerNotification) -> bool {
-    matches!(notification, ServerNotification::TurnCompleted(_))
+    matches!(
+        notification,
+        ServerNotification::TurnAborted(_) | ServerNotification::TurnCompleted(_)
+    )
 }
 
 fn legacy_notification_requires_delivery(notification: &JSONRPCNotification) -> bool {
@@ -868,6 +871,14 @@ mod tests {
                     status: TurnStatus::Completed,
                     error: None,
                 },
+            })
+        ));
+
+        assert!(server_notification_requires_delivery(
+            &ServerNotification::TurnAborted(codex_app_server_protocol::TurnAbortedNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                reason: codex_app_server_protocol::TurnAbortReason::Interrupted,
             })
         ));
 

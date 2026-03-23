@@ -1520,6 +1520,29 @@
             },
             "method": {
               "enum": [
+                "config/providers"
+              ],
+              "title": "Config/providersRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "id",
+            "method"
+          ],
+          "title": "Config/providersRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
                 "externalAgentConfig/detect"
               ],
               "title": "ExternalAgentConfig/detectRequestMethod",
@@ -3952,6 +3975,26 @@
           "properties": {
             "method": {
               "enum": [
+                "turn/aborted"
+              ],
+              "title": "Turn/abortedNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/TurnAbortedNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Turn/abortedNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
                 "turn/completed"
               ],
               "title": "Turn/completedNotificationMethod",
@@ -5320,6 +5363,12 @@
       },
       "AgentInfo": {
         "properties": {
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "configFile": {
             "type": [
               "string",
@@ -5468,6 +5517,12 @@
               }
             ]
           },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "config": true,
           "configFile": {
             "type": [
@@ -5511,6 +5566,12 @@
             "type": "string"
           },
           "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modelProvider": {
             "type": [
               "string",
               "null"
@@ -5652,6 +5713,12 @@
               }
             ]
           },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "contacts": {
             "anyOf": [
               {
@@ -5690,6 +5757,12 @@
             "type": "string"
           },
           "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modelProvider": {
             "type": [
               "string",
               "null"
@@ -7639,6 +7712,47 @@
             "type": "object"
           }
         ]
+      },
+      "ConfigProviderInfo": {
+        "properties": {
+          "baseUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "requiresOpenaiAuth": {
+            "type": "boolean"
+          },
+          "supportsWebsockets": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "requiresOpenaiAuth",
+          "supportsWebsockets"
+        ],
+        "type": "object"
+      },
+      "ConfigProvidersResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "providers": {
+            "additionalProperties": {
+              "$ref": "#/definitions/v2/ConfigProviderInfo"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "title": "ConfigProvidersResponse",
+        "type": "object"
       },
       "ConfigReadParams": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -14928,6 +15042,35 @@
           "items",
           "status"
         ],
+        "type": "object"
+      },
+      "TurnAbortReason": {
+        "enum": [
+          "interrupted",
+          "replaced",
+          "reviewEnded"
+        ],
+        "type": "string"
+      },
+      "TurnAbortedNotification": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "reason": {
+            "$ref": "#/definitions/v2/TurnAbortReason"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "turnId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "threadId",
+          "turnId"
+        ],
+        "title": "TurnAbortedNotification",
         "type": "object"
       },
       "TurnCompletedNotification": {

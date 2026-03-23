@@ -94,6 +94,8 @@ use codex_app_server_protocol::ToolRequestUserInputParams;
 use codex_app_server_protocol::ToolRequestUserInputQuestion;
 use codex_app_server_protocol::ToolRequestUserInputResponse;
 use codex_app_server_protocol::Turn;
+use codex_app_server_protocol::TurnAbortReason as V2TurnAbortReason;
+use codex_app_server_protocol::TurnAbortedNotification;
 use codex_app_server_protocol::TurnCompletedNotification;
 use codex_app_server_protocol::TurnDiffUpdatedNotification;
 use codex_app_server_protocol::TurnError;
@@ -129,6 +131,7 @@ use codex_protocol::protocol::RealtimeEvent;
 use codex_protocol::protocol::ReviewDecision;
 use codex_protocol::protocol::ReviewOutputEvent;
 use codex_protocol::protocol::TokenCountEvent;
+use codex_protocol::protocol::TurnAbortReason;
 use codex_protocol::protocol::TurnDiffEvent;
 use codex_protocol::request_permissions::PermissionGrantScope as CorePermissionGrantScope;
 use codex_protocol::request_permissions::RequestPermissionProfile as CoreRequestPermissionProfile;
@@ -1761,7 +1764,14 @@ pub(crate) async fn apply_bespoke_event_handling(
             thread_watch_manager
                 .note_turn_interrupted(&conversation_id.to_string())
                 .await;
-            handle_turn_interrupted(conversation_id, event_turn_id, &outgoing, &thread_state).await;
+            handle_turn_interrupted(
+                conversation_id,
+                event_turn_id,
+                turn_aborted_event.reason,
+                &outgoing,
+                &thread_state,
+            )
+            .await;
         }
         EventMsg::ThreadRolledBack(_rollback_event) => {
             let pending = {
@@ -1944,6 +1954,26 @@ async fn emit_turn_completed_with_status(
         .await;
 }
 
+async fn emit_turn_aborted(
+    conversation_id: ThreadId,
+    event_turn_id: String,
+    reason: TurnAbortReason,
+    outgoing: &ThreadScopedOutgoingMessageSender,
+) {
+    let notification = TurnAbortedNotification {
+        thread_id: conversation_id.to_string(),
+        turn_id: event_turn_id,
+        reason: match reason {
+            TurnAbortReason::Interrupted => V2TurnAbortReason::Interrupted,
+            TurnAbortReason::Replaced => V2TurnAbortReason::Replaced,
+            TurnAbortReason::ReviewEnded => V2TurnAbortReason::ReviewEnded,
+        },
+    };
+    outgoing
+        .send_server_notification(ServerNotification::TurnAborted(notification))
+        .await;
+}
+
 async fn complete_file_change_item(
     conversation_id: ThreadId,
     item_id: String,
@@ -2098,10 +2128,13 @@ async fn handle_turn_complete(
 async fn handle_turn_interrupted(
     conversation_id: ThreadId,
     event_turn_id: String,
+    reason: TurnAbortReason,
     outgoing: &ThreadScopedOutgoingMessageSender,
     thread_state: &Arc<Mutex<ThreadState>>,
 ) {
     find_and_remove_turn_summary(conversation_id, thread_state).await;
+
+    emit_turn_aborted(conversation_id, event_turn_id.clone(), reason, outgoing).await;
 
     emit_turn_completed_with_status(
         conversation_id,
@@ -3281,9 +3314,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_handle_turn_interrupted_emits_interrupted_with_error() -> Result<()> {
+    async fn test_handle_turn_interrupted_emits_aborted_then_interrupted_completion() -> Result<()>
+    {
         let conversation_id = ThreadId::new();
         let event_turn_id = "interrupt1".to_string();
+        let expected_turn_id = event_turn_id.clone();
         let thread_state = new_thread_state();
         handle_error(
             conversation_id,
@@ -3306,10 +3341,21 @@ mod tests {
         handle_turn_interrupted(
             conversation_id,
             event_turn_id.clone(),
+            TurnAbortReason::Interrupted,
             &outgoing,
             &thread_state,
         )
         .await;
+
+        let msg = recv_broadcast_message(&mut rx).await?;
+        match msg {
+            OutgoingMessage::AppServerNotification(ServerNotification::TurnAborted(n)) => {
+                assert_eq!(n.thread_id, conversation_id.to_string());
+                assert_eq!(n.turn_id, expected_turn_id);
+                assert_eq!(n.reason, V2TurnAbortReason::Interrupted);
+            }
+            other => bail!("unexpected message: {other:?}"),
+        }
 
         let msg = recv_broadcast_message(&mut rx).await?;
         match msg {
@@ -3320,6 +3366,7 @@ mod tests {
             }
             other => bail!("unexpected message: {other:?}"),
         }
+
         assert!(rx.try_recv().is_err(), "no extra messages expected");
         Ok(())
     }

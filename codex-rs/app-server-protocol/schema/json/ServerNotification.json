@@ -3273,6 +3273,33 @@
       ],
       "type": "object"
     },
+    "TurnAbortReason": {
+      "enum": [
+        "interrupted",
+        "replaced",
+        "reviewEnded"
+      ],
+      "type": "string"
+    },
+    "TurnAbortedNotification": {
+      "properties": {
+        "reason": {
+          "$ref": "#/definitions/TurnAbortReason"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "threadId",
+        "turnId"
+      ],
+      "type": "object"
+    },
     "TurnCompletedNotification": {
       "properties": {
         "threadId": {
@@ -3906,6 +3933,26 @@
         "params"
       ],
       "title": "Hook/startedNotification",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "method": {
+          "enum": [
+            "turn/aborted"
+          ],
+          "title": "Turn/abortedNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/TurnAbortedNotification"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "Turn/abortedNotification",
       "type": "object"
     },
     {

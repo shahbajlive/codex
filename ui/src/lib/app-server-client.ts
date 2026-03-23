@@ -1,4 +1,4 @@
-import type { CodexTransport } from "./transport";
+import type { CodexTransport, RpcRequest } from "./transport";
 import type {
   AgentInfo,
   AgentListResponse,
@@ -7,6 +7,8 @@ import type {
   AgentUpdateResponse,
   ApprovalPolicy,
   CodexNotification,
+  ConfigReadResponse,
+  ConfigProvidersResponse,
   ContactCreateParams,
   ContactDeleteParams,
   ContactListResponse,
@@ -30,13 +32,21 @@ import type {
 export type ThreadRuntimeSettings = {
   cwd: string;
   model: string | null;
+  modelProvider: string | null;
   personality: PersonalityMode;
   approvalPolicy: ApprovalPolicy;
   sandboxMode: SandboxMode;
 };
 
 export class CodexAppServerClient {
-  constructor(private readonly transport: CodexTransport) {}
+  private readonly serverRequestHandlers = new Map<
+    string,
+    (params: unknown) => Promise<unknown> | unknown
+  >();
+
+  constructor(private readonly transport: CodexTransport) {
+    this.transport.onRequest((request) => this.handleServerRequest(request));
+  }
 
   async connect() {
     await this.transport.connect();
@@ -51,9 +61,21 @@ export class CodexAppServerClient {
       switch (notification.method) {
         case "thread/started":
         case "turn/started":
+        case "turn/aborted":
         case "item/started":
         case "item/completed":
         case "item/agentMessage/delta":
+        case "item/plan/delta":
+        case "item/reasoning/summaryTextDelta":
+        case "item/reasoning/textDelta":
+        case "item/reasoning/summaryPartAdded":
+        case "item/commandExecution/outputDelta":
+        case "item/commandExecution/terminalInteraction":
+        case "item/fileChange/outputDelta":
+        case "turn/plan/updated":
+        case "turn/diff/updated":
+        case "thread/tokenUsage/updated":
+        case "error":
         case "turn/completed":
           listener(notification as CodexNotification);
           break;
@@ -69,6 +91,19 @@ export class CodexAppServerClient {
     ) => void,
   ) {
     return this.transport.onStatusChange(listener);
+  }
+
+  onServerRequest(
+    method: string,
+    handler: (params: unknown) => Promise<unknown> | unknown,
+  ) {
+    this.serverRequestHandlers.set(method, handler);
+    return () => {
+      const current = this.serverRequestHandlers.get(method);
+      if (current === handler) {
+        this.serverRequestHandlers.delete(method);
+      }
+    };
   }
 
   async initialize(): Promise<InitializeResponse> {
@@ -105,6 +140,21 @@ export class CodexAppServerClient {
       },
     );
     return response.data;
+  }
+
+  async readConfig(cwd?: string): Promise<ConfigReadResponse> {
+    return this.transport.request<ConfigReadResponse>("config/read", {
+      includeLayers: false,
+      cwd: cwd || null,
+    });
+  }
+
+  async listConfigProviders(): Promise<ConfigProvidersResponse["providers"]> {
+    const response = await this.transport.request<ConfigProvidersResponse>(
+      "config/providers",
+      null,
+    );
+    return response.providers;
   }
 
   async listAgentThreads(): Promise<Thread[]> {
@@ -210,6 +260,7 @@ export class CodexAppServerClient {
       {
         cwd: settings.cwd || null,
         model: settings.model,
+        modelProvider: settings.modelProvider,
         personality: normalizePersonality(settings.personality),
         approvalPolicy: normalizeApprovalPolicy(settings.approvalPolicy),
         sandbox: normalizeSandboxMode(settings.sandboxMode),
@@ -248,6 +299,13 @@ export class CodexAppServerClient {
     return response.turn;
   }
 
+  async interruptTurn(threadId: string, turnId: string): Promise<void> {
+    await this.transport.request("turn/interrupt", {
+      threadId,
+      turnId,
+    });
+  }
+
   async listModels(): Promise<Model[]> {
     const response = await this.transport.request<ModelListResponse>(
       "model/list",
@@ -269,6 +327,142 @@ export class CodexAppServerClient {
       },
     );
     return response.data.flatMap((entry) => entry.skills);
+  }
+
+  async forkThread(
+    threadId: string,
+    settings: ThreadRuntimeSettings,
+  ): Promise<Thread> {
+    const response = await this.transport.request<{ thread: Thread }>(
+      "thread/fork",
+      {
+        threadId,
+        cwd: settings.cwd || null,
+        model: settings.model,
+        approvalPolicy: normalizeApprovalPolicy(settings.approvalPolicy),
+        sandbox: normalizeSandboxMode(settings.sandboxMode),
+        persistExtendedHistory: true,
+      },
+    );
+    return response.thread;
+  }
+
+  async setThreadName(threadId: string, name: string): Promise<void> {
+    await this.transport.request("thread/name/set", {
+      threadId,
+      name,
+    });
+  }
+
+  async compactThread(threadId: string): Promise<void> {
+    await this.transport.request("thread/compact/start", {
+      threadId,
+    });
+  }
+
+  async runThreadShellCommand(
+    threadId: string,
+    command: string,
+  ): Promise<void> {
+    await this.transport.request("thread/shellCommand", {
+      threadId,
+      command,
+    });
+  }
+
+  async cleanBackgroundTerminals(threadId: string): Promise<void> {
+    await this.transport.request("thread/backgroundTerminals/clean", {
+      threadId,
+    });
+  }
+
+  async startReview(
+    threadId: string,
+    target:
+      | { type: "uncommittedChanges" }
+      | { type: "custom"; instructions: string },
+  ): Promise<{ turn: Turn; reviewThreadId: string }> {
+    return this.transport.request("review/start", {
+      threadId,
+      target,
+      delivery: "inline",
+    });
+  }
+
+  async listExperimentalFeatures(): Promise<
+    Array<{
+      name: string;
+      stage: string;
+      enabled: boolean;
+      displayName: string | null;
+      description: string | null;
+    }>
+  > {
+    const response = await this.transport.request<{
+      data: Array<{
+        name: string;
+        stage: string;
+        enabled: boolean;
+        displayName: string | null;
+        description: string | null;
+      }>;
+    }>("experimentalFeature/list", {});
+    return response.data;
+  }
+
+  async listApps(
+    threadId?: string,
+  ): Promise<Array<{ name: string; isEnabled: boolean }>> {
+    const response = await this.transport.request<{
+      data: Array<{ name: string; isEnabled: boolean }>;
+    }>("app/list", {
+      cursor: null,
+      limit: 100,
+      threadId: threadId || null,
+      forceRefetch: false,
+    });
+    return response.data;
+  }
+
+  async listPlugins(
+    cwd?: string,
+  ): Promise<Array<{ name: string; installed: boolean; enabled: boolean }>> {
+    const response = await this.transport.request<{
+      marketplaces: Array<{
+        plugins: Array<{ name: string; installed: boolean; enabled: boolean }>;
+      }>;
+    }>("plugin/list", {
+      cwds: cwd ? [cwd] : null,
+      forceRemoteSync: false,
+    });
+    return response.marketplaces.flatMap((marketplace) => marketplace.plugins);
+  }
+
+  async listMcpServers(): Promise<Array<{ name: string; authStatus: string }>> {
+    const response = await this.transport.request<{
+      data: Array<{ name: string; authStatus: string }>;
+    }>("mcpServerStatus/list", {
+      cursor: null,
+      limit: 100,
+    });
+    return response.data;
+  }
+
+  async logout(): Promise<void> {
+    await this.transport.request("account/logout", null);
+  }
+
+  async uploadFeedback(
+    reason: string | null,
+    threadId?: string,
+  ): Promise<void> {
+    await this.transport.request("feedback/upload", {
+      classification: "general",
+      reason,
+      threadId: threadId || null,
+      includeLogs: false,
+      extraLogFiles: null,
+    });
   }
 
   async writeFile(path: string, dataBase64: string): Promise<void> {
@@ -322,6 +516,14 @@ export class CodexAppServerClient {
       },
     );
     return response.thread;
+  }
+
+  private async handleServerRequest(request: RpcRequest) {
+    const handler = this.serverRequestHandlers.get(request.method);
+    if (!handler) {
+      throw new Error(`Unhandled server request: ${request.method}`);
+    }
+    return handler(request.params);
   }
 }
 

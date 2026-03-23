@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "TurnAbortReason": {
+      "enum": [
+        "interrupted",
+        "replaced",
+        "reviewEnded"
+      ],
+      "type": "string"
+    }
+  },
+  "properties": {
+    "reason": {
+      "$ref": "#/definitions/TurnAbortReason"
+    },
+    "threadId": {
+      "type": "string"
+    },
+    "turnId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "reason",
+    "threadId",
+    "turnId"
+  ],
+  "title": "TurnAbortedNotification",
+  "type": "object"
+}

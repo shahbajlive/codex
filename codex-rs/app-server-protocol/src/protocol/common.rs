@@ -490,6 +490,10 @@ client_request_definitions! {
         params: v2::ConfigReadParams,
         response: v2::ConfigReadResponse,
     },
+    ConfigProviders => "config/providers" {
+        params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,
+        response: v2::ConfigProvidersResponse,
+    },
     ExternalAgentConfigDetect => "externalAgentConfig/detect" {
         params: v2::ExternalAgentConfigDetectParams,
         response: v2::ExternalAgentConfigDetectResponse,
@@ -939,6 +943,7 @@ server_notification_definitions! {
     ThreadTokenUsageUpdated => "thread/tokenUsage/updated" (v2::ThreadTokenUsageUpdatedNotification),
     TurnStarted => "turn/started" (v2::TurnStartedNotification),
     HookStarted => "hook/started" (v2::HookStartedNotification),
+    TurnAborted => "turn/aborted" (v2::TurnAbortedNotification),
     TurnCompleted => "turn/completed" (v2::TurnCompletedNotification),
     HookCompleted => "hook/completed" (v2::HookCompletedNotification),
     TurnDiffUpdated => "turn/diff/updated" (v2::TurnDiffUpdatedNotification),

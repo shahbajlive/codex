@@ -83,6 +83,8 @@ export type { ConfigEdit } from "./ConfigEdit";
 export type { ConfigLayer } from "./ConfigLayer";
 export type { ConfigLayerMetadata } from "./ConfigLayerMetadata";
 export type { ConfigLayerSource } from "./ConfigLayerSource";
+export type { ConfigProviderInfo } from "./ConfigProviderInfo";
+export type { ConfigProvidersResponse } from "./ConfigProvidersResponse";
 export type { ConfigReadParams } from "./ConfigReadParams";
 export type { ConfigReadResponse } from "./ConfigReadResponse";
 export type { ConfigRequirements } from "./ConfigRequirements";
@@ -338,6 +340,8 @@ export type { ToolRequestUserInputQuestion } from "./ToolRequestUserInputQuestio
 export type { ToolRequestUserInputResponse } from "./ToolRequestUserInputResponse";
 export type { ToolsV2 } from "./ToolsV2";
 export type { Turn } from "./Turn";
+export type { TurnAbortReason } from "./TurnAbortReason";
+export type { TurnAbortedNotification } from "./TurnAbortedNotification";
 export type { TurnCompletedNotification } from "./TurnCompletedNotification";
 export type { TurnDiffUpdatedNotification } from "./TurnDiffUpdatedNotification";
 export type { TurnError } from "./TurnError";

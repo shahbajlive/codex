@@ -71,7 +71,7 @@ Use the thread APIs to create, list, or archive conversations. Drive a conversat
   The returned `thread.ephemeral` flag tells you whether the session is intentionally in-memory only; when it is `true`, `thread.path` is `null`.
 - Begin a turn: To send user input, call `turn/start` with the target `threadId` and the user's input. Optional fields let you override model, cwd, sandbox policy, approval policy, approvals reviewer, etc. This immediately returns the new turn object. The app-server emits `turn/started` when that turn actually begins running.
 - Stream events: After `turn/start`, keep reading JSON-RPC notifications on stdout. You’ll see `item/started`, `item/completed`, deltas like `item/agentMessage/delta`, tool progress, etc. These represent streaming model output plus any side effects (commands, tool calls, reasoning notes).
-- Finish the turn: When the model is done (or the turn is interrupted via making the `turn/interrupt` call), the server sends `turn/completed` with the final turn state and token usage.
+- Finish the turn: When the model is done, the server sends `turn/completed` with the final turn state and token usage. If a turn is interrupted via `turn/interrupt`, the server first emits `turn/aborted` with the abort reason and then emits `turn/completed` with the interrupted final turn state.
 
 ## Initialization
 

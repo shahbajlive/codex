@@ -83,6 +83,7 @@ use codex_protocol::protocol::SkillToolDependency as CoreSkillToolDependency;
 use codex_protocol::protocol::SubAgentSource as CoreSubAgentSource;
 use codex_protocol::protocol::TokenUsage as CoreTokenUsage;
 use codex_protocol::protocol::TokenUsageInfo as CoreTokenUsageInfo;
+use codex_protocol::protocol::TurnAbortReason as CoreTurnAbortReason;
 use codex_protocol::request_permissions::PermissionGrantScope as CorePermissionGrantScope;
 use codex_protocol::request_permissions::RequestPermissionProfile as CoreRequestPermissionProfile;
 use codex_protocol::user_input::ByteRange as CoreByteRange;
@@ -779,6 +780,8 @@ pub struct AgentInfo {
     pub workspace: Option<String>,
     #[ts(optional = nullable)]
     pub extends: Option<String>,
+    #[ts(optional = nullable)]
+    pub color: Option<String>,
     pub has_workspace: bool,
 }
 
@@ -805,8 +808,12 @@ pub struct AgentReadResponse {
     pub workspace: Option<String>,
     pub config: serde_json::Value,
     pub model: Option<String>,
+    #[ts(optional = nullable)]
+    pub model_provider: Option<String>,
     pub approval_policy: Option<AskForApproval>,
     pub sandbox_mode: Option<SandboxMode>,
+    #[ts(optional = nullable)]
+    pub color: Option<String>,
     pub developer_instructions: Option<String>,
     #[ts(optional = nullable)]
     pub extends: Option<String>,
@@ -838,9 +845,13 @@ pub struct AgentUpdateParams {
     pub description: Option<String>,
     pub model: Option<String>,
     #[ts(optional = nullable)]
+    pub model_provider: Option<String>,
+    #[ts(optional = nullable)]
     pub approval_policy: Option<AskForApproval>,
     #[ts(optional = nullable)]
     pub sandbox_mode: Option<SandboxMode>,
+    #[ts(optional = nullable)]
+    pub color: Option<String>,
     pub developer_instructions: Option<String>,
     pub nickname_candidates: Option<Vec<String>>,
     #[ts(optional = nullable)]
@@ -1054,6 +1065,23 @@ pub struct ConfigReadResponse {
     pub origins: HashMap<String, ConfigLayerMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layers: Option<Vec<ConfigLayer>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ConfigProviderInfo {
+    pub name: String,
+    pub base_url: Option<String>,
+    pub requires_openai_auth: bool,
+    pub supports_websockets: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ConfigProvidersResponse {
+    pub providers: HashMap<String, ConfigProviderInfo>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS, ExperimentalApi)]
@@ -4111,6 +4139,14 @@ pub enum TurnStatus {
     InProgress,
 }
 
+v2_enum_from_core! {
+    pub enum TurnAbortReason from CoreTurnAbortReason {
+        Interrupted,
+        Replaced,
+        ReviewEnded,
+    }
+}
+
 // Turn APIs
 #[derive(
     Serialize, Deserialize, Debug, Default, Clone, PartialEq, JsonSchema, TS, ExperimentalApi,
@@ -5025,6 +5061,15 @@ pub struct Usage {
 pub struct TurnCompletedNotification {
     pub thread_id: String,
     pub turn: Turn,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TurnAbortedNotification {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub reason: TurnAbortReason,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

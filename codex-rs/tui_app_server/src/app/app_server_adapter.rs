@@ -431,6 +431,7 @@ fn server_notification_thread_target(
         }
         ServerNotification::TurnStarted(notification) => Some(notification.thread_id.as_str()),
         ServerNotification::HookStarted(notification) => Some(notification.thread_id.as_str()),
+        ServerNotification::TurnAborted(notification) => Some(notification.thread_id.as_str()),
         ServerNotification::TurnCompleted(notification) => Some(notification.thread_id.as_str()),
         ServerNotification::HookCompleted(notification) => Some(notification.thread_id.as_str()),
         ServerNotification::TurnDiffUpdated(notification) => Some(notification.thread_id.as_str()),
@@ -660,6 +661,26 @@ fn server_notification_thread_events(
                     turn_id: notification.turn.id,
                     model_context_window: None,
                     collaboration_mode_kind: ModeKind::default(),
+                }),
+            }],
+        )),
+        ServerNotification::TurnAborted(notification) => Some((
+            ThreadId::from_string(&notification.thread_id).ok()?,
+            vec![Event {
+                id: String::new(),
+                msg: EventMsg::TurnAborted(TurnAbortedEvent {
+                    turn_id: Some(notification.turn_id),
+                    reason: match notification.reason {
+                        codex_app_server_protocol::TurnAbortReason::Interrupted => {
+                            TurnAbortReason::Interrupted
+                        }
+                        codex_app_server_protocol::TurnAbortReason::Replaced => {
+                            TurnAbortReason::Replaced
+                        }
+                        codex_app_server_protocol::TurnAbortReason::ReviewEnded => {
+                            TurnAbortReason::ReviewEnded
+                        }
+                    },
                 }),
             }],
         )),
@@ -1307,6 +1328,8 @@ mod tests {
     use codex_app_server_protocol::ThreadItem;
     use codex_app_server_protocol::ThreadStatus;
     use codex_app_server_protocol::Turn;
+    use codex_app_server_protocol::TurnAbortReason as AppServerTurnAbortReason;
+    use codex_app_server_protocol::TurnAbortedNotification;
     use codex_app_server_protocol::TurnCompletedNotification;
     use codex_app_server_protocol::TurnError;
     use codex_app_server_protocol::TurnStatus;
@@ -1648,6 +1671,34 @@ mod tests {
                     status: TurnStatus::Interrupted,
                     error: None,
                 },
+            }),
+        )
+        .expect("notification should bridge");
+
+        assert_eq!(
+            actual_thread_id,
+            ThreadId::from_string(&thread_id).expect("valid thread id")
+        );
+        let [event] = events.as_slice() else {
+            panic!("expected one bridged event");
+        };
+        let EventMsg::TurnAborted(aborted) = &event.msg else {
+            panic!("expected turn aborted event");
+        };
+        assert_eq!(aborted.turn_id.as_deref(), Some(turn_id.as_str()));
+        assert_eq!(aborted.reason, TurnAbortReason::Interrupted);
+    }
+
+    #[test]
+    fn bridges_turn_aborted_notifications_from_server_notifications() {
+        let thread_id = "019cee8c-b993-7e33-88c0-014d4e62612d".to_string();
+        let turn_id = "019cee8c-b9b4-7f10-a1b0-38caa876a012".to_string();
+
+        let (actual_thread_id, events) = server_notification_thread_events(
+            ServerNotification::TurnAborted(TurnAbortedNotification {
+                thread_id: thread_id.clone(),
+                turn_id: turn_id.clone(),
+                reason: AppServerTurnAbortReason::Interrupted,
             }),
         )
         .expect("notification should bridge");
