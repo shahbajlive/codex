@@ -41,7 +41,7 @@ const props = defineProps<{
   selectedAgentThreadIds: string[];
   selectedThreadId: string | null;
   selectedTokenUsage: ThreadTokenUsage | null;
-  collapseOverrides: Record<string, boolean>;
+  collapseOverrides: Record<string, boolean | string>;
   theme: string;
   threads: Thread[];
 }>();
@@ -55,8 +55,8 @@ const emit = defineEmits<{
   send: [message: string];
   interrupt: [];
   openConversation: [];
-  setCollapseOverride: [key: string, expanded: boolean];
-  setCollapseOverrides: [updates: Record<string, boolean>];
+  setCollapseOverride: [key: string, expanded: boolean | string];
+  setCollapseOverrides: [updates: Record<string, boolean | string>];
 }>();
 
 const draft = ref("");

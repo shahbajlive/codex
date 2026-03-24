@@ -16,14 +16,14 @@ const props = defineProps<{
   liveTranscriptTurn: LiveTranscriptTurn | null;
   activeTurnId: string | null;
   pendingUserDraft: string | null;
-  collapseOverrides: Record<string, boolean>;
+  collapseOverrides: Record<string, boolean | string>;
   statusMessage: string | null;
   statusTone: "info" | "warning" | "error" | null;
 }>();
 
 const emit = defineEmits<{
-  setCollapseOverride: [key: string, expanded: boolean];
-  setCollapseOverrides: [updates: Record<string, boolean>];
+  setCollapseOverride: [key: string, expanded: boolean | string];
+  setCollapseOverrides: [updates: Record<string, boolean | string>];
 }>();
 
 type TranscriptStatusChip = {
@@ -31,8 +31,6 @@ type TranscriptStatusChip = {
   text: string;
   tone: "info" | "warning" | "error" | "muted";
 };
-
-type ToolTab = "input" | "output" | "error";
 
 type TurnLike = TranscriptTurn | LiveTranscriptTurn;
 type ItemLike = TranscriptItem | LiveTranscriptItem;
@@ -351,8 +349,31 @@ function parseJsonLike(content: string | null): unknown | null {
   }
 }
 
-function prettyPrintContent(content: string | null): string | null {
+const SYSTEM_REMINDER_PATTERN =
+  /<system-reminder>([\s\S]*?)<\/system-reminder>/gi;
+
+function hiddenSystemBlocks(content: string | null): string[] {
+  if (!content?.trim()) {
+    return [];
+  }
+  return Array.from(content.matchAll(SYSTEM_REMINDER_PATTERN))
+    .map((match) => match[1]?.trim() ?? "")
+    .filter((value) => value.length > 0);
+}
+
+function stripSystemBlocks(content: string | null): string | null {
   const trimmed = content?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed
+    .replace(SYSTEM_REMINDER_PATTERN, "")
+    .replace(/<system-reminder\/?>([\s\S]*?)$/gi, "")
+    .trim();
+}
+
+function prettyPrintContent(content: string | null): string | null {
+  const trimmed = stripSystemBlocks(content);
   if (!trimmed) {
     return null;
   }
@@ -381,7 +402,7 @@ function looksLikeProse(content: string | null): boolean {
 }
 
 function renderToolText(content: string | null): string {
-  return content?.trim() ?? "";
+  return stripSystemBlocks(content) ?? "";
 }
 
 function toolHasInput(item: Extract<ItemLike, { kind: "tool" }>): boolean {
@@ -396,93 +417,130 @@ function toolHasError(item: Extract<ItemLike, { kind: "tool" }>): boolean {
   return Boolean(item.error?.trim());
 }
 
-function toolTabKey(item: Extract<ItemLike, { kind: "tool" }>): string {
-  return `workspace-transcript-tool-tab:${item.id}`;
+function toolOpenKey(item: Extract<ItemLike, { kind: "tool" }>): string {
+  return `workspace-transcript-tool:${item.id}`;
 }
 
-function availableToolTabs(
+function toolInternalContextKey(
   item: Extract<ItemLike, { kind: "tool" }>,
-): ToolTab[] {
-  const tabs: ToolTab[] = [];
-  if (toolHasInput(item)) {
-    tabs.push("input");
-  }
-  if (toolHasOutput(item)) {
-    tabs.push("output");
-  }
-  if (toolHasError(item)) {
-    tabs.push("error");
-  }
-  return tabs;
+): string {
+  return `workspace-transcript-tool-internal:${item.id}`;
 }
 
-function defaultToolTab(item: Extract<ItemLike, { kind: "tool" }>): ToolTab {
-  if (toolHasError(item)) {
-    return "error";
+function isToolExpanded(item: Extract<ItemLike, { kind: "tool" }>): boolean {
+  const override = props.collapseOverrides[toolOpenKey(item)];
+  if (typeof override === "boolean") {
+    return override;
   }
-  if (toolHasOutput(item)) {
-    return "output";
-  }
-  return "input";
+  return (
+    item.status === "streaming" || toolHasError(item) || toolHasOutput(item)
+  );
 }
 
-function activeToolTab(item: Extract<ItemLike, { kind: "tool" }>): ToolTab {
-  const override = props.collapseOverrides[toolTabKey(item)];
-  const tabs = availableToolTabs(item);
-  if (
-    typeof override === "string" &&
-    ["input", "output", "error"].includes(override) &&
-    tabs.includes(override as ToolTab)
-  ) {
-    return override as ToolTab;
-  }
-  return defaultToolTab(item);
+function toggleTool(item: Extract<ItemLike, { kind: "tool" }>) {
+  emit("setCollapseOverride", toolOpenKey(item), !isToolExpanded(item));
 }
 
-function setToolTab(item: Extract<ItemLike, { kind: "tool" }>, tab: ToolTab) {
-  emit("setCollapseOverride", toolTabKey(item), tab);
-}
-
-function toolTabLabel(tab: ToolTab): string {
-  switch (tab) {
-    case "input":
-      return "Input";
-    case "output":
-      return "Output";
-    case "error":
-      return "Error";
-  }
-}
-
-function toolSubtitle(
+function toolHiddenSystemBlocks(
   item: Extract<ItemLike, { kind: "tool" }>,
-): string | null {
-  const input = item.input?.trim();
-  if (!input) {
-    return item.status === "streaming" ? "Running" : null;
-  }
+): string[] {
+  return hiddenSystemBlocks(item.input);
+}
+
+function hasToolInternalContext(
+  item: Extract<ItemLike, { kind: "tool" }>,
+): boolean {
+  return toolHiddenSystemBlocks(item).length > 0;
+}
+
+function isToolInternalContextExpanded(
+  item: Extract<ItemLike, { kind: "tool" }>,
+): boolean {
+  return props.collapseOverrides[toolInternalContextKey(item)] === true;
+}
+
+function toggleToolInternalContext(item: Extract<ItemLike, { kind: "tool" }>) {
+  emit(
+    "setCollapseOverride",
+    toolInternalContextKey(item),
+    !isToolInternalContextExpanded(item),
+  );
+}
+
+function toolPreview(item: Extract<ItemLike, { kind: "tool" }>): string {
+  const input = stripSystemBlocks(item.input);
   const json = parseJsonLike(input);
+
   if (json && typeof json === "object" && !Array.isArray(json)) {
-    const entries = Object.entries(json as Record<string, unknown>)
-      .slice(0, 2)
+    const parts = Object.entries(json as Record<string, unknown>)
+      .slice(0, 3)
       .map(([key, value]) => {
-        const normalized =
-          typeof value === "string"
-            ? value
-            : typeof value === "number" || typeof value === "boolean"
-              ? String(value)
-              : Array.isArray(value)
-                ? `${value.length} items`
-                : value && typeof value === "object"
-                  ? "object"
-                  : "value";
-        return `${key}=${truncate(normalized, 28)}`;
-      });
-    if (entries.length > 0) {
-      return entries.join(" · ");
+        if (typeof value === "string") {
+          const compact = value.replace(/\s+/g, " ").trim();
+          if (!compact) {
+            return null;
+          }
+          if (compact.length > 28) {
+            return `${key}=…`;
+          }
+          return `${key}=${JSON.stringify(compact)}`;
+        }
+        if (typeof value === "number" || typeof value === "boolean") {
+          return `${key}=${value}`;
+        }
+        if (Array.isArray(value)) {
+          return `${key}=[${value.length}]`;
+        }
+        if (value && typeof value === "object") {
+          return `${key}={…}`;
+        }
+        return null;
+      })
+      .filter((part): part is string => Boolean(part));
+
+    if (parts.length > 0) {
+      return `$ ${item.label} ${parts.join(" ")}`;
     }
   }
-  return truncate(input.replace(/\s+/g, " "), 64);
+
+  if (input) {
+    return `$ ${item.label} ${truncate(input.replace(/\s+/g, " "), 72)}`;
+  }
+
+  return `$ ${item.label}`;
+}
+
+function toolTerminalContent(
+  item: Extract<ItemLike, { kind: "tool" }>,
+): string {
+  const lines = [toolPreview(item)];
+
+  const input = prettyPrintContent(item.input);
+  if (input) {
+    lines.push("", "# Input", input);
+  }
+
+  if (hasToolInternalContext(item)) {
+    lines.push(
+      "",
+      "# Internal",
+      `[hidden ${toolHiddenSystemBlocks(item).length} block${toolHiddenSystemBlocks(item).length === 1 ? "" : "s"}]`,
+    );
+  }
+
+  const output = looksLikeProse(item.output)
+    ? renderToolText(item.output)
+    : prettyPrintContent(item.output);
+  if (output) {
+    lines.push("", "# Output", output);
+  }
+
+  const error = renderToolText(item.error);
+  if (error) {
+    lines.push("", "# Error", error);
+  }
+
+  return lines.join("\n");
 }
 
 function commandExitTone(
@@ -511,10 +569,7 @@ function commandBodyLabel(
 }
 
 function stripSystemReminder(content: string): string {
-  return content
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, "")
-    .replace(/<system-reminder\/?>([\s\S]*?)$/gi, "")
-    .trim();
+  return stripSystemBlocks(content) ?? "";
 }
 
 function normalizedCommand(
@@ -820,73 +875,67 @@ watch(
               </template>
 
               <template v-else-if="item.kind === 'tool'">
-                <div class="workspace-chat__tool-header">
-                  <div class="workspace-chat__tool-heading">
-                    <span class="workspace-msg-item__title">{{
-                      item.label
-                    }}</span>
-                    <span
-                      v-if="item.status === 'streaming'"
-                      class="workspace-chat__status-badge workspace-chat__status-badge--running"
-                    >
-                      running
-                    </span>
-                  </div>
+                <button
+                  type="button"
+                  class="workspace-chat__command-toggle workspace-chat__tool-toggle"
+                  :aria-expanded="isToolExpanded(item)"
+                  @click="toggleTool(item)"
+                >
                   <div
-                    v-if="toolSubtitle(item)"
-                    class="workspace-chat__tool-subtitle"
+                    class="workspace-chat__terminal-frame workspace-chat__tool-frame"
                   >
-                    {{ toolSubtitle(item) }}
-                  </div>
-                </div>
-                <div class="workspace-chat__tool-body">
-                  <div
-                    v-if="availableToolTabs(item).length > 0"
-                    class="workspace-chat__tool-panel"
-                  >
-                    <div class="workspace-chat__tool-tabs" role="tablist">
-                      <button
-                        v-for="tab in availableToolTabs(item)"
-                        :key="tab"
-                        type="button"
-                        class="workspace-chat__tool-tab"
-                        :class="{
-                          'workspace-chat__tool-tab--active':
-                            activeToolTab(item) === tab,
-                          'workspace-chat__tool-tab--error': tab === 'error',
-                        }"
-                        :aria-selected="activeToolTab(item) === tab"
-                        @click="setToolTab(item, tab)"
+                    <div class="workspace-chat__terminal-bar">
+                      <span class="workspace-chat__terminal-dot"></span>
+                      <span class="workspace-chat__terminal-dot"></span>
+                      <span class="workspace-chat__terminal-dot"></span>
+                      <span
+                        class="workspace-msg-item__title workspace-chat__terminal-label"
+                        >{{ item.label }}</span
                       >
-                        {{ toolTabLabel(tab) }}
-                      </button>
+                      <span class="workspace-chat__terminal-spacer"></span>
+                      <span
+                        v-if="item.status === 'streaming'"
+                        class="workspace-chat__terminal-chip workspace-chat__terminal-chip--running"
+                      >
+                        running
+                      </span>
                     </div>
-
-                    <div class="workspace-chat__tool-panel-body">
-                      <template v-if="activeToolTab(item) === 'input'">
-                        <pre
-                          class="workspace-chat__code-block"
-                        ><code>{{ prettyPrintContent(item.input) }}</code></pre>
-                      </template>
-
-                      <template v-else-if="activeToolTab(item) === 'output'">
-                        <MarkdownRenderer
-                          v-if="looksLikeProse(item.output)"
-                          :content="renderToolText(item.output)"
-                          compact
-                        />
-                        <pre
-                          v-else
-                          class="workspace-chat__code-block workspace-chat__code-block--output"
-                        ><code>{{ prettyPrintContent(item.output) }}</code></pre>
-                      </template>
-
-                      <template v-else-if="activeToolTab(item) === 'error'">
-                        <pre
-                          class="workspace-chat__code-block workspace-chat__code-block--error"
-                        ><code>{{ renderToolText(item.error) }}</code></pre>
-                      </template>
-                    </div>
+                    <pre
+                      class="workspace-chat__code-block workspace-chat__code-block--terminal"
+                      :class="{
+                        'workspace-chat__code-block--terminal-preview':
+                          !isToolExpanded(item),
+                      }"
+                    ><code>{{ isToolExpanded(item) ? toolTerminalContent(item) : toolPreview(item) }}</code></pre>
+                  </div>
+                </button>
+                <div
+                  v-if="isToolExpanded(item)"
+                  class="workspace-chat__tool-body"
+                >
+                  <div
+                    v-if="hasToolInternalContext(item)"
+                    class="workspace-chat__tool-internal"
+                  >
+                    <button
+                      type="button"
+                      class="workspace-chat__tool-internal-toggle"
+                      :aria-expanded="isToolInternalContextExpanded(item)"
+                      @click="toggleToolInternalContext(item)"
+                    >
+                      <span>{{
+                        isToolInternalContextExpanded(item)
+                          ? "Hide internal context"
+                          : "Show internal context"
+                      }}</span>
+                      <span class="workspace-chat__tool-internal-count"
+                        >{{ toolHiddenSystemBlocks(item).length }} hidden</span
+                      >
+                    </button>
+                    <pre
+                      v-if="isToolInternalContextExpanded(item)"
+                      class="workspace-chat__code-block workspace-chat__code-block--internal"
+                    ><code>{{ toolHiddenSystemBlocks(item).join('\n\n') }}</code></pre>
                   </div>
                 </div>
               </template>

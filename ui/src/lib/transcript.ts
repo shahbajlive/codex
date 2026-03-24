@@ -1422,8 +1422,32 @@ function formatToolArguments(argumentsJson: unknown): string | null {
     return null;
   }
 
-  const rendered = JSON.stringify(argumentsJson, null, 2);
+  const rendered = JSON.stringify(
+    sanitizeToolArguments(argumentsJson),
+    null,
+    2,
+  );
   return rendered === undefined ? null : rendered;
+}
+
+function sanitizeToolArguments(value: unknown): unknown {
+  if (typeof value === "string") {
+    return stripSystemReminderBlocks(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(sanitizeToolArguments);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(
+        ([key, nestedValue]) => [key, sanitizeToolArguments(nestedValue)],
+      ),
+    );
+  }
+
+  return value;
 }
 
 function formatToolStatus(status: string): string {
