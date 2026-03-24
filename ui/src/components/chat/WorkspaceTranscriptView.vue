@@ -505,14 +505,33 @@ function commandExitLabel(
 
 function commandBodyLabel(
   item: Extract<ItemLike, { kind: "command" }>,
+): string | null {
+  const cwd = item.cwd?.trim();
+  return cwd && cwd.length > 0 ? cwd : null;
+}
+
+function stripSystemReminder(content: string): string {
+  return content
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, "")
+    .replace(/<system-reminder\/?>([\s\S]*?)$/gi, "")
+    .trim();
+}
+
+function normalizedCommand(
+  item: Extract<ItemLike, { kind: "command" }>,
 ): string {
-  return item.cwd?.trim() || "shell";
+  const cleaned = stripSystemReminder(item.command);
+  return cleaned || item.command.trim();
+}
+
+function commandPreview(item: Extract<ItemLike, { kind: "command" }>): string {
+  return `$ ${commandSummary(item)}`;
 }
 
 function commandTerminalTranscript(
   item: Extract<ItemLike, { kind: "command" }>,
 ): string {
-  const lines = [item.command.trim()].filter(Boolean);
+  const lines = [normalizedCommand(item)].filter(Boolean);
   if (item.output.trim()) {
     lines.push(item.output.trimEnd());
   }
@@ -523,11 +542,11 @@ function commandTerminalTranscript(
 }
 
 function commandSummary(item: Extract<ItemLike, { kind: "command" }>): string {
-  return truncate(item.command.replace(/\s+/g, " "), 100);
+  return truncate(normalizedCommand(item).replace(/\s+/g, " "), 100);
 }
 
 function commandDisplay(item: Extract<ItemLike, { kind: "command" }>): string {
-  const chunks = [`$ ${item.command}`];
+  const chunks = [`$ ${normalizedCommand(item)}`];
   if (item.output.trim()) {
     chunks.push(item.output.trimEnd());
   }
@@ -631,33 +650,6 @@ watch(
     ref="transcriptBody"
     class="workspace-chat__body"
   >
-    <div class="workspace-chat__view-actions">
-      <div
-        class="workspace-chat__filters"
-        role="tablist"
-        aria-label="Transcript filter"
-      >
-        <button
-          v-for="option in ['all', 'work', 'messages', 'errors']"
-          :key="option"
-          type="button"
-          class="workspace-chat__filter"
-          :class="{ 'workspace-chat__filter--active': rowFilter === option }"
-          @click="rowFilter = option as 'all' | 'work' | 'messages' | 'errors'"
-        >
-          {{ option }}
-        </button>
-      </div>
-      <button
-        type="button"
-        class="btn btn--sm"
-        :class="{ 'btn--active': compactMode }"
-        @click="compactMode = !compactMode"
-      >
-        {{ compactMode ? "Comfortable" : "Compact" }}
-      </button>
-    </div>
-
     <div class="workspace-chat__timeline">
       <div
         v-if="transcriptStatusChips.length > 0"
@@ -778,39 +770,20 @@ watch(
                   :aria-expanded="isCommandExpanded(item)"
                   @click="toggleCommand(item)"
                 >
-                  <span class="workspace-chat__command-heading">
-                    <span class="workspace-msg-item__title">Shell</span>
-                    <span
-                      v-if="commandExitLabel(item)"
-                      class="workspace-chat__status-badge"
-                      :class="[
-                        commandExitTone(item)
-                          ? `workspace-chat__status-badge--${commandExitTone(item)}`
-                          : '',
-                      ]"
-                    >
-                      {{ commandExitLabel(item) }}
-                    </span>
-                  </span>
-                  <span class="workspace-chat__command-summary">{{
-                    commandSummary(item)
-                  }}</span>
-                  <span v-if="item.cwd" class="workspace-chat__command-meta">{{
-                    item.cwd
-                  }}</span>
-                </button>
-                <div
-                  v-if="isCommandExpanded(item)"
-                  class="workspace-chat__command-body"
-                >
                   <div class="workspace-chat__terminal-frame">
                     <div class="workspace-chat__terminal-bar">
                       <span class="workspace-chat__terminal-dot"></span>
                       <span class="workspace-chat__terminal-dot"></span>
                       <span class="workspace-chat__terminal-dot"></span>
-                      <span class="workspace-chat__terminal-title">{{
-                        commandBodyLabel(item)
-                      }}</span>
+                      <span
+                        class="workspace-msg-item__title workspace-chat__terminal-label"
+                        >Shell</span
+                      >
+                      <span
+                        v-if="commandBodyLabel(item)"
+                        class="workspace-chat__terminal-title"
+                        >{{ commandBodyLabel(item) }}</span
+                      >
                       <span class="workspace-chat__terminal-spacer"></span>
                       <span
                         v-if="commandExitLabel(item)"
@@ -826,8 +799,17 @@ watch(
                     </div>
                     <pre
                       class="workspace-chat__code-block workspace-chat__code-block--terminal"
-                    ><code>{{ commandDisplay(item) }}</code></pre>
+                      :class="{
+                        'workspace-chat__code-block--terminal-preview':
+                          !isCommandExpanded(item),
+                      }"
+                    ><code>{{ isCommandExpanded(item) ? commandDisplay(item) : commandPreview(item) }}</code></pre>
                   </div>
+                </button>
+                <div
+                  v-if="isCommandExpanded(item)"
+                  class="workspace-chat__command-body"
+                >
                   <div
                     v-if="item.exitCode !== null && item.exitCode !== 0"
                     class="workspace-chat__meta-line workspace-chat__meta-line--error"
@@ -951,11 +933,6 @@ watch(
             "
             class="workspace-msg-item workspace-msg-item--assistant workspace-chat__response-card"
           >
-            <div
-              class="workspace-msg-item__title workspace-chat__response-title"
-            >
-              Assistant
-            </div>
             <MarkdownRenderer
               :content="renderMessageMarkdown(responseItem(entry.turn)!.text)"
               compact
