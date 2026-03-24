@@ -149,7 +149,7 @@ const pendingDynamicTool = computed(() =>
         <input
           v-if="question.isSecret"
           :value="promptAnswers[question.id] || ''"
-          class="field workspace-request__input"
+          class="input-control workspace-request__input"
           type="password"
           @input="
             emit(
@@ -162,7 +162,7 @@ const pendingDynamicTool = computed(() =>
         <textarea
           v-else
           :value="promptAnswers[question.id] || ''"
-          class="field workspace-request__input"
+          class="input-control workspace-request__input"
           rows="3"
           @input="
             emit(
@@ -248,7 +248,7 @@ const pendingDynamicTool = computed(() =>
         <input
           v-else-if="field.type === 'number'"
           :value="String(elicitationAnswers[field.key] ?? '')"
-          class="workspace-request__input"
+          class="input-control workspace-request__input"
           type="number"
           @input="
             emit(
@@ -261,7 +261,7 @@ const pendingDynamicTool = computed(() =>
         <textarea
           v-else
           :value="String(elicitationAnswers[field.key] ?? '')"
-          class="workspace-request__input"
+          class="input-control workspace-request__input"
           rows="3"
           @input="
             emit(
@@ -328,7 +328,7 @@ const pendingDynamicTool = computed(() =>
 
     <textarea
       :value="dynamicToolResult"
-      class="workspace-request__input"
+      class="input-control workspace-request__input"
       rows="4"
       placeholder="Enter text content returned by the tool."
       @input="

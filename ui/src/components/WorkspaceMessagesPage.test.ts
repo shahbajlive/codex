@@ -73,6 +73,7 @@ const baseProps = {
     },
   ] satisfies Model[],
   modelProviders: ["openai", "lmstudio"],
+  pendingUserDraft: null,
   restoredDraft: null,
   restoredDraftVersion: 0,
   selectedModelProvider: "openai",
@@ -248,6 +249,44 @@ describe("WorkspaceMessagesPage", () => {
     expect(wrapper.emitted("send")).toEqual([["Follow up"]]);
   });
 
+  it("submits on Enter from the composer", async () => {
+    const wrapper = mount(WorkspaceMessagesPage, {
+      props: {
+        ...baseProps,
+        loading: false,
+        agents,
+        pendingRequest: null,
+        selectedAgentId: "thr_agent",
+        selectedThreadId: "thread_1",
+      },
+    });
+
+    const textarea = wrapper.find("textarea");
+    await textarea.setValue("Enter submit check");
+    await textarea.trigger("keydown", { key: "Enter", shiftKey: false });
+
+    expect(wrapper.emitted("send")).toEqual([["Enter submit check"]]);
+  });
+
+  it("does not submit on Shift+Enter from the composer", async () => {
+    const wrapper = mount(WorkspaceMessagesPage, {
+      props: {
+        ...baseProps,
+        loading: false,
+        agents,
+        pendingRequest: null,
+        selectedAgentId: "thr_agent",
+        selectedThreadId: "thread_1",
+      },
+    });
+
+    const textarea = wrapper.find("textarea");
+    await textarea.setValue("Shift enter newline check");
+    await textarea.trigger("keydown", { key: "Enter", shiftKey: true });
+
+    expect(wrapper.emitted("send")).toBeUndefined();
+  });
+
   it("renders live status and emits interrupt", async () => {
     const wrapper = mount(WorkspaceMessagesPage, {
       props: {
@@ -265,6 +304,78 @@ describe("WorkspaceMessagesPage", () => {
     expect(wrapper.text()).toContain("Working");
     await wrapper.find('[aria-label="Interrupt turn"]').trigger("click");
     expect(wrapper.emitted("interrupt")).toEqual([[]]);
+  });
+
+  it("uses pending draft as live turn preview before user item arrives", () => {
+    const wrapper = mount(WorkspaceMessagesPage, {
+      props: {
+        ...baseProps,
+        loading: false,
+        agents,
+        pendingRequest: null,
+        selectedAgentId: "thr_agent",
+        selectedThreadId: "thread_1",
+        pendingUserDraft: "please run a long command and report progress",
+        committedTranscript: [],
+        liveTranscriptTurn: {
+          id: "turn_live",
+          status: "inProgress",
+          error: null,
+          events: [],
+          items: [
+            {
+              id: "item_assistant",
+              kind: "assistant",
+              text: "Working",
+              status: "streaming",
+            },
+          ],
+        },
+      },
+    });
+
+    expect(wrapper.text()).toContain("please run a long command");
+    expect(wrapper.text()).toContain("Working");
+  });
+
+  it("does not render duplicate user item when turn header already shows it", () => {
+    const wrapper = mount(WorkspaceMessagesPage, {
+      props: {
+        ...baseProps,
+        loading: false,
+        agents,
+        pendingRequest: null,
+        selectedAgentId: "thr_agent",
+        selectedThreadId: "thread_1",
+        committedTranscript: [
+          {
+            id: "turn_done",
+            status: "completed",
+            error: null,
+            items: [
+              {
+                id: "item_user",
+                kind: "user",
+                text: "Run shell command: sleep 30; echo done. Start now.",
+              },
+              {
+                id: "item_assistant",
+                kind: "assistant",
+                text: "Acknowledged",
+                status: "done",
+              },
+            ],
+          },
+        ],
+        liveTranscriptTurn: null,
+        activeTurnId: null,
+      },
+    });
+
+    expect(wrapper.findAll(".workspace-msg-item--user")).toHaveLength(0);
+    expect(wrapper.text()).toContain(
+      "Run shell command: sleep 30; echo done. Start now.",
+    );
   });
 
   it("renders the active turn inline with committed history", () => {
@@ -296,19 +407,11 @@ describe("WorkspaceMessagesPage", () => {
       },
     });
 
-    expect(wrapper.text()).toContain("Turn turn_1");
-    expect(wrapper.text()).toContain("Drafting response");
-    expect(wrapper.text()).toContain("Live");
     expect(wrapper.text()).toContain("Done already");
-    expect(
-      wrapper.findAll(".turn-stack--live .workspace-msg-item"),
-    ).toHaveLength(1);
-    expect(wrapper.findAll(".workspace-chat__body > .turn-stack")).toHaveLength(
-      2,
-    );
+    expect(wrapper.text()).toContain("Working on it");
   });
 
-  it("shows compact recent tool output for streaming command items", () => {
+  it("renders streaming command output inline without separate tool strip", () => {
     const wrapper = mount(WorkspaceMessagesPage, {
       props: {
         ...baseProps,
@@ -339,7 +442,7 @@ describe("WorkspaceMessagesPage", () => {
       },
     });
 
-    expect(wrapper.find(".workspace-chat__tool-strip").exists()).toBe(true);
+    expect(wrapper.find(".workspace-chat__tool-strip").exists()).toBe(false);
     expect(wrapper.text()).toContain("npm test");
     expect(wrapper.text()).toContain("line 2");
     expect(wrapper.text()).toContain("line 3");
@@ -424,13 +527,13 @@ describe("WorkspaceMessagesPage", () => {
       },
     });
 
-    expect(wrapper.text()).toContain("Interrupted turn");
-    expect(wrapper.text()).toContain("Failed turn");
-    expect(wrapper.findAll(".turn-stack--warning")).toHaveLength(1);
-    expect(wrapper.findAll(".turn-stack--error")).toHaveLength(1);
+    expect(wrapper.text()).toContain("interrupted");
+    expect(wrapper.text()).toContain("error");
+    expect(wrapper.text()).toContain("Conversation interrupted");
+    expect(wrapper.text()).toContain("request failed");
   });
 
-  it("auto-collapses completed tool-like and reasoning items", () => {
+  it("renders dense reasoning content in the aggregated markdown transcript", () => {
     const wrapper = mount(WorkspaceMessagesPage, {
       props: {
         ...baseProps,
@@ -460,11 +563,12 @@ describe("WorkspaceMessagesPage", () => {
       },
     });
 
-    expect(wrapper.text()).toContain("Expand");
-    expect(wrapper.find(".workspace-msg-item__preview").exists()).toBe(true);
+    expect(wrapper.text()).toContain("Thinking");
+    expect(wrapper.text()).toContain("alpha");
+    expect(wrapper.text()).toContain("delta");
   });
 
-  it("supports collapse-all and expand-all actions", async () => {
+  it("supports compact mode for the aggregated markdown transcript", async () => {
     const wrapper = mount(WorkspaceMessagesPage, {
       props: {
         ...baseProps,
@@ -497,12 +601,234 @@ describe("WorkspaceMessagesPage", () => {
       },
     });
 
-    const buttons = wrapper.findAll(".workspace-chat__view-actions .btn");
-    await buttons[1]!.trigger("click");
-    expect(wrapper.text()).toContain("Collapse");
+    const button = wrapper.find(".workspace-chat__view-actions .btn");
+    expect(wrapper.find(".workspace-chat__markdown--compact").exists()).toBe(
+      false,
+    );
+    await button.trigger("click");
+    expect(wrapper.find(".workspace-chat__markdown--compact").exists()).toBe(
+      true,
+    );
+  });
 
-    await buttons[0]!.trigger("click");
-    expect(wrapper.text()).toContain("Expand");
+  it("renders command transcript content through the markdown timeline", () => {
+    const wrapper = mount(WorkspaceMessagesPage, {
+      props: {
+        ...baseProps,
+        loading: false,
+        agents,
+        pendingRequest: null,
+        selectedAgentId: "thr_agent",
+        selectedThreadId: "thread_1",
+        committedTranscript: [
+          {
+            id: "turn_shell",
+            status: "completed",
+            error: null,
+            items: [
+              {
+                id: "item_shell",
+                kind: "command",
+                command: "git status",
+                cwd: "/repo",
+                output: "clean",
+                exitCode: 0,
+                terminalInputs: [],
+                status: "done",
+              },
+            ],
+          },
+        ],
+        liveTranscriptTurn: null,
+        activeTurnId: null,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Command");
+    expect(wrapper.text()).toContain("git status");
+    expect(wrapper.text()).toContain("clean");
+  });
+
+  it("renders tool transcript input and output in the markdown timeline", () => {
+    const wrapper = mount(WorkspaceMessagesPage, {
+      props: {
+        ...baseProps,
+        loading: false,
+        agents,
+        pendingRequest: null,
+        selectedAgentId: "thr_agent",
+        selectedThreadId: "thread_1",
+        committedTranscript: [
+          {
+            id: "turn_tool_tabs",
+            status: "completed",
+            error: null,
+            items: [
+              {
+                id: "item_tool_1",
+                kind: "tool",
+                label: "contacts",
+                category: "structured",
+                input: '{\n  "mode": "send"\n}',
+                output: "delivered",
+                error: null,
+                status: "done",
+              },
+            ],
+          },
+        ],
+        liveTranscriptTurn: null,
+        activeTurnId: null,
+      },
+    });
+
+    expect(wrapper.text()).toContain("contacts");
+    expect(wrapper.text()).toContain('"mode": "send"');
+    expect(wrapper.text()).toContain("delivered");
+  });
+
+  it("renders tool transcript errors in the markdown timeline", () => {
+    const wrapper = mount(WorkspaceMessagesPage, {
+      props: {
+        ...baseProps,
+        loading: false,
+        agents,
+        pendingRequest: null,
+        selectedAgentId: "thr_agent",
+        selectedThreadId: "thread_1",
+        committedTranscript: [
+          {
+            id: "turn_tool_error",
+            status: "completed",
+            error: null,
+            items: [
+              {
+                id: "item_tool_2",
+                kind: "tool",
+                label: "contacts",
+                category: "structured",
+                input: '{\n  "mode": "send"\n}',
+                output: null,
+                error: "request failed",
+                status: "done",
+              },
+            ],
+          },
+        ],
+        liveTranscriptTurn: null,
+        activeTurnId: null,
+      },
+    });
+
+    expect(wrapper.text()).toContain("contacts");
+    expect(wrapper.text()).toContain("Error");
+    expect(wrapper.text()).toContain("request failed");
+  });
+
+  it("filters transcript rows by category", async () => {
+    const wrapper = mount(WorkspaceMessagesPage, {
+      props: {
+        ...baseProps,
+        loading: false,
+        agents,
+        pendingRequest: null,
+        selectedAgentId: "thr_agent",
+        selectedThreadId: "thread_1",
+        committedTranscript: [
+          {
+            id: "turn_filter",
+            status: "completed",
+            error: null,
+            items: [
+              {
+                id: "item_assistant",
+                kind: "assistant",
+                text: "done",
+              },
+              {
+                id: "item_command",
+                kind: "command",
+                command: "pwd",
+                cwd: "/repo",
+                output: "/repo",
+                exitCode: 0,
+                terminalInputs: [],
+                status: "done",
+              },
+            ],
+          },
+        ],
+        liveTranscriptTurn: null,
+        activeTurnId: null,
+      },
+    });
+
+    expect(wrapper.text()).toContain("done");
+    expect(wrapper.text()).toContain("pwd");
+
+    await wrapper
+      .findAll(".workspace-chat__filter")
+      .find((el) => el.text() === "messages")!
+      .trigger("click");
+    expect(wrapper.text()).toContain("done");
+    expect(wrapper.text()).not.toContain("pwd");
+  });
+
+  it("matches transcript row-type snapshot", () => {
+    const wrapper = mount(WorkspaceMessagesPage, {
+      props: {
+        ...baseProps,
+        loading: false,
+        agents,
+        pendingRequest: null,
+        selectedAgentId: "thr_agent",
+        selectedThreadId: "thread_1",
+        committedTranscript: [
+          {
+            id: "turn_snapshot",
+            status: "completed",
+            error: null,
+            items: [
+              {
+                id: "item_assistant_snapshot",
+                kind: "assistant",
+                text: "assistant text",
+              },
+              {
+                id: "item_reasoning_snapshot",
+                kind: "reasoning",
+                summary: ["short summary"],
+                content: ["detail"],
+              },
+              {
+                id: "item_command_snapshot",
+                kind: "command",
+                command: "pwd",
+                cwd: "/repo",
+                output: "/repo",
+                exitCode: 0,
+                terminalInputs: [],
+                status: "done",
+              },
+              {
+                id: "item_tool_snapshot",
+                kind: "tool",
+                label: "contacts",
+                category: "structured",
+                input: '{\n  "mode": "send"\n}',
+                output: "delivered",
+                error: null,
+                status: "done",
+              },
+            ],
+          },
+        ],
+        liveTranscriptTurn: null,
+        activeTurnId: null,
+      },
+    });
+
+    expect(wrapper.find(".workspace-chat__timeline").html()).toMatchSnapshot();
   });
 
   it("auto-scrolls transcript to the latest message", async () => {
@@ -671,17 +997,13 @@ describe("WorkspaceMessagesPage", () => {
     await wrapper.setProps({ liveTranscriptTurn: null, activeTurnId: null });
 
     expect(wrapper.text()).toContain("Settling turn");
-    expect(wrapper.findAll(".workspace-chat__body > .turn-stack")).toHaveLength(
-      1,
-    );
+    expect(wrapper.text()).toContain("Working on it");
 
     vi.advanceTimersByTime(500);
     await wrapper.vm.$nextTick();
 
     expect(wrapper.text()).not.toContain("Settling turn");
-    expect(wrapper.findAll(".workspace-chat__body > .turn-stack")).toHaveLength(
-      1,
-    );
+    expect(wrapper.text()).toContain("Done already");
     vi.useRealTimers();
   });
 

@@ -11,12 +11,12 @@ defineProps<{
 </script>
 
 <template>
-  <section class="card stack gap-4">
+  <section class="card stack stack--md">
     <p class="eyebrow">Activity</p>
     <div v-if="activity.length === 0" class="muted">
       Tool calls and command execution details will appear here.
     </div>
-    <div v-else class="stack gap-3">
+    <div v-else class="stack">
       <div
         v-for="item in activity"
         :key="item.id"

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import MarkdownRenderer from "./MarkdownRenderer.vue";
 import {
-  renderTranscriptItem,
+  renderTranscriptItemMarkdown,
   transcriptItemTitle,
   type TranscriptTurn,
 } from "../lib/transcript";
@@ -114,10 +115,10 @@ watch(
 
     <div
       v-if="hasTranscript"
-      class="stack gap-5"
+      class="stack stack--lg transcript-pane__body"
       style="flex: 1; overflow: auto; padding: 20px 24px"
     >
-      <div v-for="turn in transcript" :key="turn.id" class="stack gap-2">
+      <div v-for="turn in transcript" :key="turn.id" class="stack stack--xs">
         <div
           class="row"
           style="
@@ -138,7 +139,11 @@ watch(
           v-for="item in turn.items"
           :key="item.id"
           class="bubble"
-          :class="isUserItem(item.kind) ? 'self-end' : 'self-start'"
+          :class="[
+            isUserItem(item.kind)
+              ? 'transcript-pane__bubble--user'
+              : 'transcript-pane__bubble--assistant',
+          ]"
           :style="[
             { maxWidth: '56rem', borderRadius: '24px', padding: '14px 16px' },
             isUserItem(item.kind)
@@ -189,17 +194,23 @@ watch(
             >
               {{ transcriptItemTitle(item) }}
             </div>
-            <pre class="bubble__body">{{ renderTranscriptItem(item) }}</pre>
+            <MarkdownRenderer
+              :content="renderTranscriptItemMarkdown(item)"
+              compact
+            />
           </template>
           <template v-else>
-            <pre class="bubble__body">{{ renderTranscriptItem(item) }}</pre>
+            <MarkdownRenderer
+              :content="renderTranscriptItemMarkdown(item)"
+              compact
+            />
           </template>
         </div>
       </div>
     </div>
     <div
       v-else
-      class="stack"
+      class="stack transcript-pane__empty"
       style="
         flex: 1;
         align-items: center;
@@ -216,7 +227,7 @@ watch(
     </div>
 
     <form
-      class="stack gap-3"
+      class="stack transcript-pane__form"
       style="border-top: 1px solid; padding: 20px 24px"
       :style="{
         borderColor:
@@ -233,7 +244,7 @@ watch(
         rows="4"
         placeholder="Ask Codex to inspect, explain, or change your codebase."
       />
-      <div class="row" style="justify-content: flex-end">
+      <div class="row row--end">
         <button
           class="btn primary"
           type="submit"

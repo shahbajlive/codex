@@ -1,13 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
+import MarkdownRenderer from "../MarkdownRenderer.vue";
 import {
-  liveTranscriptItemStatus,
-  liveTranscriptItemTitle,
-  liveTurnStatusLabel,
-  renderTranscriptItem,
-  transcriptItemTitle,
-  transcriptTurnStatusLabel,
-  transcriptTurnTone,
   type LiveTranscriptItem,
   type LiveTranscriptTurn,
   type TranscriptItem,
@@ -21,6 +15,7 @@ const props = defineProps<{
   committedTranscript: TranscriptTurn[];
   liveTranscriptTurn: LiveTranscriptTurn | null;
   activeTurnId: string | null;
+  pendingUserDraft: string | null;
   collapseOverrides: Record<string, boolean>;
   statusMessage: string | null;
   statusTone: "info" | "warning" | "error" | null;
@@ -31,9 +26,19 @@ const emit = defineEmits<{
   setCollapseOverrides: [updates: Record<string, boolean>];
 }>();
 
+type TranscriptStatusChip = {
+  id: string;
+  text: string;
+  tone: "info" | "warning" | "error" | "muted";
+};
+
+type TurnLike = TranscriptTurn | LiveTranscriptTurn;
+type ItemLike = TranscriptItem | LiveTranscriptItem;
+
 const transcriptBody = ref<HTMLElement | null>(null);
 const settlingLiveTurn = ref<LiveTranscriptTurn | null>(null);
-const collapseOverrides = ref<Record<string, boolean>>({});
+const rowFilter = ref<"all" | "work" | "messages" | "errors">("all");
+const compactMode = ref(false);
 let settlingLiveTurnTimer: ReturnType<typeof setTimeout> | null = null;
 
 const statusMessage = computed(
@@ -52,40 +57,6 @@ const activeOrSettlingLiveTurn = computed(() => {
   };
 });
 
-const settlingLiveTone = computed(() => {
-  const turn = activeOrSettlingLiveTurn.value;
-  if (!turn || props.liveTranscriptTurn) {
-    return null;
-  }
-
-  switch (turn.status) {
-    case "failed":
-      return "error";
-    case "interrupted":
-      return "warning";
-    default:
-      return "muted";
-  }
-});
-
-const settlingLiveLabel = computed(() => {
-  const turn = activeOrSettlingLiveTurn.value;
-  if (!turn || props.liveTranscriptTurn) {
-    return null;
-  }
-
-  switch (turn.status) {
-    case "failed":
-      return "Failed turn";
-    case "interrupted":
-      return "Interrupted turn";
-    case "completed":
-      return "Completed turn";
-    default:
-      return "Settling turn";
-  }
-});
-
 const displayedCommittedTranscript = computed(() => {
   const hiddenTurnId = activeOrSettlingLiveTurn.value?.id;
   if (!hiddenTurnId) {
@@ -95,73 +66,18 @@ const displayedCommittedTranscript = computed(() => {
   return props.committedTranscript.filter((turn) => turn.id !== hiddenTurnId);
 });
 
-const hasTranscriptContent = computed(
-  () =>
-    displayedCommittedTranscript.value.length > 0 ||
-    activeOrSettlingLiveTurn.value !== null,
-);
-
-type LiveToolOutputPreview = {
-  id: string;
-  label: string;
-  text: string;
-};
-
-type TranscriptStatusChip = {
-  id: string;
-  text: string;
-  tone: "info" | "warning" | "error" | "muted";
-};
-
-function compactPreviewText(text: string): string {
-  const lines = text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const tail = lines.slice(-2).join("\n");
-  return tail.slice(0, 180);
-}
-
-const liveToolOutputPreviews = computed<LiveToolOutputPreview[]>(() => {
-  const turn = activeOrSettlingLiveTurn.value;
-  if (!turn) {
-    return [];
+const turns = computed(() => {
+  const items = displayedCommittedTranscript.value.map((turn) => ({
+    turn,
+    isLive: false,
+  }));
+  if (activeOrSettlingLiveTurn.value) {
+    items.push({ turn: activeOrSettlingLiveTurn.value, isLive: true });
   }
-
-  return turn.items
-    .flatMap((item) => {
-      if (
-        item.kind !== "command" &&
-        item.kind !== "file-change" &&
-        item.kind !== "tool"
-      ) {
-        return [];
-      }
-      if (item.status !== "streaming") {
-        return [];
-      }
-
-      const text =
-        item.kind === "command"
-          ? compactPreviewText(item.output)
-          : item.kind === "file-change"
-            ? compactPreviewText(item.output)
-            : compactPreviewText(item.detail);
-      if (!text) {
-        return [];
-      }
-
-      const label =
-        item.kind === "command"
-          ? item.command
-          : item.kind === "file-change"
-            ? "File changes"
-            : item.label;
-
-      return [{ id: item.id, label, text }];
-    })
-    .slice(-3);
+  return items;
 });
+
+const hasTranscriptContent = computed(() => turns.value.length > 0);
 
 const waitingForToolOutput = computed(() => {
   const turn = activeOrSettlingLiveTurn.value;
@@ -177,7 +93,20 @@ const waitingForToolOutput = computed(() => {
       item.status === "streaming",
   );
 
-  return hasStreamingTool && liveToolOutputPreviews.value.length === 0;
+  const hasVisibleStreamingOutput = turn.items.some((item) => {
+    if (item.status !== "streaming") {
+      return false;
+    }
+    if (item.kind === "command" || item.kind === "file-change") {
+      return item.output.trim().length > 0;
+    }
+    if (item.kind === "tool") {
+      return Boolean(item.output?.trim() || item.error?.trim());
+    }
+    return false;
+  });
+
+  return hasStreamingTool && !hasVisibleStreamingOutput;
 });
 
 const transcriptStatusChips = computed<TranscriptStatusChip[]>(() => {
@@ -191,11 +120,22 @@ const transcriptStatusChips = computed<TranscriptStatusChip[]>(() => {
     });
   }
 
-  if (settlingLiveLabel.value) {
+  const turn = activeOrSettlingLiveTurn.value;
+  if (turn && !props.liveTranscriptTurn) {
     chips.push({
       id: "settling",
-      text: settlingLiveLabel.value,
-      tone: settlingLiveTone.value ?? "muted",
+      text:
+        turn.status === "failed"
+          ? "Failed turn"
+          : turn.status === "interrupted"
+            ? "Interrupted turn"
+            : "Settling turn",
+      tone:
+        turn.status === "failed"
+          ? "error"
+          : turn.status === "interrupted"
+            ? "warning"
+            : "muted",
     });
   }
 
@@ -207,8 +147,7 @@ const transcriptStatusChips = computed<TranscriptStatusChip[]>(() => {
     });
   }
 
-  const events = activeOrSettlingLiveTurn.value?.events ?? [];
-  for (const event of events) {
+  for (const event of activeOrSettlingLiveTurn.value?.events ?? []) {
     chips.push({
       id: `event-${event.id}`,
       text: `${event.label}: ${truncate(event.detail, 120)}`,
@@ -219,163 +158,259 @@ const transcriptStatusChips = computed<TranscriptStatusChip[]>(() => {
   return chips;
 });
 
-function collapseKey(turnId: string, itemId: string): string {
-  return `${props.selectedThreadId ?? "no-thread"}:${turnId}:${itemId}`;
-}
-
-function isCollapsibleItem(item: TranscriptItem | LiveTranscriptItem): boolean {
-  return (
-    item.kind === "command" ||
-    item.kind === "file-change" ||
-    item.kind === "tool" ||
-    item.kind === "reasoning"
-  );
-}
-
-function shouldAutoCollapse(
-  item: TranscriptItem | LiveTranscriptItem,
-): boolean {
-  if (!isCollapsibleItem(item)) {
-    return false;
+function matchesFilter(item: ItemLike): boolean {
+  switch (rowFilter.value) {
+    case "messages":
+      return item.kind === "user" || item.kind === "assistant";
+    case "work":
+      return item.kind !== "user" && item.kind !== "assistant";
+    case "errors":
+      return isErrorItem(item);
+    case "all":
+    default:
+      return true;
   }
-
-  if (!("status" in item) || item.status === "streaming") {
-    return false;
-  }
-
-  const rendered = renderTranscriptItem(item);
-  const lineCount = rendered.split("\n").length;
-  return lineCount >= 4 || rendered.length >= 220;
 }
 
-function isItemExpanded(
-  turnId: string,
-  item: TranscriptItem | LiveTranscriptItem,
-): boolean {
-  if (!isCollapsibleItem(item)) {
+function isErrorItem(item: ItemLike): boolean {
+  if (item.kind === "event") {
+    return item.tone === "error";
+  }
+  if (item.kind === "command") {
+    return item.exitCode !== null && item.exitCode !== 0;
+  }
+  if (item.kind === "tool") {
+    return Boolean(item.error?.trim());
+  }
+  return false;
+}
+
+function userPrompt(turn: TurnLike, isLive: boolean): string | null {
+  const userItem = turn.items.find((item) => item.kind === "user");
+  if (userItem?.kind === "user") {
+    return userItem.text;
+  }
+  if (isLive && props.pendingUserDraft?.trim()) {
+    return props.pendingUserDraft.trim();
+  }
+  return null;
+}
+
+function responseItem(
+  turn: TurnLike,
+): Extract<ItemLike, { kind: "assistant" }> | null {
+  for (let index = turn.items.length - 1; index >= 0; index -= 1) {
+    const item = turn.items[index];
+    if (item?.kind === "assistant" && item.text.trim().length > 0) {
+      return item;
+    }
+  }
+  return null;
+}
+
+function stepItems(turn: TurnLike): ItemLike[] {
+  const response = responseItem(turn);
+  return turn.items.filter((item) => {
+    if (!matchesFilter(item)) {
+      return false;
+    }
+    if (item.kind === "user") {
+      return false;
+    }
+    if (response && item.id === response.id) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function hasVisibleTurn(turn: TurnLike, isLive: boolean): boolean {
+  const response = responseItem(turn);
+  if (response && matchesFilter(response)) {
     return true;
   }
+  if (
+    userPrompt(turn, isLive) &&
+    rowFilter.value !== "work" &&
+    rowFilter.value !== "errors"
+  ) {
+    return true;
+  }
+  return stepItems(turn).length > 0;
+}
 
-  const override = collapseOverrides.value[collapseKey(turnId, item.id)];
-  if (override !== undefined) {
+function stepsKey(turn: TurnLike): string {
+  return `workspace-transcript-steps:${turn.id}`;
+}
+
+function isStepsExpanded(turn: TurnLike, isLive: boolean): boolean {
+  const override = props.collapseOverrides[stepsKey(turn)];
+  if (typeof override === "boolean") {
     return override;
   }
-
-  return !shouldAutoCollapse(item);
+  return true;
 }
 
-function toggleItemExpanded(
-  turnId: string,
-  item: TranscriptItem | LiveTranscriptItem,
-) {
-  const key = collapseKey(turnId, item.id);
-  const expanded = !isItemExpanded(turnId, item);
-  collapseOverrides.value[key] = expanded;
-  emit("setCollapseOverride", key, expanded);
+function toggleSteps(turn: TurnLike, isLive: boolean) {
+  emit("setCollapseOverride", stepsKey(turn), !isStepsExpanded(turn, isLive));
 }
 
-function collapsedPreview(item: TranscriptItem | LiveTranscriptItem): string {
-  const rendered = renderTranscriptItem(item)
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 3)
-    .join("\n");
-  return rendered.slice(0, 220);
+function turnToneClass(turn: TurnLike, isLive: boolean): string[] {
+  return [
+    "turn-stack",
+    isLive ? "turn-stack--live" : "",
+    turn.status === "failed" ? "turn-stack--error" : "",
+    turn.status === "interrupted" ? "turn-stack--warning" : "",
+  ].filter(Boolean);
 }
 
-function expandAllItems() {
-  const next = { ...collapseOverrides.value };
-  for (const turn of displayedCommittedTranscript.value) {
-    for (const item of turn.items) {
-      if (isCollapsibleItem(item)) {
-        next[collapseKey(turn.id, item.id)] = true;
-      }
-    }
+function turnSuffix(turn: TurnLike, isLive: boolean): string | null {
+  if (isLive && props.liveTranscriptTurn) {
+    return "live";
   }
-
-  const liveTurn = activeOrSettlingLiveTurn.value;
-  if (liveTurn) {
-    for (const item of liveTurn.items) {
-      if (isCollapsibleItem(item)) {
-        next[collapseKey(liveTurn.id, item.id)] = true;
-      }
-    }
+  if (turn.status === "failed") {
+    return "error";
   }
-
-  collapseOverrides.value = next;
-  emit("setCollapseOverrides", next);
+  if (turn.status === "interrupted") {
+    return "interrupted";
+  }
+  if (turn.status === "completed") {
+    return "done";
+  }
+  return null;
 }
 
-function collapseAllItems() {
-  const next = { ...collapseOverrides.value };
-  for (const turn of displayedCommittedTranscript.value) {
-    for (const item of turn.items) {
-      if (isCollapsibleItem(item)) {
-        next[collapseKey(turn.id, item.id)] = false;
-      }
-    }
-  }
-
-  const liveTurn = activeOrSettlingLiveTurn.value;
-  if (liveTurn) {
-    for (const item of liveTurn.items) {
-      if (isCollapsibleItem(item)) {
-        next[collapseKey(liveTurn.id, item.id)] = false;
-      }
-    }
-  }
-
-  collapseOverrides.value = next;
-  emit("setCollapseOverrides", next);
+function turnSuffixClass(turn: TurnLike, isLive: boolean): string[] {
+  return [
+    "turn-header__suffix",
+    isLive ? "turn-header__suffix--running" : "",
+    turn.status === "failed" ? "turn-header__suffix--error" : "",
+    turn.status === "interrupted" ? "turn-header__suffix--warning" : "",
+  ].filter(Boolean);
 }
 
-function transcriptItemClass(item: TranscriptItem | LiveTranscriptItem) {
-  if (item.kind === "user") {
-    return "card workspace-msg-item workspace-msg-item--user";
+function stepToggleLabel(turn: TurnLike, isLive: boolean): string {
+  if (isLive && props.liveTranscriptTurn) {
+    return "Working";
   }
-  if (item.kind === "assistant") {
-    return "card workspace-msg-item workspace-msg-item--assistant";
-  }
-  if (item.kind === "event") {
-    return `card workspace-msg-item workspace-msg-item--event workspace-msg-item--event-${item.tone}`;
-  }
-  return "card workspace-msg-item workspace-msg-item--work";
+  return isStepsExpanded(turn, isLive) ? "Hide steps" : "Show steps";
 }
 
-function liveTranscriptItemClass(item: LiveTranscriptItem) {
-  return `${transcriptItemClass(item)} workspace-msg-item--live`;
+function stepCount(turn: TurnLike): number {
+  return stepItems(turn).length;
 }
 
-function committedTurnClass(turn: TranscriptTurn) {
-  const tone = transcriptTurnTone(turn);
-  return {
-    "turn-stack--warning": tone === "warning",
-    "turn-stack--error": tone === "error",
-  };
+function renderMessageMarkdown(text: string): string {
+  return text.trim();
+}
+
+function renderReasoningMarkdown(
+  item: Extract<ItemLike, { kind: "reasoning" }>,
+): string {
+  return [item.summary.join("\n"), item.content.join("\n")]
+    .filter((part) => part.trim().length > 0)
+    .join("\n\n");
+}
+
+function renderToolSection(
+  title: string,
+  content: string | null,
+  language = "text",
+): string | null {
+  const normalized = content?.trim();
+  if (!normalized) {
+    return null;
+  }
+  return `### ${title}\n\n\`\`\`${language}\n${normalized}\n\`\`\``;
+}
+
+function toolBodyMarkdown(item: Extract<ItemLike, { kind: "tool" }>): string {
+  return [
+    renderToolSection("Input", item.input, guessCodeLanguage(item.input)),
+    renderToolSection("Output", item.output, guessCodeLanguage(item.output)),
+    renderToolSection("Error", item.error, "text"),
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n");
+}
+
+function fileChangeMarkdown(
+  item: Extract<ItemLike, { kind: "file-change" }>,
+): string {
+  return [
+    item.changes.length > 0
+      ? `### Changes\n\n\`\`\`diff\n${item.changes.join("\n")}\n\`\`\``
+      : null,
+    renderToolSection("Output", item.output, "text"),
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n");
+}
+
+function guessCodeLanguage(content: string | null): string {
+  const trimmed = content?.trim();
+  if (!trimmed) {
+    return "text";
+  }
+  if (
+    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+    (trimmed.startsWith("[") && trimmed.endsWith("]"))
+  ) {
+    return "json";
+  }
+  return "text";
+}
+
+function commandSummary(item: Extract<ItemLike, { kind: "command" }>): string {
+  return item.cwd ? `${item.command} - ${item.cwd}` : item.command;
+}
+
+function commandOutputLines(
+  item: Extract<ItemLike, { kind: "command" }>,
+): string[] {
+  return item.output.trim() ? item.output.trimEnd().split("\n") : [];
+}
+
+function commandOpenKey(item: Extract<ItemLike, { kind: "command" }>): string {
+  return `workspace-transcript-command:${item.id}`;
+}
+
+function isCommandExpanded(
+  item: Extract<ItemLike, { kind: "command" }>,
+): boolean {
+  const override = props.collapseOverrides[commandOpenKey(item)];
+  if (typeof override === "boolean") {
+    return override;
+  }
+  return commandOutputLines(item).length <= 10 || item.status === "streaming";
+}
+
+function toggleCommand(item: Extract<ItemLike, { kind: "command" }>) {
+  emit("setCollapseOverride", commandOpenKey(item), !isCommandExpanded(item));
+}
+
+function statusChipClass(tone: TranscriptStatusChip["tone"]): string[] {
+  switch (tone) {
+    case "warning":
+      return ["workspace-chat__chip--warning", "chip-warn"];
+    case "error":
+      return ["workspace-chat__chip--error", "chip-danger"];
+    case "info":
+      return ["workspace-chat__chip--info"];
+    case "muted":
+    default:
+      return ["workspace-chat__chip--muted"];
+  }
 }
 
 async function scrollTranscriptToLatest() {
   await nextTick();
-  if (!hasTranscriptContent.value) {
-    return;
-  }
-
   const container = transcriptBody.value;
-  if (!container) {
+  if (!container || !hasTranscriptContent.value) {
     return;
   }
-
   container.scrollTop = container.scrollHeight;
 }
-
-watch(
-  () => props.collapseOverrides,
-  (next) => {
-    collapseOverrides.value = { ...next };
-  },
-  { deep: true, immediate: true },
-);
 
 watch(
   () => props.liveTranscriptTurn,
@@ -418,145 +453,245 @@ watch(
     class="workspace-chat__body"
   >
     <div class="workspace-chat__view-actions">
-      <button class="btn btn--sm" type="button" @click="collapseAllItems">
-        Collapse all tools/reasoning
-      </button>
-      <button class="btn btn--sm" type="button" @click="expandAllItems">
-        Expand all
-      </button>
-    </div>
-
-    <div v-if="transcriptStatusChips.length > 0" class="workspace-chat__chips">
-      <span
-        v-for="chip in transcriptStatusChips"
-        :key="chip.id"
-        class="workspace-chat__chip"
-        :class="`workspace-chat__chip--${chip.tone}`"
-      >
-        {{ chip.text }}
-      </span>
-    </div>
-
-    <div
-      v-for="turn in displayedCommittedTranscript"
-      :key="turn.id"
-      class="turn-stack"
-      :class="committedTurnClass(turn)"
-    >
-      <div class="turn-meta">
-        <span>Turn {{ turn.id.slice(0, 8) }}</span>
-        <span class="turn-meta__status">{{
-          transcriptTurnStatusLabel(turn)
-        }}</span>
-        <span v-if="turn.error" class="turn-meta__error">{{ turn.error }}</span>
-      </div>
       <div
-        v-for="item in turn.items"
-        :key="item.id"
-        :class="transcriptItemClass(item)"
+        class="workspace-chat__filters"
+        role="tablist"
+        aria-label="Transcript filter"
       >
-        <div class="workspace-msg-item__head">
-          <div
-            v-if="transcriptItemTitle(item)"
-            class="card-title workspace-msg-item__title"
-          >
-            {{ transcriptItemTitle(item) }}
-            <span v-if="'status' in item" class="workspace-msg-item__status">{{
-              item.status
-            }}</span>
-          </div>
-          <button
-            v-if="isCollapsibleItem(item)"
-            class="workspace-msg-item__toggle"
-            type="button"
-            @click="toggleItemExpanded(turn.id, item)"
-          >
-            {{ isItemExpanded(turn.id, item) ? "Collapse" : "Expand" }}
-          </button>
-        </div>
-        <pre
-          v-if="isItemExpanded(turn.id, item)"
-          class="workspace-msg-item__body"
-          >{{ renderTranscriptItem(item) }}</pre
+        <button
+          v-for="option in ['all', 'work', 'messages', 'errors']"
+          :key="option"
+          type="button"
+          class="workspace-chat__filter"
+          :class="{ 'workspace-chat__filter--active': rowFilter === option }"
+          @click="rowFilter = option as 'all' | 'work' | 'messages' | 'errors'"
         >
-        <pre v-else class="workspace-msg-item__preview">{{
-          collapsedPreview(item)
-        }}</pre>
+          {{ option }}
+        </button>
       </div>
+      <button
+        type="button"
+        class="btn btn--sm"
+        :class="{ 'btn--active': compactMode }"
+        @click="compactMode = !compactMode"
+      >
+        {{ compactMode ? "Comfortable" : "Compact" }}
+      </button>
     </div>
 
-    <div
-      v-if="liveToolOutputPreviews.length > 0"
-      class="workspace-chat__tool-strip"
-    >
+    <div class="workspace-chat__timeline">
       <div
-        v-for="preview in liveToolOutputPreviews"
-        :key="preview.id"
-        class="workspace-chat__tool-chip"
+        v-if="transcriptStatusChips.length > 0"
+        class="chip-row workspace-chat__chips"
       >
-        <div class="workspace-chat__tool-chip-title">{{ preview.label }}</div>
-        <pre class="workspace-chat__tool-chip-body">{{ preview.text }}</pre>
+        <span
+          v-for="chip in transcriptStatusChips"
+          :key="chip.id"
+          class="chip workspace-chat__chip"
+          :class="statusChipClass(chip.tone)"
+        >
+          {{ chip.text }}
+        </span>
       </div>
-    </div>
 
-    <div
-      v-if="activeOrSettlingLiveTurn"
-      class="turn-stack turn-stack--live"
-      :class="{
-        'turn-stack--warning': settlingLiveTone === 'warning',
-        'turn-stack--error': settlingLiveTone === 'error',
-      }"
-    >
-      <div class="turn-meta">
-        <span>Turn {{ activeOrSettlingLiveTurn.id.slice(0, 8) }}</span>
-        <span class="turn-meta__status">{{
-          liveTurnStatusLabel(activeOrSettlingLiveTurn)
-        }}</span>
-        <span v-if="activeOrSettlingLiveTurn.error" class="turn-meta__error">{{
-          activeOrSettlingLiveTurn.error
-        }}</span>
-      </div>
-      <div
-        v-for="item in activeOrSettlingLiveTurn.items"
-        :key="item.id"
-        :class="liveTranscriptItemClass(item)"
+      <section
+        v-for="entry in turns"
+        v-show="hasVisibleTurn(entry.turn, entry.isLive)"
+        :key="entry.turn.id"
+        :class="turnToneClass(entry.turn, entry.isLive)"
       >
-        <div class="workspace-msg-item__head">
-          <div
-            v-if="liveTranscriptItemTitle(item)"
-            class="card-title workspace-msg-item__title"
+        <article
+          v-if="userPrompt(entry.turn, entry.isLive)"
+          class="turn-header workspace-chat__prompt-card"
+        >
+          <span class="turn-header__content">
+            <span class="turn-header__label-row">
+              <span class="turn-header__label"></span>
+              <span
+                v-if="turnSuffix(entry.turn, entry.isLive)"
+                :class="turnSuffixClass(entry.turn, entry.isLive)"
+              >
+                {{ turnSuffix(entry.turn, entry.isLive) }}
+              </span>
+            </span>
+            <span class="turn-header__preview">
+              {{ userPrompt(entry.turn, entry.isLive) }}
+            </span>
+          </span>
+        </article>
+
+        <button
+          v-if="stepItems(entry.turn).length > 0"
+          type="button"
+          class="workspace-chat__steps-toggle"
+          :aria-expanded="isStepsExpanded(entry.turn, entry.isLive)"
+          @click="toggleSteps(entry.turn, entry.isLive)"
+        >
+          <span class="workspace-chat__steps-toggle-icon" aria-hidden="true">
+            {{ isStepsExpanded(entry.turn, entry.isLive) ? "▾" : "▸" }}
+          </span>
+          <span class="workspace-chat__steps-toggle-text">
+            {{ stepToggleLabel(entry.turn, entry.isLive) }}
+          </span>
+          <span class="workspace-chat__steps-toggle-count">
+            {{ stepCount(entry.turn) }} steps
+          </span>
+        </button>
+
+        <div
+          class="turn-stack__items"
+          :class="{
+            'workspace-chat__items--compact': compactMode,
+            'workspace-chat__markdown--compact': compactMode,
+          }"
+        >
+          <section
+            v-if="
+              stepItems(entry.turn).length > 0 &&
+              isStepsExpanded(entry.turn, entry.isLive)
+            "
+            class="workspace-chat__steps workspace-chat__steps-panel"
           >
-            {{ liveTranscriptItemTitle(item) }}
-            <span
-              v-if="liveTranscriptItemStatus(item)"
-              class="workspace-msg-item__status"
-              >{{ liveTranscriptItemStatus(item) }}</span
+            <article
+              v-for="item in stepItems(entry.turn)"
+              :key="item.id"
+              class="workspace-msg-item workspace-chat__step-item"
+              :class="[
+                item.kind === 'command'
+                  ? 'workspace-msg-item--command'
+                  : 'workspace-msg-item--work',
+                item.kind === 'event' ? 'workspace-msg-item--event' : '',
+                item.kind === 'command' &&
+                item.exitCode !== null &&
+                item.exitCode !== 0
+                  ? 'workspace-msg-item--terminal-error'
+                  : '',
+              ]"
             >
-          </div>
-          <button
-            v-if="isCollapsibleItem(item)"
-            class="workspace-msg-item__toggle"
-            type="button"
-            @click="toggleItemExpanded(activeOrSettlingLiveTurn.id, item)"
+              <template v-if="item.kind === 'reasoning'">
+                <div class="workspace-msg-item__title">Thinking</div>
+                <div
+                  class="workspace-chat__step-body workspace-chat__step-body--subtle"
+                >
+                  <MarkdownRenderer
+                    :content="renderReasoningMarkdown(item)"
+                    compact
+                  />
+                </div>
+              </template>
+
+              <template v-else-if="item.kind === 'plan'">
+                <div class="workspace-msg-item__title">Plan</div>
+                <div
+                  class="workspace-chat__step-body workspace-chat__step-body--subtle"
+                >
+                  <MarkdownRenderer
+                    :content="renderMessageMarkdown(item.text)"
+                    compact
+                  />
+                </div>
+              </template>
+
+              <template v-else-if="item.kind === 'command'">
+                <button
+                  type="button"
+                  class="workspace-chat__command-toggle"
+                  :aria-expanded="isCommandExpanded(item)"
+                  @click="toggleCommand(item)"
+                >
+                  <span class="workspace-msg-item__title">Command</span>
+                  <span class="workspace-chat__command-summary">{{
+                    commandSummary(item)
+                  }}</span>
+                </button>
+                <div
+                  v-if="isCommandExpanded(item)"
+                  class="workspace-chat__command-body"
+                >
+                  <pre
+                    class="workspace-chat__code-block"
+                  ><code>{{ item.command }}</code></pre>
+                  <pre
+                    v-if="item.output.trim()"
+                    class="workspace-chat__code-block workspace-chat__code-block--output"
+                  ><code>{{ item.output }}</code></pre>
+                  <pre
+                    v-if="item.terminalInputs.length > 0"
+                    class="workspace-chat__code-block workspace-chat__code-block--output"
+                  ><code>{{ item.terminalInputs.join('\n') }}</code></pre>
+                  <div
+                    v-if="item.exitCode !== null"
+                    class="workspace-chat__meta-line"
+                  >
+                    Exit code {{ item.exitCode }}
+                  </div>
+                </div>
+              </template>
+
+              <template v-else-if="item.kind === 'tool'">
+                <div class="workspace-msg-item__title">{{ item.label }}</div>
+                <div class="workspace-chat__step-body">
+                  <MarkdownRenderer :content="toolBodyMarkdown(item)" compact />
+                </div>
+              </template>
+
+              <template v-else-if="item.kind === 'file-change'">
+                <div class="workspace-msg-item__title">File changes</div>
+                <div class="workspace-chat__step-body">
+                  <MarkdownRenderer
+                    :content="fileChangeMarkdown(item)"
+                    compact
+                  />
+                </div>
+              </template>
+
+              <template v-else-if="item.kind === 'event'">
+                <div class="workspace-msg-item__title">{{ item.label }}</div>
+                <div
+                  class="workspace-chat__step-body workspace-chat__step-body--subtle"
+                >
+                  <MarkdownRenderer
+                    :content="renderMessageMarkdown(item.detail)"
+                    compact
+                  />
+                </div>
+              </template>
+
+              <template v-else-if="item.kind === 'assistant'">
+                <div
+                  class="workspace-chat__step-body workspace-chat__step-body--subtle"
+                >
+                  <MarkdownRenderer
+                    :content="renderMessageMarkdown(item.text)"
+                    compact
+                  />
+                </div>
+              </template>
+            </article>
+          </section>
+
+          <article
+            v-if="
+              responseItem(entry.turn) &&
+              matchesFilter(responseItem(entry.turn)!)
+            "
+            class="workspace-msg-item workspace-msg-item--assistant workspace-chat__response-card"
           >
-            {{
-              isItemExpanded(activeOrSettlingLiveTurn.id, item)
-                ? "Collapse"
-                : "Expand"
-            }}
-          </button>
+            <div
+              class="workspace-msg-item__title workspace-chat__response-title"
+            >
+              Response
+            </div>
+            <MarkdownRenderer
+              :content="renderMessageMarkdown(responseItem(entry.turn)!.text)"
+              compact
+            />
+          </article>
         </div>
-        <pre
-          v-if="isItemExpanded(activeOrSettlingLiveTurn.id, item)"
-          class="workspace-msg-item__body"
-          >{{ renderTranscriptItem(item) }}</pre
-        >
-        <pre v-else class="workspace-msg-item__preview">{{
-          collapsedPreview(item)
-        }}</pre>
-      </div>
+      </section>
     </div>
   </div>
+
   <div v-else class="workspace-chat__empty">
     {{
       selectedAgentId
@@ -569,13 +704,13 @@ watch(
 
   <div
     v-if="!hasTranscriptContent && transcriptStatusChips.length > 0"
-    class="workspace-chat__chips workspace-chat__chips--standalone"
+    class="chip-row workspace-chat__chips workspace-chat__chips--standalone"
   >
     <span
       v-for="chip in transcriptStatusChips"
       :key="chip.id"
-      class="workspace-chat__chip"
-      :class="`workspace-chat__chip--${chip.tone}`"
+      class="chip workspace-chat__chip"
+      :class="statusChipClass(chip.tone)"
     >
       {{ chip.text }}
     </span>

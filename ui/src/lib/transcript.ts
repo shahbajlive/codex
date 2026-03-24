@@ -3,6 +3,8 @@ import type { CodexNotification } from "./protocol";
 
 type ItemLifecycle = "streaming" | "done";
 
+type ToolCategory = "structured" | "mcp" | "web-search" | "collab";
+
 const TERMINAL_EVENT_SUFFIX = ":terminal";
 const INTERRUPTED_TURN_MESSAGE =
   "Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/feedback` to report the issue.";
@@ -54,7 +56,10 @@ export type TranscriptItem =
       id: string;
       kind: "tool";
       label: string;
-      detail: string;
+      category: ToolCategory;
+      input: string | null;
+      output: string | null;
+      error: string | null;
       status: ItemLifecycle;
     }
   | {
@@ -118,7 +123,10 @@ export type LiveTranscriptItem =
       id: string;
       kind: "tool";
       label: string;
-      detail: string;
+      category: ToolCategory;
+      input: string | null;
+      output: string | null;
+      error: string | null;
       status: ItemLifecycle;
     }
   | {
@@ -568,39 +576,133 @@ export function renderTranscriptItem(
 ): string {
   switch (item.kind) {
     case "user":
+      return stripSystemReminderBlocks(item.text);
     case "assistant":
-      return item.text;
+      return stripSystemReminderBlocks(item.text);
     case "reasoning":
-      return [
+      return stripSystemReminderBlocks(
+        [
+          item.summary.length > 0 ? item.summary.join("\n") : "",
+          item.content.length > 0 ? item.content.join("\n") : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+      );
+    case "plan":
+      return stripSystemReminderBlocks(item.text);
+    case "command":
+      return stripSystemReminderBlocks(
+        [
+          `$ ${item.command}`,
+          item.output,
+          item.terminalInputs.length > 0
+            ? `Terminal input:\n${item.terminalInputs.join("\n")}`
+            : "",
+          item.exitCode === null ? "" : `Exit code: ${item.exitCode}`,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+      );
+    case "file-change":
+      return stripSystemReminderBlocks(
+        [item.changes.length > 0 ? item.changes.join("\n") : "", item.output]
+          .filter(Boolean)
+          .join("\n\n"),
+      );
+    case "tool":
+      return stripSystemReminderBlocks(
+        [
+          item.input ? `Input:\n${item.input}` : "",
+          item.output ? `Output:\n${item.output}` : "",
+          item.error ? `Error:\n${item.error}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+      );
+    case "event":
+      return stripSystemReminderBlocks(item.detail);
+  }
+}
+
+export function renderTranscriptItemMarkdown(
+  item: TranscriptItem | LiveTranscriptItem,
+): string {
+  switch (item.kind) {
+    case "user":
+      return chatBubbleMarkdown("User:", stripSystemReminderBlocks(item.text));
+    case "assistant":
+      return chatBubbleMarkdown(
+        item.status === "streaming" ? "Assistant:" : "Assistant:",
+        stripSystemReminderBlocks(item.text),
+      );
+    case "plan":
+      return chatBubbleMarkdown("Plan:", stripSystemReminderBlocks(item.text));
+    case "event":
+      return chatBubbleMarkdown(
+        `${item.label}:`,
+        stripSystemReminderBlocks(item.detail),
+      );
+    case "reasoning": {
+      const sections = [
         item.summary.length > 0 ? item.summary.join("\n") : "",
         item.content.length > 0 ? item.content.join("\n") : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-    case "plan":
-      return item.text;
-    case "command":
-      return [
-        `$ ${item.command}`,
-        item.output,
-        item.terminalInputs.length > 0
-          ? `Terminal input:\n${item.terminalInputs.join("\n")}`
+      ].filter(Boolean);
+      return chatBubbleMarkdown(
+        "Reasoning:",
+        stripSystemReminderBlocks(sections.join("\n\n")),
+      );
+    }
+    case "command": {
+      const sections = [
+        markdownCollapsibleCodeSection("Command", item.command, "bash"),
+        item.output.trim().length > 0
+          ? markdownCodeSection("Output", item.output, "text")
           : "",
-        item.exitCode === null ? "" : `Exit code: ${item.exitCode}`,
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-    case "file-change":
-      return [
-        item.changes.length > 0 ? item.changes.join("\n") : "",
-        item.output,
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-    case "tool":
-      return item.detail;
-    case "event":
-      return item.detail;
+        item.terminalInputs.length > 0
+          ? markdownCodeSection(
+              "Terminal input",
+              item.terminalInputs.join("\n"),
+              "text",
+            )
+          : "",
+        item.exitCode === null ? "" : `Exit code: \`${item.exitCode}\``,
+      ].filter(Boolean);
+      return sections.join("\n\n") || "No output yet.";
+    }
+    case "file-change": {
+      const sections = [
+        item.changes.length > 0
+          ? markdownCodeSection("Changes", item.changes.join("\n"), "diff")
+          : "",
+        item.output.trim().length > 0
+          ? markdownCodeSection("Output", item.output, "text")
+          : "",
+      ].filter(Boolean);
+      return sections.join("\n\n") || "No output yet.";
+    }
+    case "tool": {
+      const sections = [
+        `> Tool: ${item.label}`,
+        item.input?.trim()
+          ? markdownCodeSection(
+              "Input",
+              item.input,
+              guessMarkdownCodeLanguage(item.input),
+            )
+          : "",
+        item.output?.trim()
+          ? markdownCodeSection(
+              "Output",
+              item.output,
+              guessMarkdownCodeLanguage(item.output),
+            )
+          : "",
+        item.error?.trim()
+          ? markdownCodeSection("Error", item.error, "text")
+          : "",
+      ].filter(Boolean);
+      return sections.join("\n\n") || "No output yet.";
+    }
   }
 }
 
@@ -833,8 +935,11 @@ function mergeItem(
         id: current.id,
         kind: "tool",
         label: next.kind === "tool" ? next.label : current.label,
-        detail:
-          next.kind === "tool" && next.detail ? next.detail : current.detail,
+        category: next.kind === "tool" ? next.category : current.category,
+        input: next.kind === "tool" && next.input ? next.input : current.input,
+        output:
+          next.kind === "tool" && next.output ? next.output : current.output,
+        error: next.kind === "tool" && next.error ? next.error : current.error,
         status: next.kind === "tool" ? next.status : current.status,
       };
     case "event":
@@ -1167,37 +1272,75 @@ function mapItem(
         output: "",
         status: lifecycle,
       };
-    case "mcpToolCall":
+    case "mcpToolCall": {
+      const output =
+        item.result?.content
+          .map((content) => renderToolContent(content))
+          .join("\n") ?? null;
+      const error = item.error?.message ?? null;
+
       return {
         id: item.id,
         kind: "tool",
         label: `${item.server}:${item.tool}`,
-        detail:
-          item.error?.message ??
-          item.result?.content
-            .map((content) => renderToolContent(content))
-            .join("\n") ??
-          formatToolStatus(item.status),
+        category: "mcp",
+        input: formatToolArguments(item.arguments),
+        output: output ?? (error ? null : formatToolStatus(item.status)),
+        error,
         status: lifecycle,
       };
-    case "dynamicToolCall":
+    }
+    case "dynamicToolCall": {
+      const output =
+        item.contentItems
+          ?.map((content) => renderToolContent(content))
+          .join("\n") ?? "";
+      const parsedShellOutput = parseShellToolOutput(output);
+      const command =
+        dynamicToolCommand(item.arguments) ?? parsedShellOutput.command;
+      const normalizedOutput = parsedShellOutput.output;
+      const exitCode = parsedShellOutput.exitCode;
+
+      if (
+        command &&
+        isShellLikeDynamicTool(item.tool, item.arguments, output, command)
+      ) {
+        return {
+          id: item.id,
+          kind: "command",
+          command,
+          cwd: dynamicToolWorkdir(item.arguments),
+          output: normalizedOutput,
+          exitCode,
+          terminalInputs: [],
+          status: lifecycle,
+        };
+      }
+      const error = item.success === false ? "failed" : null;
+
       return {
         id: item.id,
         kind: "tool",
         label: item.tool,
-        detail:
-          item.contentItems
-            ?.map((content) => renderToolContent(content))
-            .join("\n") ||
-          (item.success === false ? "failed" : formatToolStatus(item.status)),
+        category: "structured",
+        input: formatToolArguments(item.arguments),
+        output:
+          normalizedOutput ||
+          output ||
+          (error ? null : formatToolStatus(item.status)),
+        error,
         status: lifecycle,
       };
+    }
     case "webSearch":
       return {
         id: item.id,
         kind: "tool",
         label: `Web search: ${item.query}`,
-        detail: describeWebSearchAction(item.action),
+        category: "web-search",
+        input: null,
+        output: describeWebSearchAction(item.action),
+        error: null,
         status: lifecycle,
       };
     case "imageGeneration":
@@ -1241,7 +1384,10 @@ function mapItem(
         id: item.id,
         kind: "tool",
         label: item.tool,
-        detail: item.prompt ?? item.receiverThreadIds.join(", "),
+        category: "collab",
+        input: item.prompt,
+        output: item.receiverThreadIds.join(", ") || null,
+        error: null,
         status: lifecycle,
       };
     case "contextCompaction":
@@ -1262,13 +1408,22 @@ function renderToolContent(content: unknown): string {
     content &&
     typeof content === "object" &&
     "type" in content &&
-    content.type === "text" &&
+    (content.type === "text" || content.type === "inputText") &&
     "text" in content &&
     typeof content.text === "string"
   ) {
     return content.text;
   }
   return JSON.stringify(content, null, 2);
+}
+
+function formatToolArguments(argumentsJson: unknown): string | null {
+  if (argumentsJson === null || argumentsJson === undefined) {
+    return null;
+  }
+
+  const rendered = JSON.stringify(argumentsJson, null, 2);
+  return rendered === undefined ? null : rendered;
 }
 
 function formatToolStatus(status: string): string {
@@ -1282,6 +1437,261 @@ function formatToolStatus(status: string): string {
     default:
       return status;
   }
+}
+
+function isShellLikeDynamicTool(
+  tool: string,
+  args: unknown,
+  output: string,
+  command: string | null,
+): boolean {
+  if (tool === "exec_command" || tool === "shell" || tool === "shell_command") {
+    return true;
+  }
+
+  if (!args || typeof args !== "object") {
+    return looksLikeShellOutput(output);
+  }
+
+  const argsRecord = args as Record<string, unknown>;
+  if (
+    typeof argsRecord.cmd === "string" ||
+    typeof argsRecord.command === "string"
+  ) {
+    return true;
+  }
+
+  if (command) {
+    return true;
+  }
+
+  return looksLikeShellOutput(output);
+}
+
+function looksLikeShellOutput(output: string): boolean {
+  const normalized = output.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    normalized.startsWith("Command:") &&
+    /process exited (?:with )?(?:code|exit code)/i.test(normalized)
+  );
+}
+
+function dynamicToolCommand(args: unknown): string | null {
+  if (!args || typeof args !== "object") {
+    return null;
+  }
+
+  const argsRecord = args as Record<string, unknown>;
+  const cmd = typeof argsRecord.cmd === "string" ? argsRecord.cmd : null;
+  const command =
+    typeof argsRecord.command === "string" ? argsRecord.command : null;
+
+  return cmd ?? command;
+}
+
+function dynamicToolWorkdir(args: unknown): string {
+  if (!args || typeof args !== "object") {
+    return "";
+  }
+
+  const argsRecord = args as Record<string, unknown>;
+  return typeof argsRecord.workdir === "string" ? argsRecord.workdir : "";
+}
+
+function dynamicToolExitCode(output: string): number | null {
+  const match = output.match(
+    /process exited (?:with )?(?:code|exit code)[:\s]+(-?\d+)/i,
+  );
+  if (!match || !match[1]) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function parseShellToolOutput(output: string): {
+  command: string | null;
+  output: string;
+  exitCode: number | null;
+} {
+  if (!output.trim()) {
+    return {
+      command: null,
+      output,
+      exitCode: null,
+    };
+  }
+
+  const withoutSystemReminders = output.replace(
+    /<system-reminder>[\s\S]*?<\/system-reminder>\s*/gi,
+    "",
+  );
+  const lines = withoutSystemReminders.replace(/\r\n/g, "\n").split("\n");
+
+  let command: string | null = null;
+  let exitCode: number | null = null;
+  let inExplicitOutput = false;
+  const beforeOutput: string[] = [];
+  const afterOutput: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    const commandMatch = trimmed.match(/^Command:\s*(.+)$/i);
+    if (commandMatch?.[1]) {
+      if (!command) {
+        command = commandMatch[1].trim();
+      }
+      continue;
+    }
+
+    if (/^Chunk ID:\s*/i.test(trimmed)) {
+      continue;
+    }
+
+    const exitCodeMatch = trimmed.match(
+      /^process exited (?:with )?(?:code|exit code)[:\s]+(-?\d+)$/i,
+    );
+    if (exitCodeMatch?.[1]) {
+      const parsed = Number.parseInt(exitCodeMatch[1], 10);
+      if (!Number.isNaN(parsed)) {
+        exitCode = parsed;
+      }
+      continue;
+    }
+
+    if (/^Output:\s*$/i.test(trimmed)) {
+      inExplicitOutput = true;
+      continue;
+    }
+
+    if (inExplicitOutput) {
+      afterOutput.push(line);
+    } else {
+      beforeOutput.push(line);
+    }
+  }
+
+  const normalized = normalizeShellOutputLines(
+    inExplicitOutput ? afterOutput : beforeOutput,
+  );
+
+  return {
+    command,
+    output: normalized,
+    exitCode: exitCode ?? dynamicToolExitCode(withoutSystemReminders),
+  };
+}
+
+function normalizeShellOutputLines(lines: string[]): string {
+  const compact = [...lines];
+  while (compact.length > 0 && compact[0]?.trim() === "") {
+    compact.shift();
+  }
+  while (compact.length > 0 && compact[compact.length - 1]?.trim() === "") {
+    compact.pop();
+  }
+
+  return compact.join("\n");
+}
+
+function stripSystemReminderBlocks(text: string): string {
+  if (!text.includes("<system-reminder>")) {
+    return text;
+  }
+
+  return text
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>\s*/gi, "")
+    .trim();
+}
+
+function markdownCodeSection(
+  label: string,
+  content: string,
+  language: string,
+): string {
+  const normalized = stripSystemReminderBlocks(content).trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const fence = pickMarkdownFence(normalized);
+  const languageSuffix = language ? language : "text";
+  return `### ${label}\n\n${fence}${languageSuffix}\n${normalized}\n${fence}`;
+}
+
+function pickMarkdownFence(content: string): string {
+  if (!content.includes("```")) {
+    return "```";
+  }
+  if (!content.includes("````")) {
+    return "````";
+  }
+  return "`````";
+}
+
+function chatBubbleMarkdown(label: string, content: string): string {
+  const normalized = content.trim();
+  if (!normalized) {
+    return `> ${label}`;
+  }
+
+  const quoted = normalized
+    .split("\n")
+    .map((line) => `> ${line}`.trimEnd())
+    .join("\n");
+  return `> ${label}\n>\n${quoted}`;
+}
+
+function markdownCollapsibleCodeSection(
+  label: string,
+  content: string,
+  language: string,
+): string {
+  const normalized = stripSystemReminderBlocks(content).trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const fence = pickMarkdownFence(normalized);
+  const languageSuffix = language ? language : "text";
+  return [
+    `:::codex-collapse[${label}]`,
+    "",
+    `${fence}${languageSuffix}`,
+    normalized,
+    fence,
+    ":::",
+  ].join("\n");
+}
+
+function guessMarkdownCodeLanguage(content: string): string {
+  const trimmed = stripSystemReminderBlocks(content).trim();
+  if (!trimmed) {
+    return "text";
+  }
+
+  if (
+    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+    (trimmed.startsWith("[") && trimmed.endsWith("]"))
+  ) {
+    return "json";
+  }
+
+  if (
+    trimmed.startsWith("<") &&
+    trimmed.endsWith(">") &&
+    /<[^>]+>/.test(trimmed)
+  ) {
+    return "html";
+  }
+
+  return "text";
 }
 
 function describeWebSearchAction(action: WebSearchAction | null): string {

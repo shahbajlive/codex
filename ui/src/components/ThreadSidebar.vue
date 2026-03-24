@@ -18,24 +18,32 @@ const emit = defineEmits<{
 const visibleThreads = computed(() =>
   props.threads.map((thread) => ({
     ...thread,
-    displayPreview: truncate(findLatestUserPreview(thread) || thread.preview || "Untitled thread"),
+    displayPreview: truncate(
+      findLatestUserPreview(thread) || thread.preview || "Untitled thread",
+    ),
   })),
 );
 </script>
 
 <template>
-  <aside class="card h-full overflow-hidden">
+  <aside class="card thread-sidebar">
     <div class="row row--spread">
       <div>
         <div class="card-title">Threads</div>
-        <div class="card-sub">Recent Codex conversations and resumable work.</div>
+        <div class="card-sub">
+          Recent Codex conversations and resumable work.
+        </div>
       </div>
-      <button class="btn primary btn--sm" :disabled="!connected" @click="emit('create')">
+      <button
+        class="btn primary btn--sm"
+        :disabled="!connected"
+        @click="emit('create')"
+      >
         New Thread
       </button>
     </div>
 
-    <div class="thread-list mt-3">
+    <div class="thread-list thread-list--spaced">
       <button
         v-for="thread in visibleThreads"
         :key="thread.id"

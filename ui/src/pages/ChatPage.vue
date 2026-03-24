@@ -42,7 +42,7 @@ const settings = computed(() => ({
       subtitle="Direct Codex conversations with thread history and streaming turns."
     />
 
-    <div class="grid min-h-0 grid-cols-1 gap-4 2xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+    <div class="chat-page__layout">
       <ThreadSidebar
         :threads="threads"
         :selected-thread-id="selectedThreadId"
@@ -59,7 +59,7 @@ const settings = computed(() => ({
         @send="codexStore.sendMessage"
       />
 
-      <section class="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2 2xl:flex 2xl:flex-col">
+      <section class="chat-page__side-column">
         <SettingsPanel
           :settings="settings"
           :models="models"

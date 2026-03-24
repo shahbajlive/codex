@@ -68,17 +68,13 @@ function onThreadSelectionChange(event: Event) {
 <template>
   <header class="workspace-msg-thread__header">
     <button class="workspace-msg-thread__agent" type="button">
-      <div
-        class="workspace-msg-thread__avatar"
-        :style="selectedAgentAvatarStyle"
-      >
+      <div class="workspace-msg-list__avatar" :style="selectedAgentAvatarStyle">
         {{ selectedAgent ? selectedAgent.name.slice(0, 1) : "?" }}
       </div>
       <div>
         <div class="workspace-msg-thread__name">
           {{ selectedAgent ? selectedAgent.name : "Select an agent" }}
         </div>
-        <div class="workspace-msg-thread__title"></div>
       </div>
     </button>
 

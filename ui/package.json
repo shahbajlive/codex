@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "browser": "node ./scripts/browser-debug.mjs",
+    "browser:install": "playwright install chromium",
+    "replay:responses": "node ./scripts/replay-response-log.mjs",
+    "tap:endpoints": "node ./scripts/tap-endpoints.mjs",
     "dev": "node ./scripts/dev.mjs",
     "dev:web": "vite",
     "dev:server": "node ./scripts/dev-server.mjs",
@@ -10,19 +14,21 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
+    "dompurify": "^3.2.7",
+    "marked": "^16.4.1",
     "pinia": "^3.0.4",
     "pinia-plugin-persistedstate": "^4.7.1",
     "vue": "^3.5.13",
     "vue-router": "^5.0.3"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.2.1",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/test-utils": "^2.4.6",
     "autoprefixer": "^10.4.27",
+    "js-yaml": "^4.1.1",
     "jsdom": "^25.0.1",
+    "playwright": "^1.58.2",
     "postcss": "^8.5.8",
-    "tailwindcss": "^4.2.1",
     "typescript": "^5.7.3",
     "vite": "^6.2.0",
     "vitest": "^3.0.7"

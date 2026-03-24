@@ -10,7 +10,7 @@ defineProps<{
 <template>
   <section class="content-panel">
     <PageHeader :title="title" :subtitle="subtitle" />
-    <section class="card p-6">
+    <section class="card card--padded-lg">
       <div class="card-title">{{ title }}</div>
       <div class="card-sub">
         This page is part of the OpenClaw-style shell and is ready for the

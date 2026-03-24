@@ -32,8 +32,8 @@ function onSelect<K extends keyof StoredSettings>(key: K, event: Event) {
 </script>
 
 <template>
-  <div class="card stack gap-4">
-    <div class="stack gap-3">
+  <div class="card stack stack--md">
+    <div class="stack">
       <p class="eyebrow">Connection</p>
       <label class="field">
         <span>WebSocket URL</span>
@@ -60,7 +60,7 @@ function onSelect<K extends keyof StoredSettings>(key: K, event: Event) {
       <p class="muted" style="font-size: 12px">{{ platformSummary }}</p>
     </div>
 
-    <div class="stack gap-3">
+    <div class="stack">
       <p class="eyebrow">Runtime</p>
       <label class="field">
         <span>Working Directory</span>
