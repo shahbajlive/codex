@@ -384,7 +384,6 @@ pub(crate) struct CodexSpawnArgs {
     pub(crate) parent_trace: Option<W3cTraceContext>,
     pub(crate) agent_tools_allow: Option<Vec<String>>,
     pub(crate) agent_tools_deny: Option<Vec<String>>,
-    #[allow(dead_code)]
     pub(crate) agent_id: Option<String>,
     pub(crate) workspace_instructions: Option<String>,
     pub(crate) agent_skills_allow: Option<Vec<String>>,
@@ -443,20 +442,10 @@ impl Codex {
             parent_trace: _,
             agent_tools_allow,
             agent_tools_deny,
-            agent_id: _,
+            agent_id,
             workspace_instructions,
             agent_skills_allow,
         } = args;
-
-        if let Some(workspace_instructions) = workspace_instructions {
-            let developer = config.developer_instructions.unwrap_or_default();
-            if developer.is_empty() {
-                config.developer_instructions = Some(workspace_instructions);
-            } else {
-                config.developer_instructions =
-                    Some(format!("{developer}\n\n{workspace_instructions}"));
-            }
-        }
 
         let (tx_sub, rx_sub) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
         let (tx_event, rx_event) = async_channel::unbounded();
@@ -550,6 +539,15 @@ impl Codex {
             .clone()
             .or_else(|| conversation_history.get_base_instructions().map(|s| s.text))
             .unwrap_or_else(|| model_info.get_model_instructions(config.personality));
+        let base_instructions = if let Some(workspace_instructions) = workspace_instructions {
+            if base_instructions.is_empty() {
+                workspace_instructions
+            } else {
+                format!("{base_instructions}\n\n{workspace_instructions}")
+            }
+        } else {
+            base_instructions
+        };
 
         // Respect thread-start tools. When missing (resumed/forked threads), read from the db
         // first, then fall back to rollout-file tools.
@@ -611,6 +609,7 @@ impl Codex {
             metrics_service_name,
             app_server_client_name: None,
             session_source,
+            agent_id,
             dynamic_tools,
             persist_extended_history,
             inherited_shell_snapshot,
@@ -825,6 +824,7 @@ pub(crate) struct TurnContext {
     pub(crate) reasoning_effort: Option<ReasoningEffortConfig>,
     pub(crate) reasoning_summary: ReasoningSummaryConfig,
     pub(crate) session_source: SessionSource,
+    pub(crate) agent_id: Option<String>,
     pub(crate) environment: Arc<Environment>,
     /// The session's current working directory. All relative paths provided by
     /// the model as well as sandbox policies are resolved against this path
@@ -939,6 +939,7 @@ impl TurnContext {
             reasoning_effort,
             reasoning_summary: self.reasoning_summary,
             session_source: self.session_source.clone(),
+            agent_id: self.agent_id.clone(),
             environment: Arc::clone(&self.environment),
             cwd: self.cwd.clone(),
             current_date: self.current_date.clone(),
@@ -1083,6 +1084,8 @@ pub(crate) struct SessionConfiguration {
     app_server_client_name: Option<String>,
     /// Source of the session (cli, vscode, exec, mcp, ...)
     session_source: SessionSource,
+    /// Agent id selected for this session when started with thread/start `agent_id`.
+    agent_id: Option<String>,
     dynamic_tools: Vec<DynamicToolSpec>,
     persist_extended_history: bool,
     inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
@@ -1101,6 +1104,7 @@ impl SessionConfiguration {
         ThreadConfigSnapshot {
             model: self.collaboration_mode.model().to_string(),
             model_provider_id: self.original_config_do_not_use.model_provider_id.clone(),
+            agent_id: self.agent_id.clone(),
             service_tier: self.service_tier,
             approval_policy: self.approval_policy.value(),
             approvals_reviewer: self.approvals_reviewer,
@@ -1397,6 +1401,7 @@ impl Session {
             reasoning_effort,
             reasoning_summary,
             session_source,
+            agent_id: session_configuration.agent_id.clone(),
             environment,
             cwd,
             current_date: Some(current_date),
@@ -5308,6 +5313,7 @@ async fn spawn_review_thread(
         reasoning_effort,
         reasoning_summary,
         session_source,
+        agent_id: parent_turn_context.agent_id.clone(),
         environment: Arc::clone(&parent_turn_context.environment),
         tools_config,
         features: parent_turn_context.features.clone(),

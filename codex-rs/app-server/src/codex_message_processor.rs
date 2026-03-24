@@ -8500,7 +8500,10 @@ fn build_thread_from_snapshot(
         cwd: config_snapshot.cwd.clone(),
         cli_version: env!("CARGO_PKG_VERSION").to_string(),
         agent_nickname: config_snapshot.session_source.get_nickname(),
-        agent_role: config_snapshot.session_source.get_agent_role(),
+        agent_role: config_snapshot
+            .session_source
+            .get_agent_role()
+            .or_else(|| config_snapshot.agent_id.clone()),
         source: config_snapshot.session_source.clone().into(),
         git_info: None,
         name: None,
@@ -8673,6 +8676,7 @@ mod tests {
         let config_snapshot = ThreadConfigSnapshot {
             model: "gpt-5".to_string(),
             model_provider_id: "openai".to_string(),
+            agent_id: None,
             service_tier: Some(codex_protocol::config_types::ServiceTier::Flex),
             approval_policy: codex_protocol::protocol::AskForApproval::OnRequest,
             approvals_reviewer: codex_protocol::config_types::ApprovalsReviewer::User,

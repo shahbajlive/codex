@@ -359,3 +359,205 @@ async fn azure_default_store_attaches_ids_and_headers() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn lmstudio_with_instructions_moves_first_user_message_to_front() -> Result<()> {
+    let state = RecordingState::default();
+    let transport = RecordingTransport::new(state.clone());
+    let client = ResponsesClient::new(transport, provider("lmstudio"), NoAuth);
+
+    let request = ResponsesApiRequest {
+        model: "lmstudio/qwen3.5-2b".into(),
+        instructions: "System prompt".into(),
+        input: vec![
+            ResponseItem::Message {
+                id: None,
+                role: "developer".into(),
+                content: vec![ContentItem::InputText {
+                    text: "Developer context".into(),
+                }],
+                end_turn: None,
+                phase: None,
+            },
+            ResponseItem::Message {
+                id: None,
+                role: "user".into(),
+                content: vec![ContentItem::InputText { text: "hi".into() }],
+                end_turn: None,
+                phase: None,
+            },
+        ],
+        tools: Vec::new(),
+        tool_choice: "auto".into(),
+        parallel_tool_calls: false,
+        reasoning: None,
+        store: false,
+        stream: true,
+        include: Vec::new(),
+        service_tier: None,
+        prompt_cache_key: None,
+        text: None,
+    };
+
+    let _stream = client
+        .stream_request(
+            request,
+            ResponsesOptions {
+                compression: Compression::None,
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let requests = state.take_stream_requests();
+    assert_eq!(requests.len(), 1);
+    let req = &requests[0];
+
+    let first_role = req
+        .body
+        .as_ref()
+        .and_then(|body| body.get("input"))
+        .and_then(|input| input.get(0))
+        .and_then(|item| item.get("role"))
+        .and_then(|value| value.as_str());
+    assert_eq!(first_role, Some("user"));
+
+    let instructions = req
+        .body
+        .as_ref()
+        .and_then(|body| body.get("instructions"))
+        .and_then(|value| value.as_str());
+    assert_eq!(instructions, Some("System prompt"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn lm_studio_display_name_with_plain_model_still_reorders_input() -> Result<()> {
+    let state = RecordingState::default();
+    let transport = RecordingTransport::new(state.clone());
+    let client = ResponsesClient::new(transport, provider("LM Studio"), NoAuth);
+
+    let request = ResponsesApiRequest {
+        model: "qwen3.5-0.8b".into(),
+        instructions: "System prompt".into(),
+        input: vec![
+            ResponseItem::Message {
+                id: None,
+                role: "developer".into(),
+                content: vec![ContentItem::InputText {
+                    text: "Developer context".into(),
+                }],
+                end_turn: None,
+                phase: None,
+            },
+            ResponseItem::Message {
+                id: None,
+                role: "user".into(),
+                content: vec![ContentItem::InputText { text: "hi".into() }],
+                end_turn: None,
+                phase: None,
+            },
+        ],
+        tools: Vec::new(),
+        tool_choice: "auto".into(),
+        parallel_tool_calls: false,
+        reasoning: None,
+        store: false,
+        stream: true,
+        include: Vec::new(),
+        service_tier: None,
+        prompt_cache_key: None,
+        text: None,
+    };
+
+    let _stream = client
+        .stream_request(
+            request,
+            ResponsesOptions {
+                compression: Compression::None,
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let requests = state.take_stream_requests();
+    assert_eq!(requests.len(), 1);
+    let req = &requests[0];
+
+    let first_role = req
+        .body
+        .as_ref()
+        .and_then(|body| body.get("input"))
+        .and_then(|input| input.get(0))
+        .and_then(|item| item.get("role"))
+        .and_then(|value| value.as_str());
+    assert_eq!(first_role, Some("user"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn non_lmstudio_preserves_original_input_order() -> Result<()> {
+    let state = RecordingState::default();
+    let transport = RecordingTransport::new(state.clone());
+    let client = ResponsesClient::new(transport, provider("openai"), NoAuth);
+
+    let request = ResponsesApiRequest {
+        model: "gpt-test".into(),
+        instructions: "System prompt".into(),
+        input: vec![
+            ResponseItem::Message {
+                id: None,
+                role: "developer".into(),
+                content: vec![ContentItem::InputText {
+                    text: "Developer context".into(),
+                }],
+                end_turn: None,
+                phase: None,
+            },
+            ResponseItem::Message {
+                id: None,
+                role: "user".into(),
+                content: vec![ContentItem::InputText { text: "hi".into() }],
+                end_turn: None,
+                phase: None,
+            },
+        ],
+        tools: Vec::new(),
+        tool_choice: "auto".into(),
+        parallel_tool_calls: false,
+        reasoning: None,
+        store: false,
+        stream: true,
+        include: Vec::new(),
+        service_tier: None,
+        prompt_cache_key: None,
+        text: None,
+    };
+
+    let _stream = client
+        .stream_request(
+            request,
+            ResponsesOptions {
+                compression: Compression::None,
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let requests = state.take_stream_requests();
+    assert_eq!(requests.len(), 1);
+    let req = &requests[0];
+
+    let first_role = req
+        .body
+        .as_ref()
+        .and_then(|body| body.get("input"))
+        .and_then(|input| input.get(0))
+        .and_then(|item| item.get("role"))
+        .and_then(|value| value.as_str());
+    assert_eq!(first_role, Some("developer"));
+
+    Ok(())
+}

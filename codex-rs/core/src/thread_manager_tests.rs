@@ -233,6 +233,7 @@ async fn start_thread_with_agent_id_uses_agent_tools_and_skills_config() {
         .expect("start thread");
 
     let snapshot = thread.thread.config_snapshot().await;
+    assert_eq!(snapshot.agent_id, Some("developer_lead".to_string()));
     assert_eq!(snapshot.model_provider_id, "openai");
     assert_eq!(snapshot.agent_tools_allow, Some(vec!["bash".to_string()]));
     assert_eq!(

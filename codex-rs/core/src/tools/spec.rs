@@ -1487,7 +1487,7 @@ fn create_contacts_tool() -> ToolSpec {
 
     ToolSpec::Function(ResponsesApiTool {
         name: "contacts".to_string(),
-        description: "Read the global contact address book from CODEX_HOME/contacts.json5 or send peer messages over Codex threads. Omit `thread_id` to send to a contact's public thread, or provide `thread_id` to continue a direct peer conversation.".to_string(),
+        description: "Read the global contact address book from CODEX_HOME/contacts.json5 or send peer messages over Codex threads. Use snake_case argument keys exactly: `mode`, `query`, `target_id`, `thread_id`, `reply_thread_id`, `message` (do not use camelCase keys like `targetId`). For send mode use `{\"mode\":\"send\",\"target_id\":\"backend_engineer\",\"message\":\"...\"}`. Omit `thread_id` to send to a contact's public thread, or provide `thread_id` to continue a direct peer conversation. Use read mode as `{\"mode\":\"read\",\"query\":\"backend\"}`.".to_string(),
         strict: false,
         defer_loading: None,
         parameters: JsonSchema::Object {

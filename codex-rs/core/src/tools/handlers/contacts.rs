@@ -29,7 +29,6 @@ use crate::tools::registry::ToolKind;
 pub(crate) struct Handler;
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct ContactsArgs {
     mode: ContactsMode,
     query: Option<String>,
@@ -249,7 +248,9 @@ async fn send_message(
 }
 
 fn current_agent_id(turn: &TurnContext) -> Option<String> {
-    turn.session_source.get_agent_role()
+    turn.session_source
+        .get_agent_role()
+        .or_else(|| turn.agent_id.clone())
 }
 
 fn resolve_delivery_target(
@@ -457,7 +458,7 @@ mod tests {
                 Arc::new(turn),
                 json!({
                     "mode": "send",
-                    "targetId": "reviewer",
+                    "target_id": "reviewer",
                     "message": "hello"
                 }),
             ))
@@ -469,6 +470,35 @@ mod tests {
             FunctionCallError::RespondToModel(
                 "contacts send requires an agent thread with a configured agent role".to_string()
             )
+        );
+    }
+
+    #[tokio::test]
+    async fn send_mode_rejects_camel_case_target_id() {
+        let (session, mut turn) = make_session_and_context().await;
+        turn.session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+            parent_thread_id: ThreadId::new(),
+            depth: 1,
+            agent_nickname: Some("Ada".to_string()),
+            agent_role: Some("planner".to_string()),
+        });
+
+        let err = Handler
+            .handle(invocation(
+                Arc::new(session),
+                Arc::new(turn),
+                json!({
+                    "mode": "send",
+                    "targetId": "reviewer",
+                    "message": "hello"
+                }),
+            ))
+            .await
+            .expect_err("send should reject camelCase targetId");
+
+        assert_eq!(
+            err,
+            FunctionCallError::RespondToModel("contacts send requires `target_id`".to_string())
         );
     }
 }

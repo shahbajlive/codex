@@ -81,6 +81,7 @@ impl<T: HttpTransport, A: AuthProvider> ResponsesClient<T, A> {
 
         let mut body = serde_json::to_value(&request)
             .map_err(|e| ApiError::Stream(format!("failed to encode responses request: {e}")))?;
+        normalize_lmstudio_request_body(self.session.provider(), &mut body);
         if request.store && self.session.provider().is_azure_responses_endpoint() {
             attach_item_ids(&mut body, &request.input);
         }
@@ -148,4 +149,54 @@ impl<T: HttpTransport, A: AuthProvider> ResponsesClient<T, A> {
             turn_state,
         ))
     }
+}
+
+fn normalize_lmstudio_request_body(provider: &Provider, body: &mut Value) {
+    if !is_lmstudio_provider(provider, body) || !has_non_empty_instructions(body) {
+        return;
+    }
+
+    let Some(input) = body.get_mut("input").and_then(Value::as_array_mut) else {
+        return;
+    };
+
+    if input
+        .first()
+        .is_some_and(|item| is_role_message(item, "user"))
+    {
+        return;
+    }
+
+    let Some(user_index) = input.iter().position(|item| is_role_message(item, "user")) else {
+        return;
+    };
+
+    let user_item = input.remove(user_index);
+    input.insert(0, user_item);
+}
+
+fn has_non_empty_instructions(body: &Value) -> bool {
+    body.get("instructions")
+        .and_then(Value::as_str)
+        .is_some_and(|instructions| !instructions.is_empty())
+}
+
+fn is_lmstudio_provider(provider: &Provider, body: &Value) -> bool {
+    let normalized_provider_name: String = provider
+        .name
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .map(|ch| ch.to_ascii_lowercase())
+        .collect();
+
+    normalized_provider_name.contains("lmstudio")
+        || body
+            .get("model")
+            .and_then(Value::as_str)
+            .is_some_and(|model| model.to_ascii_lowercase().starts_with("lmstudio/"))
+}
+
+fn is_role_message(item: &Value, role: &str) -> bool {
+    item.get("type").and_then(Value::as_str) == Some("message")
+        && item.get("role").and_then(Value::as_str) == Some(role)
 }

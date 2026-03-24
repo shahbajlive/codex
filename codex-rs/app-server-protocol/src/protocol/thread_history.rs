@@ -19,6 +19,7 @@ use crate::protocol::v2::TurnStatus;
 use crate::protocol::v2::UserInput;
 use crate::protocol::v2::WebSearchAction;
 use codex_protocol::items::parse_hook_prompt_message;
+use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::MessagePhase;
 use codex_protocol::protocol::AgentReasoningEvent;
 use codex_protocol::protocol::AgentReasoningRawContentEvent;
@@ -191,29 +192,103 @@ impl ThreadHistoryBuilder {
     }
 
     fn handle_response_item(&mut self, item: &codex_protocol::models::ResponseItem) {
-        let codex_protocol::models::ResponseItem::Message {
-            role, content, id, ..
-        } = item
-        else {
-            return;
-        };
+        match item {
+            codex_protocol::models::ResponseItem::Message {
+                role, content, id, ..
+            } => {
+                if role != "user" {
+                    return;
+                }
 
-        if role != "user" {
-            return;
+                let Some(hook_prompt) = parse_hook_prompt_message(id.as_ref(), content) else {
+                    return;
+                };
+
+                self.ensure_turn().items.push(ThreadItem::HookPrompt {
+                    id: hook_prompt.id,
+                    fragments: hook_prompt
+                        .fragments
+                        .into_iter()
+                        .map(crate::protocol::v2::HookPromptFragment::from)
+                        .collect(),
+                });
+            }
+            codex_protocol::models::ResponseItem::FunctionCall {
+                name,
+                arguments,
+                call_id,
+                ..
+            } => {
+                let arguments = serde_json::from_str(arguments)
+                    .unwrap_or_else(|_| serde_json::Value::String(arguments.clone()));
+                self.upsert_item_in_current_turn(ThreadItem::DynamicToolCall {
+                    id: call_id.clone(),
+                    tool: name.clone(),
+                    arguments,
+                    status: DynamicToolCallStatus::InProgress,
+                    content_items: None,
+                    success: None,
+                    duration_ms: None,
+                });
+            }
+            codex_protocol::models::ResponseItem::FunctionCallOutput { call_id, output } => {
+                let (tool, arguments, duration_ms) = match self
+                    .ensure_turn()
+                    .items
+                    .iter()
+                    .find(|existing| existing.id() == call_id)
+                {
+                    Some(ThreadItem::DynamicToolCall {
+                        tool,
+                        arguments,
+                        duration_ms,
+                        ..
+                    }) => (tool.clone(), arguments.clone(), *duration_ms),
+                    _ => ("tool".to_string(), serde_json::Value::Null, None),
+                };
+
+                let content_items = output
+                    .content_items()
+                    .map(|items| {
+                        items
+                            .iter()
+                            .map(|item| match item {
+                                FunctionCallOutputContentItem::InputText { text } => {
+                                    DynamicToolCallOutputContentItem::InputText {
+                                        text: text.clone(),
+                                    }
+                                }
+                                FunctionCallOutputContentItem::InputImage { image_url, .. } => {
+                                    DynamicToolCallOutputContentItem::InputImage {
+                                        image_url: image_url.clone(),
+                                    }
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .or_else(|| {
+                        output.text_content().map(|text| {
+                            vec![DynamicToolCallOutputContentItem::InputText {
+                                text: text.to_string(),
+                            }]
+                        })
+                    });
+
+                self.upsert_item_in_current_turn(ThreadItem::DynamicToolCall {
+                    id: call_id.clone(),
+                    tool,
+                    arguments,
+                    status: match output.success {
+                        Some(false) => DynamicToolCallStatus::Failed,
+                        _ => DynamicToolCallStatus::Completed,
+                    },
+                    content_items,
+                    success: output.success,
+                    duration_ms,
+                });
+            }
+            _ => {}
         }
-
-        let Some(hook_prompt) = parse_hook_prompt_message(id.as_ref(), content) else {
-            return;
-        };
-
-        self.ensure_turn().items.push(ThreadItem::HookPrompt {
-            id: hook_prompt.id,
-            fragments: hook_prompt
-                .fragments
-                .into_iter()
-                .map(crate::protocol::v2::HookPromptFragment::from)
-                .collect(),
-        });
     }
 
     fn handle_user_message(&mut self, payload: &UserMessageEvent) {
@@ -2861,5 +2936,65 @@ mod tests {
         let turns = build_turns_from_rollout_items(&items);
         assert_eq!(turns.len(), 1);
         assert!(turns[0].items.is_empty());
+    }
+
+    #[test]
+    fn rebuilds_function_call_output_items_from_rollout_response_items() {
+        let items = vec![
+            RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: "turn-a".into(),
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            })),
+            RolloutItem::EventMsg(EventMsg::UserMessage(UserMessageEvent {
+                message: "contact backend".into(),
+                images: None,
+                text_elements: Vec::new(),
+                local_images: Vec::new(),
+            })),
+            RolloutItem::ResponseItem(codex_protocol::models::ResponseItem::FunctionCall {
+                id: None,
+                name: "contacts".into(),
+                namespace: None,
+                arguments: "{\"mode\":\"send\",\"target_id\":\"backend_engineer\"}".into(),
+                call_id: "call-1".into(),
+            }),
+            RolloutItem::ResponseItem(codex_protocol::models::ResponseItem::FunctionCallOutput {
+                call_id: "call-1".into(),
+                output: codex_protocol::models::FunctionCallOutputPayload {
+                    body: codex_protocol::models::FunctionCallOutputBody::Text(
+                        "contacts send requires an agent thread with a configured agent role"
+                            .into(),
+                    ),
+                    success: Some(false),
+                },
+            }),
+            RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+                turn_id: "turn-a".into(),
+                last_agent_message: None,
+            })),
+        ];
+
+        let turns = build_turns_from_rollout_items(&items);
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0].items.len(), 2);
+        assert_eq!(
+            turns[0].items[1],
+            ThreadItem::DynamicToolCall {
+                id: "call-1".into(),
+                tool: "contacts".into(),
+                arguments: serde_json::json!({
+                    "mode": "send",
+                    "target_id": "backend_engineer"
+                }),
+                status: DynamicToolCallStatus::Failed,
+                content_items: Some(vec![DynamicToolCallOutputContentItem::InputText {
+                    text: "contacts send requires an agent thread with a configured agent role"
+                        .into(),
+                }]),
+                success: Some(false),
+                duration_ms: None,
+            }
+        );
     }
 }
