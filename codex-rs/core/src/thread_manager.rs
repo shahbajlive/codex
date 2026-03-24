@@ -34,6 +34,7 @@ use codex_protocol::protocol::McpServerRefreshConfig;
 use codex_protocol::protocol::Op;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::protocol::W3cTraceContext;
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
@@ -524,14 +525,28 @@ impl ThreadManager {
             apply_agent_runtime_overrides_to_config(&mut config, agent_overrides)?;
         }
 
-        Box::pin(self.state.spawn_thread(
+        let session_source = if let Some(ref agent_id) = agent_id {
+            SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                parent_thread_id: ThreadId::new(),
+                depth: 1,
+                agent_nickname: None,
+                agent_role: Some(agent_id.clone()),
+            })
+        } else {
+            self.session_source().clone()
+        };
+
+        Box::pin(self.state.spawn_thread_with_source(
             config,
             InitialHistory::New,
             Arc::clone(&self.state.auth_manager),
             self.agent_control(),
+            session_source,
             dynamic_tools,
             persist_extended_history,
             metrics_service_name,
+            /*inherited_shell_snapshot*/ None,
+            /*inherited_exec_policy*/ None,
             parent_trace,
             /*user_shell_override*/ None,
             agent_overrides,

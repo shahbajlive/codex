@@ -1,0 +1,51 @@
+intents:
+  workspace-messages:
+    startUrl: /workspace/messages
+    steps:
+      - action: waitFor
+        selector: text=Messages
+        timeoutMs: 10000
+
+  agent-chat:
+    startUrl: /workspace/messages
+    args:
+      - name
+    steps:
+      - action: click
+        selector: ".workspace-msg-list__row:has-text('{{name}}')"
+        timeoutMs: 10000
+      - action: waitFor
+        selector: ".workspace-msg-thread__name"
+        timeoutMs: 10000
+
+  developer-lead-chat-smoke:
+    startUrl: /workspace/messages
+    steps:
+      - action: click
+        selector: ".workspace-msg-list__row:has-text('Developer Lead')"
+        timeoutMs: 10000
+      - action: waitFor
+        selector: ".workspace-msg-thread__name"
+        timeoutMs: 10000
+      - action: waitFor
+        selector: "textarea[placeholder='Message the selected workspace agent...']"
+        timeoutMs: 10000
+      - action: click
+        selector: "textarea[placeholder='Message the selected workspace agent...']"
+        timeoutMs: 10000
+      - action: fill
+        selector: "textarea[placeholder='Message the selected workspace agent...']"
+        text: hi
+        timeoutMs: 10000
+      - action: focus
+        selector: "textarea[placeholder='Message the selected workspace agent...']"
+        timeoutMs: 10000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - ".bubble--user .bubble__body"
+          - "text=LIVE TURN"
+          - "text=FAILED TURN"
+          - "text=Error"
+        timeoutMs: 30000
