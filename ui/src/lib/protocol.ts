@@ -75,6 +75,7 @@ import type { ToolRequestUserInputParams } from "../../../codex-rs/app-server-pr
 import type { ToolRequestUserInputQuestion } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ToolRequestUserInputQuestion";
 import type { ToolRequestUserInputResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ToolRequestUserInputResponse";
 import type { UserInput } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/UserInput";
+import type { WebSearchAction } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/WebSearchAction";
 
 export type {
   AgentContactsConfig,
@@ -154,6 +155,7 @@ export type {
   ToolRequestUserInputQuestion,
   ToolRequestUserInputResponse,
   UserInput,
+  WebSearchAction,
 };
 
 export type CodexNotification =

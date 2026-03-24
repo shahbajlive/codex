@@ -4,6 +4,10 @@ import type { CodexAppServerClient } from "../../lib/app-server-client";
 import type { Model, Thread } from "../../lib/protocol";
 import { slashCommands } from "../../lib/slash-commands";
 import {
+  ACTIVE_TURN_RECONCILE_INTERVAL_MS,
+  INTERRUPT_MAX_RETRIES,
+  INTERRUPT_RECONCILE_DELAY_MS,
+  INTERRUPT_RETRY_INTERVAL_MS,
   setWorkspaceMessagesClient,
   useWorkspaceMessagesStore,
 } from "./workspace-messages";
@@ -308,7 +312,9 @@ describe("workspace-messages store", () => {
     expect(startTurn).toHaveBeenCalledWith(
       "thread_existing",
       "hello",
-      expect.any(Object),
+      expect.objectContaining({
+        cwd: "/repo",
+      }),
     );
   });
 
@@ -397,6 +403,7 @@ describe("workspace-messages store", () => {
     store.agents = [makeAgentRow()];
     store.selectedAgentId = "agent-1";
     store.threadByAgentId = { "agent-1": "thread_old" };
+    store.threadIdsByAgentId = { "agent-1": ["thread_old", "thread_other"] };
     store.selectedThreadId = "thread_old";
 
     await store.sendMessage("hello");
@@ -404,11 +411,70 @@ describe("workspace-messages store", () => {
     expect(readThread).toHaveBeenCalledWith("thread_old");
     expect(startThreadForAgent).toHaveBeenCalledWith("agent-1");
     expect(store.selectedThreadId).toBe("thread_fresh");
+    expect(store.threadIdsByAgentId["agent-1"]).toEqual([
+      "thread_fresh",
+      "thread_other",
+    ]);
     expect(startTurn).toHaveBeenCalledWith(
       "thread_fresh",
       "hello",
       expect.any(Object),
     );
+  });
+
+  it("falls back to a fresh thread when startTurn fails with thread not found", async () => {
+    const readThread = vi.fn().mockResolvedValue(makeThread("thread_old"));
+    const startThreadForAgent = vi
+      .fn()
+      .mockResolvedValue(makeThread("thread_fresh"));
+    const startTurn = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error("thread not found: 019d1efc-0b95-7ba1-bd64-c790cde503f9"),
+      )
+      .mockResolvedValueOnce({
+        id: "turn_1",
+        status: "inProgress",
+        error: null,
+        items: [],
+      });
+
+    setWorkspaceMessagesClient({
+      readThread,
+      startThreadForAgent,
+      startTurn,
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.agents = [makeAgentRow()];
+    store.selectedAgentId = "agent-1";
+    store.threadByAgentId = { "agent-1": "thread_old" };
+    store.threadIdsByAgentId = { "agent-1": ["thread_old", "thread_other"] };
+    store.selectedThreadId = "thread_old";
+
+    await store.sendMessage("hello");
+
+    expect(readThread).toHaveBeenCalledWith("thread_old");
+    expect(startThreadForAgent).toHaveBeenCalledWith("agent-1");
+    expect(startTurn).toHaveBeenNthCalledWith(
+      1,
+      "thread_old",
+      "hello",
+      expect.any(Object),
+    );
+    expect(startTurn).toHaveBeenNthCalledWith(
+      2,
+      "thread_fresh",
+      "hello",
+      expect.any(Object),
+    );
+    expect(store.selectedThreadId).toBe("thread_fresh");
+    expect(store.threadIdsByAgentId["agent-1"]).toEqual([
+      "thread_fresh",
+      "thread_other",
+    ]);
   });
 
   it("falls back to a fresh thread when resume fails with missing rollout", async () => {
@@ -978,6 +1044,89 @@ describe("workspace-messages store", () => {
     expect(store.interruptRequestedTurnId).toBe("turn_active");
   });
 
+  it("reconciles interrupt state when terminal notification is missed", async () => {
+    vi.useFakeTimers();
+    try {
+      const interruptTurn = vi.fn().mockResolvedValue(undefined);
+      const interruptedThread = makeThread("thread_existing");
+      interruptedThread.turns = [
+        {
+          id: "turn_active",
+          status: "interrupted",
+          error: null,
+          items: [],
+        },
+      ];
+      const readThread = vi.fn().mockResolvedValue(interruptedThread);
+
+      setWorkspaceMessagesClient({
+        interruptTurn,
+        readThread,
+      } as unknown as CodexAppServerClient);
+
+      const store = useWorkspaceMessagesStore();
+      store.selectedThreadId = "thread_existing";
+      store.pendingUserDraft = "please try again";
+      store.activeTurnId = "turn_active";
+
+      await store.interruptActiveTurn();
+      await vi.advanceTimersByTimeAsync(INTERRUPT_RECONCILE_DELAY_MS + 10);
+
+      expect(readThread).toHaveBeenCalledWith("thread_existing");
+      expect(store.statusMessage).toBe("Interrupted");
+      expect(store.statusTone).toBe("warning");
+      expect(store.activeTurnId).toBeNull();
+      expect(store.interruptRequestedTurnId).toBeNull();
+      expect(store.restoredDraft).toBe("please try again");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries interrupt while turn remains in progress", async () => {
+    vi.useFakeTimers();
+    try {
+      const interruptTurn = vi.fn().mockResolvedValue(undefined);
+      const inProgressThread = makeThread("thread_existing");
+      inProgressThread.turns = [
+        {
+          id: "turn_active",
+          status: "inProgress",
+          error: null,
+          items: [],
+        },
+      ];
+      const readThread = vi.fn().mockResolvedValue(inProgressThread);
+
+      setWorkspaceMessagesClient({
+        interruptTurn,
+        readThread,
+      } as unknown as CodexAppServerClient);
+
+      const store = useWorkspaceMessagesStore();
+      store.selectedThreadId = "thread_existing";
+      store.activeTurnId = "turn_active";
+
+      await store.interruptActiveTurn();
+      expect(interruptTurn).toHaveBeenCalledTimes(1);
+
+      store.interruptRequestedAt = Date.now() - INTERRUPT_RETRY_INTERVAL_MS;
+      await store.reconcileActiveTurnSnapshot();
+
+      expect(interruptTurn).toHaveBeenCalledTimes(2);
+      expect(store.interruptRetryCount).toBe(2);
+
+      store.interruptRequestedAt =
+        Date.now() - INTERRUPT_RETRY_INTERVAL_MS * INTERRUPT_MAX_RETRIES;
+      store.interruptRetryCount = INTERRUPT_MAX_RETRIES;
+      await store.reconcileActiveTurnSnapshot();
+
+      expect(interruptTurn).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("preserves interrupting status while work items continue", () => {
     const store = useWorkspaceMessagesStore();
     store.interruptRequestedTurnId = "turn_active";
@@ -1094,6 +1243,89 @@ describe("workspace-messages store", () => {
     });
 
     expect(store.statusMessage).toBe("Running git status");
+  });
+
+  it("polls active turn state so live updates recover without refresh", async () => {
+    vi.useFakeTimers();
+    try {
+      const inProgressThread = makeThread("thread_existing");
+      inProgressThread.turns = [
+        {
+          id: "turn_active",
+          status: "inProgress",
+          error: null,
+          items: [],
+        },
+      ];
+      const completedThread = makeThread("thread_existing");
+      completedThread.turns = [
+        {
+          id: "turn_active",
+          status: "completed",
+          error: null,
+          items: [],
+        },
+      ];
+
+      const readThread = vi
+        .fn()
+        .mockResolvedValueOnce(inProgressThread)
+        .mockResolvedValueOnce(completedThread);
+
+      setWorkspaceMessagesClient({
+        readThread,
+      } as unknown as CodexAppServerClient);
+
+      const store = useWorkspaceMessagesStore();
+      store.selectedThreadId = "thread_existing";
+      store.activeTurnId = "turn_active";
+
+      store.refreshActiveTurnReconcileLoop();
+      await vi.advanceTimersByTimeAsync(ACTIVE_TURN_RECONCILE_INTERVAL_MS + 20);
+      expect(readThread).toHaveBeenCalledTimes(1);
+      expect(store.activeTurnId).toBe("turn_active");
+
+      await vi.advanceTimersByTimeAsync(ACTIVE_TURN_RECONCILE_INTERVAL_MS + 20);
+      expect(readThread).toHaveBeenCalledTimes(2);
+      expect(store.activeTurnId).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("discovers active turn from snapshot when notifications are missed", async () => {
+    vi.useFakeTimers();
+    try {
+      const inProgressThread = makeThread("thread_existing");
+      inProgressThread.turns = [
+        {
+          id: "turn_active",
+          status: "inProgress",
+          error: null,
+          items: [],
+        },
+      ];
+
+      const readThread = vi.fn().mockResolvedValue(inProgressThread);
+
+      setWorkspaceMessagesClient({
+        readThread,
+      } as unknown as CodexAppServerClient);
+
+      const store = useWorkspaceMessagesStore();
+      store.selectedThreadId = "thread_existing";
+      store.statusMessage = "Working";
+      store.statusTone = "info";
+      store.activeTurnId = null;
+
+      store.refreshActiveTurnReconcileLoop();
+      await vi.advanceTimersByTimeAsync(ACTIVE_TURN_RECONCILE_INTERVAL_MS + 20);
+
+      expect(readThread).toHaveBeenCalledWith("thread_existing");
+      expect(store.activeTurnId).toBe("turn_active");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("updates token usage by selected thread id even without selected thread object", () => {

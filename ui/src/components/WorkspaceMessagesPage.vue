@@ -30,6 +30,7 @@ const props = defineProps<{
   pendingRequest: WorkspacePendingRequest | null;
   restoredDraft: string | null;
   restoredDraftVersion: number;
+  pendingUserDraft: string | null;
   statusMessage: string | null;
   statusTone: "info" | "warning" | "error" | null;
   activeTurnId: string | null;
@@ -815,6 +816,7 @@ onMounted(() => {
           :committed-transcript="committedTranscript"
           :live-transcript-turn="liveTranscriptTurn"
           :active-turn-id="activeTurnId"
+          :pending-user-draft="pendingUserDraft"
           :collapse-overrides="collapseOverrides"
           :status-message="statusMessage"
           :status-tone="statusTone"

@@ -28,6 +28,7 @@ const {
   liveTranscriptTurn,
   modelLabel,
   pendingRequest,
+  pendingUserDraft,
   restoredDraft,
   restoredDraftVersion,
   statusMessage,
@@ -108,6 +109,7 @@ watch(isConnected, async (connected) => {
       :collapse-overrides="collapsedItemExpandedByKey"
       :selected-agent-thread-ids="selectedAgentThreadIds"
       :pending-request="pendingRequest"
+      :pending-user-draft="pendingUserDraft"
       :restored-draft="restoredDraft"
       :restored-draft-version="restoredDraftVersion"
       :status-message="statusMessage"

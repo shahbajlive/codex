@@ -152,6 +152,28 @@ export type WorkspacePendingRequest =
 let resolvePendingRequest: ((value: unknown) => void) | null = null;
 let rejectPendingRequest: ((reason?: unknown) => void) | null = null;
 
+export const INTERRUPT_RECONCILE_DELAY_MS = 2500;
+export const ACTIVE_TURN_RECONCILE_INTERVAL_MS = 1500;
+export const INTERRUPT_RETRY_INTERVAL_MS = 2000;
+export const INTERRUPT_MAX_RETRIES = 3;
+
+let interruptReconcileTimer: ReturnType<typeof setTimeout> | null = null;
+let activeTurnReconcileTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearInterruptReconcileTimer() {
+  if (interruptReconcileTimer !== null) {
+    clearTimeout(interruptReconcileTimer);
+    interruptReconcileTimer = null;
+  }
+}
+
+function clearActiveTurnReconcileTimer() {
+  if (activeTurnReconcileTimer !== null) {
+    clearTimeout(activeTurnReconcileTimer);
+    activeTurnReconcileTimer = null;
+  }
+}
+
 export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
   state: () => ({
     agents: [] as WorkspaceAgentRow[],
@@ -173,6 +195,7 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
     resumedThreadId: null as string | null,
     interruptRequestedTurnId: null as string | null,
     interruptRequestedAt: null as number | null,
+    interruptRetryCount: 0,
     initialized: false,
     threadByAgentId: {} as Record<string, string | null>,
     threadIdsByAgentId: {} as Record<string, string[]>,
@@ -423,10 +446,7 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
           this.setTranscript(buildTranscript(thread));
           return mappedThreadId;
         } catch (error) {
-          if (
-            isThreadNotMaterializedError(error) ||
-            isMissingRolloutError(error)
-          ) {
+          if (isStaleThreadError(error)) {
             try {
               const thread = (await client.readThread(
                 mappedThreadId,
@@ -451,6 +471,11 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
             }
           }
 
+          this.threadIdsByAgentId = removeThreadIdForAgent(
+            this.threadIdsByAgentId,
+            agentId,
+            mappedThreadId,
+          );
           this.threadByAgentId = {
             ...this.threadByAgentId,
             [agentId]: null,
@@ -559,10 +584,14 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
             // @ts-ignore Pinia deep type recursion with complex protocol types
             this.setTranscript(buildTranscript(this.selectedThread));
           } catch (error) {
-            if (
-              isMissingRolloutError(error) ||
-              isThreadNotMaterializedError(error)
-            ) {
+            if (isStaleThreadError(error)) {
+              if (this.selectedAgentId) {
+                this.threadIdsByAgentId = removeThreadIdForAgent(
+                  this.threadIdsByAgentId,
+                  this.selectedAgentId,
+                  threadId,
+                );
+              }
               const freshThreadId =
                 await this.startFreshThreadForSelectedAgent();
               if (!freshThreadId) {
@@ -587,10 +616,14 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
             this.runtimeSettings(),
           );
         } catch (error) {
-          if (
-            isMissingRolloutError(error) ||
-            isThreadNotMaterializedError(error)
-          ) {
+          if (isStaleThreadError(error)) {
+            if (this.selectedAgentId) {
+              this.threadIdsByAgentId = removeThreadIdForAgent(
+                this.threadIdsByAgentId,
+                this.selectedAgentId,
+                threadId,
+              );
+            }
             const freshThreadId = await this.startFreshThreadForSelectedAgent();
             if (!freshThreadId) {
               throw error;
@@ -628,6 +661,7 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
           this.activeTurnId,
         );
         this.statusTone = this.statusMessage ? "info" : null;
+        this.refreshActiveTurnReconcileLoop();
       } catch (error) {
         this.setStatus(
           error instanceof Error ? error.message : String(error),
@@ -644,21 +678,103 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
         return;
       }
 
+      clearInterruptReconcileTimer();
+
+      const threadId = this.selectedThreadId;
       const turnId = this.activeTurnId;
       this.interruptRequestedTurnId = turnId;
       this.interruptRequestedAt = Date.now();
+      this.interruptRetryCount = 1;
       this.setStatus("Interrupting...", "warning");
 
-      try {
-        await client.interruptTurn(this.selectedThreadId, turnId);
-      } catch (error) {
+      interruptReconcileTimer = setTimeout(async () => {
+        interruptReconcileTimer = null;
+        if (
+          this.interruptRequestedTurnId !== turnId ||
+          this.activeTurnId !== turnId ||
+          this.selectedThreadId !== threadId
+        ) {
+          return;
+        }
+
+        const connectedClient = clientRef.client;
+        if (!connectedClient) {
+          return;
+        }
+
+        try {
+          const thread = (await connectedClient.readThread(threadId)) as Thread;
+          if (this.selectedThreadId !== threadId) {
+            return;
+          }
+
+          const reconciledTurn = thread.turns.find(
+            (turn) => turn.id === turnId,
+          );
+          if (!reconciledTurn || reconciledTurn.status === "inProgress") {
+            return;
+          }
+
+          if (
+            this.pendingUserDraft &&
+            reconciledTurn.status === "interrupted"
+          ) {
+            this.restoredDraft = this.pendingUserDraft;
+            this.restoredDraftVersion += 1;
+          }
+
+          this.pendingUserDraft = null;
+          this.activeTurnId = findActiveTurnId(thread);
+          this.interruptRequestedTurnId = null;
+          this.interruptRequestedAt = null;
+          this.interruptRetryCount = 0;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (this as any).selectedThread = thread;
+          this.selectedTokenUsage = this.tokenUsageByThreadId[threadId] ?? null;
+          // @ts-ignore Pinia deep type recursion with complex protocol types
+          this.liveTranscriptTurn = buildLiveTranscriptTurn(
+            this.selectedThread,
+            this.activeTurnId,
+          );
+          this.setTranscript(buildTranscript(this.selectedThread));
+
+          if (reconciledTurn.status === "interrupted") {
+            this.setStatus("Interrupted", "warning");
+            return;
+          }
+
+          if (reconciledTurn.status === "completed") {
+            this.setStatus("Interrupt requested; turn completed", "warning");
+            return;
+          }
+
+          this.setStatus(
+            reconciledTurn.error?.message ?? "Turn failed",
+            "error",
+          );
+        } catch {
+          // If reconcile fails, keep waiting for stream notifications.
+        }
+      }, INTERRUPT_RECONCILE_DELAY_MS);
+
+      void client.interruptTurn(threadId, turnId).catch((error) => {
+        if (
+          this.interruptRequestedTurnId !== turnId ||
+          this.activeTurnId !== turnId ||
+          this.selectedThreadId !== threadId
+        ) {
+          return;
+        }
+
+        clearInterruptReconcileTimer();
         this.interruptRequestedTurnId = null;
         this.interruptRequestedAt = null;
+        this.interruptRetryCount = 0;
         this.setStatus(
           error instanceof Error ? error.message : String(error),
           "error",
         );
-      }
+      });
     },
 
     async openConversationInMainChat() {
@@ -692,10 +808,7 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
         );
         this.statusTone = this.statusMessage ? "info" : null;
       } catch (error) {
-        if (
-          isThreadNotMaterializedError(error) ||
-          isMissingRolloutError(error)
-        ) {
+        if (isStaleThreadError(error)) {
           try {
             this.selectedThread = (await client.readThread(
               threadId,
@@ -724,6 +837,13 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
           }
         }
 
+        if (this.selectedAgentId) {
+          this.threadIdsByAgentId = removeThreadIdForAgent(
+            this.threadIdsByAgentId,
+            this.selectedAgentId,
+            threadId,
+          );
+        }
         this.selectedThread = null;
         this.selectedModelProvider = null;
         this.selectedTokenUsage = null;
@@ -734,7 +854,7 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
         if (
           this.selectedAgentId &&
           this.threadByAgentId[this.selectedAgentId] === threadId &&
-          isMissingRolloutError(error)
+          isStaleThreadError(error)
         ) {
           const freshThreadId = await this.startFreshThreadForSelectedAgent();
           if (freshThreadId) {
@@ -750,8 +870,110 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
           "error",
         );
       } finally {
+        this.refreshActiveTurnReconcileLoop();
         this.busy = false;
       }
+    },
+
+    async reconcileActiveTurnSnapshot() {
+      const client = clientRef.client;
+      const threadId = this.selectedThreadId;
+      const trackedTurnId = this.activeTurnId;
+      if (!client || !threadId) {
+        return;
+      }
+
+      try {
+        const thread = (await client.readThread(threadId)) as Thread;
+        if (this.selectedThreadId !== threadId) {
+          return;
+        }
+
+        const trackedTurn = trackedTurnId
+          ? thread.turns.find((turn) => turn.id === trackedTurnId)
+          : null;
+        if (trackedTurn && trackedTurn.status !== "inProgress") {
+          if (this.pendingUserDraft && trackedTurn.status === "interrupted") {
+            this.restoredDraft = this.pendingUserDraft;
+            this.restoredDraftVersion += 1;
+          }
+          this.pendingUserDraft = null;
+
+          const interruptedRequested =
+            this.interruptRequestedTurnId === trackedTurn.id;
+          this.interruptRequestedTurnId = null;
+          this.interruptRequestedAt = null;
+          this.interruptRetryCount = 0;
+          if (trackedTurn.status === "interrupted") {
+            this.setStatus("Interrupted", "warning");
+          } else if (
+            interruptedRequested &&
+            trackedTurn.status === "completed"
+          ) {
+            this.setStatus("Interrupt requested; turn completed", "warning");
+          } else if (trackedTurn.status === "failed") {
+            this.setStatus(
+              trackedTurn.error?.message ?? "Turn failed",
+              "error",
+            );
+          } else {
+            this.statusMessage = null;
+            this.statusTone = null;
+          }
+        }
+
+        const snapshotActiveTurnId = findActiveTurnId(thread);
+        this.activeTurnId = snapshotActiveTurnId;
+        if (
+          this.interruptRequestedTurnId &&
+          snapshotActiveTurnId === this.interruptRequestedTurnId &&
+          this.interruptRequestedAt !== null &&
+          this.interruptRetryCount < INTERRUPT_MAX_RETRIES
+        ) {
+          const elapsed = Date.now() - this.interruptRequestedAt;
+          const retryDueAt =
+            this.interruptRetryCount * INTERRUPT_RETRY_INTERVAL_MS;
+          if (elapsed >= retryDueAt) {
+            this.interruptRetryCount += 1;
+            void client.interruptTurn(threadId, this.interruptRequestedTurnId);
+          }
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this as any).selectedThread = thread;
+        this.selectedTokenUsage = this.tokenUsageByThreadId[threadId] ?? null;
+        this.setTranscript(buildTranscript(thread));
+        if (
+          snapshotActiveTurnId &&
+          this.interruptRequestedTurnId !== snapshotActiveTurnId &&
+          !this.pendingRequest &&
+          !this.pendingUserDraft
+        ) {
+          this.setStatus(
+            threadActivityMessage(thread, snapshotActiveTurnId),
+            "info",
+          );
+        }
+      } catch {
+        // Keep waiting for streamed notifications; this is best-effort fallback.
+      }
+    },
+
+    refreshActiveTurnReconcileLoop() {
+      clearActiveTurnReconcileTimer();
+      const shouldTrack =
+        !!this.activeTurnId ||
+        !!this.pendingUserDraft ||
+        !!this.interruptRequestedTurnId ||
+        this.statusMessage === "Working" ||
+        this.statusMessage === "Interrupting...";
+      if (!this.selectedThreadId || !shouldTrack) {
+        return;
+      }
+
+      activeTurnReconcileTimer = setTimeout(async () => {
+        await this.reconcileActiveTurnSnapshot();
+        this.refreshActiveTurnReconcileLoop();
+      }, ACTIVE_TURN_RECONCILE_INTERVAL_MS);
     },
 
     handleNotification(notification: CodexNotification) {
@@ -823,9 +1045,11 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
       }
 
       if (notification.method === "turn/started") {
+        clearInterruptReconcileTimer();
         this.activeTurnId = notification.params.turn.id;
         this.interruptRequestedTurnId = null;
         this.interruptRequestedAt = null;
+        this.interruptRetryCount = 0;
         this.refreshTranscriptView();
         this.setStatus("Working", "info");
       }
@@ -841,6 +1065,7 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
       }
 
       if (notification.method === "turn/aborted") {
+        clearInterruptReconcileTimer();
         const isInterruptAbort = notification.params.reason === "interrupted";
         if (
           this.pendingUserDraft &&
@@ -853,6 +1078,7 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
         this.activeTurnId = null;
         this.interruptRequestedTurnId = null;
         this.interruptRequestedAt = null;
+        this.interruptRetryCount = 0;
         this.refreshTranscriptView();
         if (isInterruptAbort) {
           this.setStatus("Interrupted", "warning");
@@ -863,12 +1089,22 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
       }
 
       if (notification.method === "turn/completed") {
+        clearInterruptReconcileTimer();
         const interruptedTurnCompleted =
           this.interruptRequestedTurnId === notification.params.turn.id;
+        const interruptedStatus =
+          notification.params.turn.status === "interrupted";
         this.busy = false;
         this.interruptRequestedTurnId = null;
         this.interruptRequestedAt = null;
-        if (interruptedTurnCompleted) {
+        this.interruptRetryCount = 0;
+        if (this.pendingUserDraft && interruptedStatus) {
+          this.restoredDraft = this.pendingUserDraft;
+          this.restoredDraftVersion += 1;
+        }
+        if (interruptedStatus) {
+          this.setStatus("Interrupted", "warning");
+        } else if (interruptedTurnCompleted) {
           this.setStatus("Interrupt requested; turn completed", "warning");
         } else {
           this.statusMessage = null;
@@ -880,6 +1116,8 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
           this.refreshTranscriptView();
         }
       }
+
+      this.refreshActiveTurnReconcileLoop();
     },
 
     registerRequestHandlers() {
@@ -1723,6 +1961,9 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
                 .filter(Boolean)
                 .join("\n\n");
             case "tool":
+              return [item.label, item.output ?? item.error ?? item.input ?? ""]
+                .filter(Boolean)
+                .join("\n");
             case "event":
               return `${item.label}\n${item.detail}`;
             case "user":
@@ -1736,8 +1977,12 @@ export const useWorkspaceMessagesStore = defineStore("workspaceMessages", {
     runtimeSettings() {
       const settings = useSettingsStore();
       const agentConfig = useAgentsStore().config;
+      const selectedAgentWorkspace = this.agents.find(
+        (agent) => agent.id === this.selectedAgentId,
+      )?.workspace;
+
       return {
-        cwd: settings.cwd || "",
+        cwd: selectedAgentWorkspace || settings.cwd || "",
         model: agentConfig?.model || null,
         modelProvider: agentConfig?.modelProvider || null,
         personality: settings.personality || "friendly",
@@ -1873,6 +2118,22 @@ function prependThreadIdForAgent(
   return {
     ...mapping,
     [agentId]: [threadId, ...existing.filter((id) => id !== threadId)],
+  };
+}
+
+function removeThreadIdForAgent(
+  mapping: Record<string, string[]>,
+  agentId: string,
+  threadId: string,
+): Record<string, string[]> {
+  const existing = mapping[agentId] ?? [];
+  if (!existing.includes(threadId)) {
+    return mapping;
+  }
+
+  return {
+    ...mapping,
+    [agentId]: existing.filter((id) => id !== threadId),
   };
 }
 
@@ -2258,11 +2519,24 @@ function isMissingRolloutError(error: unknown): boolean {
   return message.toLowerCase().includes("no rollout found for thread id");
 }
 
+function isThreadNotFoundError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.toLowerCase().includes("thread not found:");
+}
+
 function isThreadNotMaterializedError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message
     .toLowerCase()
     .includes("is not materialized yet; includeturns is unavailable");
+}
+
+function isStaleThreadError(error: unknown): boolean {
+  return (
+    isMissingRolloutError(error) ||
+    isThreadNotMaterializedError(error) ||
+    isThreadNotFoundError(error)
+  );
 }
 
 function parseSlashCommand(message: string) {

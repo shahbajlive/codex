@@ -129,6 +129,258 @@ describe("transcript helpers", () => {
     expect(renderTranscriptItem(withCommand[0]!.items[3]!)).toContain("more");
   });
 
+  it("renders tool arguments for dynamic tool calls", () => {
+    const transcript = buildTranscript({
+      ...thread,
+      turns: [
+        {
+          id: "turn_tool_args",
+          status: "completed",
+          error: null,
+          items: [
+            {
+              type: "dynamicToolCall",
+              id: "item_contacts",
+              tool: "contacts",
+              arguments: {
+                mode: "send",
+                target_id: "backend_engineer",
+                message: "hello",
+              },
+              status: "completed",
+              contentItems: [
+                {
+                  type: "inputText",
+                  text: "delivered",
+                },
+              ],
+              success: true,
+              durationMs: 10,
+            },
+          ],
+        },
+      ],
+    });
+
+    const rendered = renderTranscriptItem(transcript[0]!.items[0]!);
+    expect(rendered).toContain("Input:");
+    expect(rendered).toContain('"mode": "send"');
+    expect(rendered).toContain('"target_id": "backend_engineer"');
+    expect(rendered).toContain("delivered");
+  });
+
+  it("renders tool arguments for mcp tool calls", () => {
+    const transcript = buildTranscript({
+      ...thread,
+      turns: [
+        {
+          id: "turn_mcp_args",
+          status: "completed",
+          error: null,
+          items: [
+            {
+              type: "mcpToolCall",
+              id: "item_mcp",
+              server: "browser",
+              tool: "navigate",
+              status: "completed",
+              arguments: {
+                intent: "agent-chat",
+                name: "Developer Lead",
+              },
+              result: {
+                content: [
+                  {
+                    type: "text",
+                    text: "ok",
+                  },
+                ],
+                structuredContent: null,
+              },
+              error: null,
+              durationMs: 20,
+            },
+          ],
+        },
+      ],
+    });
+
+    const rendered = renderTranscriptItem(transcript[0]!.items[0]!);
+    expect(rendered).toContain("Input:");
+    expect(rendered).toContain('"intent": "agent-chat"');
+    expect(rendered).toContain('"name": "Developer Lead"');
+    expect(rendered).toContain("ok");
+  });
+
+  it("renders shell-like dynamic tool calls as command items", () => {
+    const transcript = buildTranscript({
+      ...thread,
+      turns: [
+        {
+          id: "turn_shell_tool",
+          status: "completed",
+          error: null,
+          items: [
+            {
+              type: "dynamicToolCall",
+              id: "item_exec",
+              tool: "exec_command",
+              arguments: {
+                cmd: "pwd",
+                workdir: "/repo",
+              },
+              status: "completed",
+              contentItems: [
+                {
+                  type: "inputText",
+                  text: "Process exited with code 0\n/repo",
+                },
+              ],
+              success: true,
+              durationMs: 8,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(transcript[0]?.items[0]).toEqual({
+      id: "item_exec",
+      kind: "command",
+      command: "pwd",
+      cwd: "/repo",
+      output: "/repo",
+      exitCode: 0,
+      terminalInputs: [],
+      status: "done",
+    });
+  });
+
+  it("renders generic dynamic tool labels as shell when payload is command-shaped", () => {
+    const transcript = buildTranscript({
+      ...thread,
+      turns: [
+        {
+          id: "turn_shell_tool_generic",
+          status: "completed",
+          error: null,
+          items: [
+            {
+              type: "dynamicToolCall",
+              id: "item_exec_generic",
+              tool: "tool",
+              arguments: {
+                cmd: "cat /tmp/file",
+              },
+              status: "completed",
+              contentItems: [
+                {
+                  type: "inputText",
+                  text: "Command: /bin/zsh -lc 'cat /tmp/file'\nProcess exited with code 0\nOutput:\nok",
+                },
+              ],
+              success: true,
+              durationMs: 8,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(transcript[0]?.items[0]).toMatchObject({
+      id: "item_exec_generic",
+      kind: "command",
+      command: "cat /tmp/file",
+      output: "ok",
+      exitCode: 0,
+      status: "done",
+    });
+  });
+
+  it("extracts command and output from shell wrapper text", () => {
+    const transcript = buildTranscript({
+      ...thread,
+      turns: [
+        {
+          id: "turn_shell_wrapped",
+          status: "completed",
+          error: null,
+          items: [
+            {
+              type: "dynamicToolCall",
+              id: "item_shell_wrapped",
+              tool: "tool",
+              arguments: {},
+              status: "completed",
+              contentItems: [
+                {
+                  type: "inputText",
+                  text: "Command: /bin/zsh -lc 'cat /tmp/file'\nChunk ID: cac6b9\n<system-reminder>internal</system-reminder>\nProcess exited with code 0\nOutput:\nok",
+                },
+              ],
+              success: true,
+              durationMs: 8,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(transcript[0]?.items[0]).toEqual({
+      id: "item_shell_wrapped",
+      kind: "command",
+      command: "/bin/zsh -lc 'cat /tmp/file'",
+      cwd: "",
+      output: "ok",
+      exitCode: 0,
+      terminalInputs: [],
+      status: "done",
+    });
+  });
+
+  it("keeps non-command generic tool calls as tool rows", () => {
+    const transcript = buildTranscript({
+      ...thread,
+      turns: [
+        {
+          id: "turn_structured_tool",
+          status: "completed",
+          error: null,
+          items: [
+            {
+              type: "dynamicToolCall",
+              id: "item_structured_tool",
+              tool: "tool",
+              arguments: {
+                path: "/tmp/file",
+              },
+              status: "completed",
+              contentItems: [
+                {
+                  type: "inputText",
+                  text: "No command information available",
+                },
+              ],
+              success: true,
+              durationMs: 8,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(transcript[0]?.items[0]).toEqual({
+      id: "item_structured_tool",
+      kind: "tool",
+      label: "tool",
+      category: "structured",
+      input: '{\n  "path": "/tmp/file"\n}',
+      output: "No command information available",
+      error: null,
+      status: "done",
+    });
+  });
+
   it("builds reasoning streams across summary and raw content deltas", () => {
     const initial = buildTranscript(null);
     const withSummary = applyNotification(initial, {

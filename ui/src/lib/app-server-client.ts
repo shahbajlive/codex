@@ -224,12 +224,12 @@ export class CodexAppServerClient {
     });
   }
 
-  async readThread(threadId: string): Promise<Thread> {
+  async readThread(threadId: string, includeTurns = true): Promise<Thread> {
     const response = await this.transport.request<ThreadReadResponse>(
       "thread/read",
       {
         threadId,
-        includeTurns: true,
+        includeTurns,
       },
     );
     return response.thread;
