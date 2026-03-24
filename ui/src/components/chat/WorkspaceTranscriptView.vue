@@ -32,6 +32,8 @@ type TranscriptStatusChip = {
   tone: "info" | "warning" | "error" | "muted";
 };
 
+type ToolTab = "input" | "output" | "error";
+
 type TurnLike = TranscriptTurn | LiveTranscriptTurn;
 type ItemLike = TranscriptItem | LiveTranscriptItem;
 
@@ -324,16 +326,6 @@ function renderToolSection(
   return `### ${title}\n\n\`\`\`${language}\n${normalized}\n\`\`\``;
 }
 
-function toolBodyMarkdown(item: Extract<ItemLike, { kind: "tool" }>): string {
-  return [
-    renderToolSection("Input", item.input, guessCodeLanguage(item.input)),
-    renderToolSection("Output", item.output, guessCodeLanguage(item.output)),
-    renderToolSection("Error", item.error, "text"),
-  ]
-    .filter((part): part is string => Boolean(part))
-    .join("\n\n");
-}
-
 function fileChangeMarkdown(
   item: Extract<ItemLike, { kind: "file-change" }>,
 ): string {
@@ -347,28 +339,211 @@ function fileChangeMarkdown(
     .join("\n\n");
 }
 
-function guessCodeLanguage(content: string | null): string {
+function parseJsonLike(content: string | null): unknown | null {
   const trimmed = content?.trim();
   if (!trimmed) {
-    return "text";
+    return null;
   }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function prettyPrintContent(content: string | null): string | null {
+  const trimmed = content?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = parseJsonLike(trimmed);
+  if (parsed === null) {
+    return trimmed;
+  }
+  return JSON.stringify(parsed, null, 2);
+}
+
+function looksLikeProse(content: string | null): boolean {
+  const trimmed = content?.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (parseJsonLike(trimmed) !== null) {
+    return false;
+  }
+  if (trimmed.includes("\n") && /(^|\n)[\[{>$#]/.test(trimmed)) {
+    return false;
+  }
+  if (/```|diff --git|\$\s|\bERROR\b|\bWARN\b|\bException\b/i.test(trimmed)) {
+    return false;
+  }
+  return /[.!?]/.test(trimmed) && trimmed.length < 900;
+}
+
+function renderToolText(content: string | null): string {
+  return content?.trim() ?? "";
+}
+
+function toolHasInput(item: Extract<ItemLike, { kind: "tool" }>): boolean {
+  return Boolean(item.input?.trim());
+}
+
+function toolHasOutput(item: Extract<ItemLike, { kind: "tool" }>): boolean {
+  return Boolean(item.output?.trim());
+}
+
+function toolHasError(item: Extract<ItemLike, { kind: "tool" }>): boolean {
+  return Boolean(item.error?.trim());
+}
+
+function toolTabKey(item: Extract<ItemLike, { kind: "tool" }>): string {
+  return `workspace-transcript-tool-tab:${item.id}`;
+}
+
+function availableToolTabs(
+  item: Extract<ItemLike, { kind: "tool" }>,
+): ToolTab[] {
+  const tabs: ToolTab[] = [];
+  if (toolHasInput(item)) {
+    tabs.push("input");
+  }
+  if (toolHasOutput(item)) {
+    tabs.push("output");
+  }
+  if (toolHasError(item)) {
+    tabs.push("error");
+  }
+  return tabs;
+}
+
+function defaultToolTab(item: Extract<ItemLike, { kind: "tool" }>): ToolTab {
+  if (toolHasError(item)) {
+    return "error";
+  }
+  if (toolHasOutput(item)) {
+    return "output";
+  }
+  return "input";
+}
+
+function activeToolTab(item: Extract<ItemLike, { kind: "tool" }>): ToolTab {
+  const override = props.collapseOverrides[toolTabKey(item)];
+  const tabs = availableToolTabs(item);
   if (
-    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
-    (trimmed.startsWith("[") && trimmed.endsWith("]"))
+    typeof override === "string" &&
+    ["input", "output", "error"].includes(override) &&
+    tabs.includes(override as ToolTab)
   ) {
-    return "json";
+    return override as ToolTab;
   }
-  return "text";
+  return defaultToolTab(item);
+}
+
+function setToolTab(item: Extract<ItemLike, { kind: "tool" }>, tab: ToolTab) {
+  emit("setCollapseOverride", toolTabKey(item), tab);
+}
+
+function toolTabLabel(tab: ToolTab): string {
+  switch (tab) {
+    case "input":
+      return "Input";
+    case "output":
+      return "Output";
+    case "error":
+      return "Error";
+  }
+}
+
+function toolSubtitle(
+  item: Extract<ItemLike, { kind: "tool" }>,
+): string | null {
+  const input = item.input?.trim();
+  if (!input) {
+    return item.status === "streaming" ? "Running" : null;
+  }
+  const json = parseJsonLike(input);
+  if (json && typeof json === "object" && !Array.isArray(json)) {
+    const entries = Object.entries(json as Record<string, unknown>)
+      .slice(0, 2)
+      .map(([key, value]) => {
+        const normalized =
+          typeof value === "string"
+            ? value
+            : typeof value === "number" || typeof value === "boolean"
+              ? String(value)
+              : Array.isArray(value)
+                ? `${value.length} items`
+                : value && typeof value === "object"
+                  ? "object"
+                  : "value";
+        return `${key}=${truncate(normalized, 28)}`;
+      });
+    if (entries.length > 0) {
+      return entries.join(" · ");
+    }
+  }
+  return truncate(input.replace(/\s+/g, " "), 64);
+}
+
+function commandExitTone(
+  item: Extract<ItemLike, { kind: "command" }>,
+): string | null {
+  if (item.exitCode === null) {
+    return item.status === "streaming" ? "running" : null;
+  }
+  return item.exitCode === 0 ? "ok" : "error";
+}
+
+function commandExitLabel(
+  item: Extract<ItemLike, { kind: "command" }>,
+): string | null {
+  if (item.exitCode === null) {
+    return item.status === "streaming" ? "running" : null;
+  }
+  return item.exitCode === 0 ? "exit 0" : `exit ${item.exitCode}`;
+}
+
+function commandBodyLabel(
+  item: Extract<ItemLike, { kind: "command" }>,
+): string {
+  return item.cwd?.trim() || "shell";
+}
+
+function commandTerminalTranscript(
+  item: Extract<ItemLike, { kind: "command" }>,
+): string {
+  const lines = [item.command.trim()].filter(Boolean);
+  if (item.output.trim()) {
+    lines.push(item.output.trimEnd());
+  }
+  if (item.terminalInputs.length > 0) {
+    lines.push(item.terminalInputs.join("\n"));
+  }
+  return lines.join("\n\n");
 }
 
 function commandSummary(item: Extract<ItemLike, { kind: "command" }>): string {
-  return item.cwd ? `${item.command} - ${item.cwd}` : item.command;
+  return truncate(item.command.replace(/\s+/g, " "), 100);
+}
+
+function commandDisplay(item: Extract<ItemLike, { kind: "command" }>): string {
+  const chunks = [`$ ${item.command}`];
+  if (item.output.trim()) {
+    chunks.push(item.output.trimEnd());
+  }
+  if (item.terminalInputs.length > 0) {
+    chunks.push(item.terminalInputs.join("\n"));
+  }
+  return chunks.join("\n");
 }
 
 function commandOutputLines(
   item: Extract<ItemLike, { kind: "command" }>,
 ): string[] {
-  return item.output.trim() ? item.output.trimEnd().split("\n") : [];
+  return commandTerminalTranscript(item)
+    .trim()
+    .split("\n")
+    .filter((line) => line.length > 0);
 }
 
 function commandOpenKey(item: Extract<ItemLike, { kind: "command" }>): string {
@@ -382,7 +557,11 @@ function isCommandExpanded(
   if (typeof override === "boolean") {
     return override;
   }
-  return commandOutputLines(item).length <= 10 || item.status === "streaming";
+  return (
+    commandOutputLines(item).length <= 12 ||
+    item.status === "streaming" ||
+    (item.exitCode !== null && item.exitCode !== 0)
+  );
 }
 
 function toggleCommand(item: Extract<ItemLike, { kind: "command" }>) {
@@ -506,7 +685,7 @@ watch(
         >
           <span class="turn-header__content">
             <span class="turn-header__label-row">
-              <span class="turn-header__label"></span>
+              <span class="turn-header__label">User</span>
               <span
                 v-if="turnSuffix(entry.turn, entry.isLive)"
                 :class="turnSuffixClass(entry.turn, entry.isLive)"
@@ -599,39 +778,134 @@ watch(
                   :aria-expanded="isCommandExpanded(item)"
                   @click="toggleCommand(item)"
                 >
-                  <span class="workspace-msg-item__title">Command</span>
+                  <span class="workspace-chat__command-heading">
+                    <span class="workspace-msg-item__title">Shell</span>
+                    <span
+                      v-if="commandExitLabel(item)"
+                      class="workspace-chat__status-badge"
+                      :class="[
+                        commandExitTone(item)
+                          ? `workspace-chat__status-badge--${commandExitTone(item)}`
+                          : '',
+                      ]"
+                    >
+                      {{ commandExitLabel(item) }}
+                    </span>
+                  </span>
                   <span class="workspace-chat__command-summary">{{
                     commandSummary(item)
+                  }}</span>
+                  <span v-if="item.cwd" class="workspace-chat__command-meta">{{
+                    item.cwd
                   }}</span>
                 </button>
                 <div
                   v-if="isCommandExpanded(item)"
                   class="workspace-chat__command-body"
                 >
-                  <pre
-                    class="workspace-chat__code-block"
-                  ><code>{{ item.command }}</code></pre>
-                  <pre
-                    v-if="item.output.trim()"
-                    class="workspace-chat__code-block workspace-chat__code-block--output"
-                  ><code>{{ item.output }}</code></pre>
-                  <pre
-                    v-if="item.terminalInputs.length > 0"
-                    class="workspace-chat__code-block workspace-chat__code-block--output"
-                  ><code>{{ item.terminalInputs.join('\n') }}</code></pre>
+                  <div class="workspace-chat__terminal-frame">
+                    <div class="workspace-chat__terminal-bar">
+                      <span class="workspace-chat__terminal-dot"></span>
+                      <span class="workspace-chat__terminal-dot"></span>
+                      <span class="workspace-chat__terminal-dot"></span>
+                      <span class="workspace-chat__terminal-title">{{
+                        commandBodyLabel(item)
+                      }}</span>
+                      <span class="workspace-chat__terminal-spacer"></span>
+                      <span
+                        v-if="commandExitLabel(item)"
+                        class="workspace-chat__terminal-chip"
+                        :class="[
+                          commandExitTone(item)
+                            ? `workspace-chat__terminal-chip--${commandExitTone(item)}`
+                            : '',
+                        ]"
+                      >
+                        {{ commandExitLabel(item) }}
+                      </span>
+                    </div>
+                    <pre
+                      class="workspace-chat__code-block workspace-chat__code-block--terminal"
+                    ><code>{{ commandDisplay(item) }}</code></pre>
+                  </div>
                   <div
-                    v-if="item.exitCode !== null"
-                    class="workspace-chat__meta-line"
+                    v-if="item.exitCode !== null && item.exitCode !== 0"
+                    class="workspace-chat__meta-line workspace-chat__meta-line--error"
                   >
-                    Exit code {{ item.exitCode }}
+                    Command exited with {{ item.exitCode }}
                   </div>
                 </div>
               </template>
 
               <template v-else-if="item.kind === 'tool'">
-                <div class="workspace-msg-item__title">{{ item.label }}</div>
-                <div class="workspace-chat__step-body">
-                  <MarkdownRenderer :content="toolBodyMarkdown(item)" compact />
+                <div class="workspace-chat__tool-header">
+                  <div class="workspace-chat__tool-heading">
+                    <span class="workspace-msg-item__title">{{
+                      item.label
+                    }}</span>
+                    <span
+                      v-if="item.status === 'streaming'"
+                      class="workspace-chat__status-badge workspace-chat__status-badge--running"
+                    >
+                      running
+                    </span>
+                  </div>
+                  <div
+                    v-if="toolSubtitle(item)"
+                    class="workspace-chat__tool-subtitle"
+                  >
+                    {{ toolSubtitle(item) }}
+                  </div>
+                </div>
+                <div class="workspace-chat__tool-body">
+                  <div
+                    v-if="availableToolTabs(item).length > 0"
+                    class="workspace-chat__tool-panel"
+                  >
+                    <div class="workspace-chat__tool-tabs" role="tablist">
+                      <button
+                        v-for="tab in availableToolTabs(item)"
+                        :key="tab"
+                        type="button"
+                        class="workspace-chat__tool-tab"
+                        :class="{
+                          'workspace-chat__tool-tab--active':
+                            activeToolTab(item) === tab,
+                          'workspace-chat__tool-tab--error': tab === 'error',
+                        }"
+                        :aria-selected="activeToolTab(item) === tab"
+                        @click="setToolTab(item, tab)"
+                      >
+                        {{ toolTabLabel(tab) }}
+                      </button>
+                    </div>
+
+                    <div class="workspace-chat__tool-panel-body">
+                      <template v-if="activeToolTab(item) === 'input'">
+                        <pre
+                          class="workspace-chat__code-block"
+                        ><code>{{ prettyPrintContent(item.input) }}</code></pre>
+                      </template>
+
+                      <template v-else-if="activeToolTab(item) === 'output'">
+                        <MarkdownRenderer
+                          v-if="looksLikeProse(item.output)"
+                          :content="renderToolText(item.output)"
+                          compact
+                        />
+                        <pre
+                          v-else
+                          class="workspace-chat__code-block workspace-chat__code-block--output"
+                        ><code>{{ prettyPrintContent(item.output) }}</code></pre>
+                      </template>
+
+                      <template v-else-if="activeToolTab(item) === 'error'">
+                        <pre
+                          class="workspace-chat__code-block workspace-chat__code-block--error"
+                        ><code>{{ renderToolText(item.error) }}</code></pre>
+                      </template>
+                    </div>
+                  </div>
                 </div>
               </template>
 
@@ -680,7 +954,7 @@ watch(
             <div
               class="workspace-msg-item__title workspace-chat__response-title"
             >
-              Response
+              Assistant
             </div>
             <MarkdownRenderer
               :content="renderMessageMarkdown(responseItem(entry.turn)!.text)"
