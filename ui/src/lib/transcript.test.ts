@@ -262,6 +262,39 @@ describe("transcript helpers", () => {
     expect(view.committedTurns.map((turn) => turn.id)).toEqual(["turn_done"]);
   });
 
+  it("does not infer a live turn without an active turn id", () => {
+    const view = splitTranscriptView(
+      [
+        {
+          id: "turn_stale_live",
+          status: "inProgress",
+          error: null,
+          items: [],
+        },
+        {
+          id: "turn_done",
+          status: "completed",
+          error: null,
+          items: [
+            {
+              id: "item_done",
+              kind: "assistant",
+              text: "completed answer",
+              status: "done",
+            },
+          ],
+        },
+      ],
+      null,
+    );
+
+    expect(view.liveTurn).toBeNull();
+    expect(view.committedTurns.map((turn) => turn.id)).toEqual([
+      "turn_stale_live",
+      "turn_done",
+    ]);
+  });
+
   it("builds a dedicated live turn from an in-progress thread turn", () => {
     const liveTurn = buildLiveTranscriptTurn(
       {
@@ -406,6 +439,108 @@ describe("transcript helpers", () => {
       label: "Retrying",
       tone: "warning",
     });
+  });
+
+  it("preserves live events when streaming item updates arrive", () => {
+    let liveTurn = applyLiveNotification(
+      {
+        id: "turn_live",
+        status: "inProgress",
+        error: null,
+        events: [
+          {
+            id: "cmd_1:progress",
+            label: "In progress",
+            detail: "Running git status",
+            tone: "info",
+          },
+        ],
+        items: [],
+      },
+      {
+        method: "item/agentMessage/delta",
+        params: {
+          threadId: "thr_1",
+          turnId: "turn_live",
+          itemId: "item_assistant",
+          delta: "hello",
+        },
+      },
+    );
+
+    expect(liveTurn?.events).toEqual([
+      {
+        id: "cmd_1:progress",
+        label: "In progress",
+        detail: "Running git status",
+        tone: "info",
+      },
+    ]);
+
+    liveTurn = applyLiveNotification(liveTurn, {
+      method: "item/completed",
+      params: {
+        threadId: "thr_1",
+        turnId: "turn_live",
+        item: {
+          type: "commandExecution",
+          id: "cmd_1",
+          command: "git status",
+          cwd: "/repo",
+          processId: null,
+          source: "agent",
+          status: "completed",
+          commandActions: [],
+          aggregatedOutput: "ok",
+          exitCode: 0,
+          durationMs: 10,
+        },
+      },
+    });
+
+    expect(liveTurn?.events).toEqual([]);
+  });
+
+  it("creates placeholder tool items when output deltas arrive first", () => {
+    const initial = buildTranscript(null);
+    const withCommand = applyNotification(initial, {
+      method: "item/commandExecution/outputDelta",
+      params: {
+        threadId: "thr_1",
+        turnId: "turn_live",
+        itemId: "cmd_orphan",
+        delta: "streamed output",
+      },
+    });
+    const withFileChange = applyNotification(withCommand, {
+      method: "item/fileChange/outputDelta",
+      params: {
+        threadId: "thr_1",
+        turnId: "turn_live",
+        itemId: "patch_orphan",
+        delta: "patch output",
+      },
+    });
+
+    expect(withFileChange[0]?.items).toEqual([
+      {
+        id: "cmd_orphan",
+        kind: "command",
+        command: "command",
+        cwd: "",
+        output: "streamed output",
+        exitCode: null,
+        terminalInputs: [],
+        status: "streaming",
+      },
+      {
+        id: "patch_orphan",
+        kind: "file-change",
+        changes: [],
+        output: "patch output",
+        status: "streaming",
+      },
+    ]);
   });
 
   it("formats replayed interrupted and failed turn status labels", () => {

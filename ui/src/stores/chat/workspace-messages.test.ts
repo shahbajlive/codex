@@ -71,6 +71,37 @@ describe("workspace-messages store", () => {
     });
   });
 
+  it("starts a fresh thread for /clear even when a mapping exists", async () => {
+    const startTurn = vi.fn();
+    const startThreadForAgent = vi
+      .fn()
+      .mockResolvedValue(makeThread("thread_fresh"));
+
+    setWorkspaceMessagesClient({
+      startTurn,
+      startThreadForAgent,
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.agents = [makeAgentRow()];
+    store.selectedAgentId = "agent-1";
+    store.threadByAgentId = { "agent-1": "thread_existing" };
+    store.selectedThreadId = "thread_existing";
+
+    await store.sendMessage("/clear");
+
+    expect(startTurn).not.toHaveBeenCalled();
+    expect(startThreadForAgent).toHaveBeenCalledWith("agent-1");
+    expect(store.selectedThreadId).toBe("thread_fresh");
+    expect(store.threadByAgentId["agent-1"]).toBe("thread_fresh");
+    expect(store.transcript.at(-1)?.items[0]).toMatchObject({
+      kind: "event",
+      label: "Cleared chat",
+    });
+  });
+
   it("does not read turns for a freshly created agent thread", async () => {
     const readThread = vi.fn();
     const startThreadForAgent = vi
@@ -148,6 +179,7 @@ describe("workspace-messages store", () => {
     store.agents = [makeAgentRow()];
     store.selectedAgentId = "agent-1";
     store.selectedThreadId = "thread_existing";
+    // @ts-expect-error Pinia deep type recursion with complex protocol types
     store.selectedThread = makeThread("thread_existing") as Thread;
     store.setTranscript([
       {
@@ -231,6 +263,55 @@ describe("workspace-messages store", () => {
     expect(store.statusTone).toBe("error");
   });
 
+  it("tracks resumed thread id when loading a thread", async () => {
+    const readThread = vi.fn().mockResolvedValue(makeThread("thread_loaded"));
+
+    setWorkspaceMessagesClient({
+      readThread,
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    await store.loadThread("thread_loaded");
+
+    expect(store.resumedThreadId).toBe("thread_loaded");
+  });
+
+  it("does not re-resume an already loaded thread on send", async () => {
+    const startTurn = vi.fn().mockResolvedValue({
+      id: "turn_1",
+      status: "inProgress",
+      error: null,
+      items: [],
+    });
+    const resumeThread = vi.fn();
+
+    setWorkspaceMessagesClient({
+      startTurn,
+      resumeThread,
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.agents = [makeAgentRow()];
+    store.selectedAgentId = "agent-1";
+    store.threadByAgentId = { "agent-1": "thread_existing" };
+    store.selectedThreadId = "thread_existing";
+    store.selectedThread = makeThread("thread_existing", "Existing thread");
+    store.resumedThreadId = null;
+
+    await store.sendMessage("hello");
+
+    expect(resumeThread).not.toHaveBeenCalled();
+    expect(startTurn).toHaveBeenCalledWith(
+      "thread_existing",
+      "hello",
+      expect.any(Object),
+    );
+  });
+
   it("does not reuse another agent's selected thread", async () => {
     const readThread = vi.fn().mockResolvedValue(makeThread("thread_agent_2"));
     const startThreadForAgent = vi
@@ -253,6 +334,211 @@ describe("workspace-messages store", () => {
 
     expect(startThreadForAgent).toHaveBeenCalledWith("agent-2");
     expect(store.selectedThreadId).toBe("thread_agent_2");
+  });
+
+  it("clears stale transcript when loading the selected agent thread fails", async () => {
+    const readThread = vi
+      .fn()
+      .mockRejectedValue(new Error("thread not loaded: thread_agent_2"));
+
+    setWorkspaceMessagesClient({
+      readThread,
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.agents = [makeAgentRow(), makeAgentRow("agent-2", "Builder")];
+    store.selectedAgentId = "agent-1";
+    store.selectedThreadId = "thread_agent_1";
+    store.selectedThread = makeThread("thread_agent_1");
+    store.threadByAgentId = {
+      "agent-1": "thread_agent_1",
+      "agent-2": "thread_agent_2",
+    };
+    store.transcript = [{ id: "turn_prev" } as never];
+    store.committedTranscript = [{ id: "turn_prev" } as never];
+
+    await store.selectAgent("agent-2");
+
+    expect(readThread).toHaveBeenCalledWith("thread_agent_2");
+    expect(store.selectedThread).toBeNull();
+    expect(store.transcript).toHaveLength(0);
+    expect(store.committedTranscript).toHaveLength(0);
+    expect(store.statusMessage).toBe("thread not loaded: thread_agent_2");
+    expect(store.statusTone).toBe("error");
+  });
+
+  it("recreates a stale mapped thread before sending", async () => {
+    const readThread = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("no rollout found for thread id thread_old"),
+      );
+    const startThreadForAgent = vi
+      .fn()
+      .mockResolvedValue(makeThread("thread_fresh"));
+    const startTurn = vi.fn().mockResolvedValue({
+      id: "turn_1",
+      status: "inProgress",
+      error: null,
+      items: [],
+    });
+
+    setWorkspaceMessagesClient({
+      readThread,
+      startThreadForAgent,
+      startTurn,
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.agents = [makeAgentRow()];
+    store.selectedAgentId = "agent-1";
+    store.threadByAgentId = { "agent-1": "thread_old" };
+    store.selectedThreadId = "thread_old";
+
+    await store.sendMessage("hello");
+
+    expect(readThread).toHaveBeenCalledWith("thread_old");
+    expect(startThreadForAgent).toHaveBeenCalledWith("agent-1");
+    expect(store.selectedThreadId).toBe("thread_fresh");
+    expect(startTurn).toHaveBeenCalledWith(
+      "thread_fresh",
+      "hello",
+      expect.any(Object),
+    );
+  });
+
+  it("falls back to a fresh thread when resume fails with missing rollout", async () => {
+    const readThread = vi.fn().mockResolvedValue(makeThread("thread_old"));
+    const startThreadForAgent = vi
+      .fn()
+      .mockResolvedValue(makeThread("thread_fresh"));
+    const startTurn = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error("no rollout found for thread id thread_old"),
+      )
+      .mockResolvedValueOnce({
+        id: "turn_1",
+        status: "inProgress",
+        error: null,
+        items: [],
+      });
+
+    setWorkspaceMessagesClient({
+      readThread,
+      startThreadForAgent,
+      startTurn,
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.agents = [makeAgentRow()];
+    store.selectedAgentId = "agent-1";
+    store.threadByAgentId = { "agent-1": "thread_old" };
+    store.selectedThreadId = "thread_old";
+
+    await store.sendMessage("hello");
+
+    expect(readThread).toHaveBeenCalledWith("thread_old");
+    expect(startThreadForAgent).toHaveBeenCalledWith("agent-1");
+    expect(startTurn).toHaveBeenNthCalledWith(
+      1,
+      "thread_old",
+      "hello",
+      expect.any(Object),
+    );
+    expect(startTurn).toHaveBeenNthCalledWith(
+      2,
+      "thread_fresh",
+      "hello",
+      expect.any(Object),
+    );
+    expect(store.selectedThreadId).toBe("thread_fresh");
+  });
+
+  it("loads non-materialized mapped threads without includeTurns", async () => {
+    const thread = makeThread("thread_existing", "Fresh thread");
+    const readThread = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error(
+          "thread thread_existing is not materialized yet; includeTurns is unavailable before first user message",
+        ),
+      )
+      .mockResolvedValueOnce(thread);
+
+    setWorkspaceMessagesClient({
+      readThread,
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.agents = [makeAgentRow()];
+    store.threadByAgentId = { "agent-1": "thread_existing" };
+
+    await store.selectAgent("agent-1");
+
+    expect(readThread).toHaveBeenNthCalledWith(1, "thread_existing");
+    expect(readThread).toHaveBeenNthCalledWith(2, "thread_existing", false);
+    expect(store.selectedThreadId).toBe("thread_existing");
+    expect(store.selectedThread).toMatchObject({ id: "thread_existing" });
+    expect(store.statusMessage).toBeNull();
+  });
+
+  it("loads mapped threads with missing rollout via includeTurns false", async () => {
+    const thread = makeThread("thread_existing", "Recovered thread");
+    const readThread = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error("no rollout found for thread id thread_existing"),
+      )
+      .mockResolvedValueOnce(thread);
+
+    setWorkspaceMessagesClient({
+      readThread,
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.agents = [makeAgentRow()];
+    store.threadByAgentId = { "agent-1": "thread_existing" };
+
+    await store.selectAgent("agent-1");
+
+    expect(readThread).toHaveBeenNthCalledWith(1, "thread_existing");
+    expect(readThread).toHaveBeenNthCalledWith(2, "thread_existing", false);
+    expect(store.selectedThreadId).toBe("thread_existing");
+    expect(store.selectedThread).toMatchObject({ id: "thread_existing" });
+    expect(store.statusMessage).toBeNull();
+  });
+
+  it("restores working status when loaded thread is active", async () => {
+    const thread = makeThread("thread_active", "Active thread");
+    thread.status = { type: "active", activeFlags: [] };
+    const readThread = vi.fn().mockResolvedValue(thread);
+
+    setWorkspaceMessagesClient({
+      readThread,
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.agents = [makeAgentRow()];
+    store.threadByAgentId = { "agent-1": "thread_active" };
+
+    await store.selectAgent("agent-1");
+
+    expect(store.activeTurnId).toBeNull();
+    expect(store.statusMessage).toBe("Working");
+    expect(store.statusTone).toBe("info");
   });
 
   it("reconstructs the latest persisted thread per agent on refresh", async () => {
@@ -329,6 +615,91 @@ describe("workspace-messages store", () => {
     });
     expect(readThread).toHaveBeenCalledWith("thread_scout_newer");
     expect(startThreadForAgent).not.toHaveBeenCalled();
+  });
+
+  it("keeps the currently mapped thread when it still exists on refresh", async () => {
+    const currentThread = makeThread("thread_current", "Scout current");
+    currentThread.updatedAt = 5;
+    currentThread.agentNickname = "Scout";
+
+    const newerMatched = makeThread("thread_newer", "Scout newer");
+    newerMatched.updatedAt = 20;
+    newerMatched.agentNickname = "Scout";
+
+    const readThread = vi.fn().mockResolvedValue(currentThread);
+
+    setWorkspaceMessagesClient({
+      listAgents: vi.fn().mockResolvedValue([
+        {
+          id: "agent-1",
+          name: "Scout",
+          description: "Research agent",
+          configFile: null,
+          nicknameCandidates: ["Scout"],
+          workspace: "/repo",
+          hasWorkspace: true,
+        },
+      ]),
+      listThreads: vi.fn().mockResolvedValue([newerMatched, currentThread]),
+      readThread,
+      readConfig: vi.fn().mockResolvedValue({ config: {} }),
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.selectedAgentId = "agent-1";
+    store.threadByAgentId = { "agent-1": "thread_current" };
+
+    await store.refreshWorkspaceAgents();
+
+    expect(store.threadByAgentId["agent-1"]).toBe("thread_current");
+    expect(store.threadIdsByAgentId["agent-1"]?.[0]).toBe("thread_current");
+    expect(store.selectedThreadId).toBe("thread_current");
+    expect(readThread).toHaveBeenCalledWith("thread_current");
+  });
+
+  it("keeps prior agent thread history on refresh when threads still exist", async () => {
+    const currentThread = makeThread("thread_current", "Current");
+    const previousThread = makeThread("thread_previous", "Previous");
+    const unrelated = makeThread("thread_unrelated", "Unrelated");
+
+    const readThread = vi.fn().mockResolvedValue(currentThread);
+
+    setWorkspaceMessagesClient({
+      listAgents: vi.fn().mockResolvedValue([
+        {
+          id: "agent-1",
+          name: "Scout",
+          description: "Research agent",
+          configFile: null,
+          nicknameCandidates: ["Scout"],
+          workspace: "/repo",
+          hasWorkspace: true,
+        },
+      ]),
+      listThreads: vi
+        .fn()
+        .mockResolvedValue([unrelated, previousThread, currentThread]),
+      readThread,
+      readConfig: vi.fn().mockResolvedValue({ config: {} }),
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.selectedAgentId = "agent-1";
+    store.threadByAgentId = { "agent-1": "thread_current" };
+    store.threadIdsByAgentId = {
+      "agent-1": ["thread_current", "thread_previous"],
+    };
+
+    await store.refreshWorkspaceAgents();
+
+    expect(store.threadIdsByAgentId["agent-1"]).toEqual([
+      "thread_current",
+      "thread_previous",
+    ]);
   });
 
   it("prefers reconstructed mapped thread over creating a new one", async () => {
@@ -425,6 +796,136 @@ describe("workspace-messages store", () => {
     expect(store.committedTranscript).toBeTruthy();
   });
 
+  it("recovers from stale mapped thread during refresh by starting a fresh thread", async () => {
+    const staleThread = makeThread("thread_stale", "Backend stale thread");
+    staleThread.updatedAt = 40;
+    staleThread.agentRole = "backend_engineer";
+
+    const freshThread = makeThread("thread_fresh_after_refresh", "Fresh chat");
+    const readThread = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("no rollout found for thread id thread_stale"),
+      );
+    const startThreadForAgent = vi.fn().mockResolvedValue(freshThread);
+
+    setWorkspaceMessagesClient({
+      listAgents: vi.fn().mockResolvedValue([
+        {
+          id: "backend-engineer",
+          name: "Backend Engineer",
+          description: "Backend agent",
+          configFile: null,
+          nicknameCandidates: ["backend engineer"],
+          workspace: "/repo",
+          hasWorkspace: true,
+        },
+      ]),
+      listThreads: vi.fn().mockResolvedValue([staleThread]),
+      readThread,
+      startThreadForAgent,
+      readConfig: vi.fn().mockResolvedValue({ config: {} }),
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.selectedAgentId = "backend-engineer";
+    store.threadByAgentId = { "backend-engineer": "thread_stale" };
+    store.selectedThread = null;
+
+    await store.refreshWorkspaceAgents();
+
+    expect(readThread).toHaveBeenCalledWith("thread_stale");
+    expect(startThreadForAgent).toHaveBeenCalledWith("backend-engineer");
+    expect(store.selectedThreadId).toBe("thread_fresh_after_refresh");
+    expect(store.threadByAgentId["backend-engineer"]).toBe(
+      "thread_fresh_after_refresh",
+    );
+    expect(store.statusTone).toBe("warning");
+  });
+
+  it("preserves existing mapped thread when reconstruction is null but thread still exists", async () => {
+    const thread = makeThread("thread_unrelated", "General workspace thread");
+    thread.updatedAt = 50;
+    thread.preview = "hi";
+    thread.source = "vscode";
+
+    const existingThread = makeThread(
+      "thread_existing",
+      "Existing developer lead",
+    );
+    const readThread = vi.fn().mockResolvedValue(existingThread);
+    const startThreadForAgent = vi.fn();
+
+    setWorkspaceMessagesClient({
+      listAgents: vi.fn().mockResolvedValue([
+        {
+          id: "developer_lead",
+          name: "Developer Lead",
+          description: "Lead agent",
+          configFile: null,
+          nicknameCandidates: [],
+          workspace: "/repo",
+          hasWorkspace: true,
+        },
+      ]),
+      listThreads: vi.fn().mockResolvedValue([thread, existingThread]),
+      readThread,
+      startThreadForAgent,
+      readConfig: vi.fn().mockResolvedValue({ config: {} }),
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.selectedAgentId = "developer_lead";
+    store.threadByAgentId = { developer_lead: "thread_existing" };
+    store.selectedThread = null;
+
+    await store.refreshWorkspaceAgents();
+
+    expect(startThreadForAgent).not.toHaveBeenCalled();
+    expect(store.threadByAgentId.developer_lead).toBe("thread_existing");
+    expect(store.selectedThreadId).toBe("thread_existing");
+    expect(readThread).toHaveBeenCalledWith("thread_existing");
+    expect(store.selectedThread).toMatchObject({ id: "thread_existing" });
+  });
+
+  it("auto-selects a thread for the selected agent during refresh", async () => {
+    const freshThread = makeThread("thread_fresh", "Fresh backend thread");
+    const startThreadForAgent = vi.fn().mockResolvedValue(freshThread);
+
+    setWorkspaceMessagesClient({
+      listAgents: vi.fn().mockResolvedValue([
+        {
+          id: "backend_engineer",
+          name: "Backend Engineer",
+          description: "Backend agent",
+          configFile: null,
+          nicknameCandidates: [],
+          workspace: "/repo",
+          hasWorkspace: true,
+        },
+      ]),
+      listThreads: vi.fn().mockResolvedValue([]),
+      startThreadForAgent,
+      readConfig: vi.fn().mockResolvedValue({ config: {} }),
+      readAgent: vi.fn().mockResolvedValue({}),
+      getAgentWorkspaceFiles: vi.fn().mockResolvedValue({ files: [] }),
+    } as unknown as CodexAppServerClient);
+
+    const store = useWorkspaceMessagesStore();
+    store.selectedAgentId = "backend_engineer";
+
+    await store.refreshWorkspaceAgents();
+
+    expect(startThreadForAgent).toHaveBeenCalledWith("backend_engineer");
+    expect(store.selectedThreadId).toBe("thread_fresh");
+    expect(store.selectedThread).toMatchObject({ id: "thread_fresh" });
+    expect(store.threadByAgentId.backend_engineer).toBe("thread_fresh");
+  });
+
   it("falls back to thread title/preview matching when explicit agent metadata is absent", async () => {
     const thread = makeThread("thread_named", "Developer Lead investigation");
     thread.preview = "Developer lead latest transcript";
@@ -472,6 +973,39 @@ describe("workspace-messages store", () => {
       "thread_existing",
       "turn_active",
     );
+    expect(store.statusMessage).toBe("Interrupting...");
+    expect(store.statusTone).toBe("warning");
+    expect(store.interruptRequestedTurnId).toBe("turn_active");
+  });
+
+  it("preserves interrupting status while work items continue", () => {
+    const store = useWorkspaceMessagesStore();
+    store.interruptRequestedTurnId = "turn_active";
+    store.setStatus("Interrupting...", "warning");
+
+    store.handleNotification({
+      method: "item/started",
+      params: {
+        threadId: "thread_existing",
+        turnId: "turn_active",
+        item: {
+          type: "commandExecution",
+          id: "cmd_1",
+          command: "git status",
+          cwd: "/repo",
+          processId: null,
+          source: "agent",
+          status: "inProgress",
+          commandActions: [],
+          aggregatedOutput: null,
+          exitCode: null,
+          durationMs: null,
+        },
+      },
+    });
+
+    expect(store.statusMessage).toBe("Interrupting...");
+    expect(store.statusTone).toBe("warning");
   });
 
   it("restores the submitted draft after an interrupted turn", () => {
@@ -491,6 +1025,33 @@ describe("workspace-messages store", () => {
     expect(store.restoredDraft).toBe("please try again");
     expect(store.restoredDraftVersion).toBe(1);
     expect(store.activeTurnId).toBeNull();
+    expect(store.statusMessage).toBe("Interrupted");
+    expect(store.statusTone).toBe("warning");
+    expect(store.interruptRequestedTurnId).toBeNull();
+  });
+
+  it("shows completion warning when interrupted turn completes first", () => {
+    const store = useWorkspaceMessagesStore();
+    store.activeTurnId = "turn_active";
+    store.interruptRequestedTurnId = "turn_active";
+
+    store.handleNotification({
+      method: "turn/completed",
+      params: {
+        threadId: "thread_existing",
+        turn: {
+          id: "turn_active",
+          status: "completed",
+          error: null,
+          items: [],
+        },
+      },
+    });
+
+    expect(store.activeTurnId).toBeNull();
+    expect(store.statusMessage).toBe("Interrupt requested; turn completed");
+    expect(store.statusTone).toBe("warning");
+    expect(store.interruptRequestedTurnId).toBeNull();
   });
 
   it("tracks live status for started turns and work items", () => {
@@ -533,6 +1094,87 @@ describe("workspace-messages store", () => {
     });
 
     expect(store.statusMessage).toBe("Running git status");
+  });
+
+  it("updates token usage by selected thread id even without selected thread object", () => {
+    const store = useWorkspaceMessagesStore();
+    store.selectedThreadId = "thread_existing";
+
+    store.handleNotification({
+      method: "thread/tokenUsage/updated",
+      params: {
+        threadId: "thread_existing",
+        turnId: "turn_active",
+        tokenUsage: {
+          total: {
+            totalTokens: 123,
+            inputTokens: 50,
+            cachedInputTokens: 0,
+            outputTokens: 73,
+            reasoningOutputTokens: 10,
+          },
+          last: {
+            totalTokens: 60,
+            inputTokens: 20,
+            cachedInputTokens: 0,
+            outputTokens: 40,
+            reasoningOutputTokens: 5,
+          },
+          modelContextWindow: 200000,
+        },
+      },
+    });
+
+    expect(store.selectedTokenUsage?.total.totalTokens).toBe(123);
+    expect(store.tokenUsageByThreadId.thread_existing?.total.totalTokens).toBe(
+      123,
+    );
+  });
+
+  it("recovers live updates when a turn delta arrives without turn/started", () => {
+    const store = useWorkspaceMessagesStore();
+    store.selectedThread = makeThread("thread_existing") as Thread;
+
+    store.handleNotification({
+      method: "item/agentMessage/delta",
+      params: {
+        threadId: "thread_existing",
+        turnId: "turn_live",
+        itemId: "item_assistant",
+        delta: "hello",
+      },
+    });
+
+    expect(store.activeTurnId).toBe("turn_live");
+    expect(store.liveTranscriptTurn?.id).toBe("turn_live");
+    expect(store.transcript.some((turn) => turn.id === "turn_live")).toBe(true);
+  });
+
+  it("applies live deltas when selected thread id is set but thread object is missing", () => {
+    const store = useWorkspaceMessagesStore();
+    store.selectedThread = null;
+    store.selectedThreadId = "thread_existing";
+
+    store.handleNotification({
+      method: "item/agentMessage/delta",
+      params: {
+        threadId: "thread_existing",
+        turnId: "turn_live",
+        itemId: "item_assistant",
+        delta: "hello",
+      },
+    });
+
+    expect(store.activeTurnId).toBe("turn_live");
+    expect(store.liveTranscriptTurn?.id).toBe("turn_live");
+    expect(store.liveTranscriptTurn?.items).toEqual([
+      {
+        id: "item_assistant",
+        kind: "assistant",
+        text: "hello",
+        status: "streaming",
+      },
+    ]);
   });
 
   it("keeps live and committed transcript state separate", () => {
@@ -627,12 +1269,46 @@ describe("workspace-messages store", () => {
       "turn_live",
     ]);
   });
+
+  it("does not resurrect stale in-progress turns after completion", () => {
+    const store = useWorkspaceMessagesStore();
+    store.activeTurnId = null;
+
+    store.setTranscript([
+      {
+        id: "turn_done",
+        status: "completed",
+        error: null,
+        items: [
+          {
+            id: "item_done",
+            kind: "assistant",
+            text: "final answer",
+            status: "done",
+          },
+        ],
+      },
+      {
+        id: "turn_stale_live",
+        status: "inProgress",
+        error: null,
+        items: [],
+      },
+    ]);
+
+    expect(store.liveTranscriptTurn).toBeNull();
+    expect(store.committedTranscript.map((turn) => turn.id)).toEqual([
+      "turn_done",
+      "turn_stale_live",
+    ]);
+  });
 });
 
 function makeAgentRow(id = "agent-1", name = "Scout") {
   return {
     id,
     name,
+    color: "#22c55e",
     description: "Test agent",
     workspace: "/repo",
     hasThread: false,

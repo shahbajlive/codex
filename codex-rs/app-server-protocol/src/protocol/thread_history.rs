@@ -246,6 +246,21 @@ impl ThreadHistoryBuilder {
             return;
         }
 
+        let is_duplicate = matches!(
+            self.ensure_turn().items.last(),
+            Some(ThreadItem::AgentMessage {
+                text: previous_text,
+                phase: previous_phase,
+                memory_citation: previous_memory_citation,
+                ..
+            }) if previous_text == &text
+                && previous_phase == &phase
+                && previous_memory_citation == &memory_citation
+        );
+        if is_duplicate {
+            return;
+        }
+
         let id = self.next_item_id();
         self.ensure_turn().items.push(ThreadItem::AgentMessage {
             id,
@@ -1382,6 +1397,45 @@ mod tests {
                 id: "item-1".into(),
                 text: "Final reply".into(),
                 phase: Some(MessagePhase::FinalAnswer),
+                memory_citation: None,
+            }
+        );
+    }
+
+    #[test]
+    fn coalesces_consecutive_duplicate_agent_messages() {
+        let events = vec![
+            EventMsg::UserMessage(UserMessageEvent {
+                message: "hello".into(),
+                images: None,
+                text_elements: Vec::new(),
+                local_images: Vec::new(),
+            }),
+            EventMsg::AgentMessage(AgentMessageEvent {
+                message: "same reply".into(),
+                phase: None,
+                memory_citation: None,
+            }),
+            EventMsg::AgentMessage(AgentMessageEvent {
+                message: "same reply".into(),
+                phase: None,
+                memory_citation: None,
+            }),
+        ];
+
+        let items = events
+            .into_iter()
+            .map(RolloutItem::EventMsg)
+            .collect::<Vec<_>>();
+        let turns = build_turns_from_rollout_items(&items);
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0].items.len(), 2);
+        assert_eq!(
+            turns[0].items[1],
+            ThreadItem::AgentMessage {
+                id: "item-2".into(),
+                text: "same reply".into(),
+                phase: None,
                 memory_citation: None,
             }
         );

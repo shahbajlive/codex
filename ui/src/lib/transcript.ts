@@ -1,4 +1,4 @@
-import type { Thread, ThreadItem, Turn } from "./protocol";
+import type { Thread, ThreadItem, Turn, WebSearchAction } from "./protocol";
 import type { CodexNotification } from "./protocol";
 
 type ItemLifecycle = "streaming" | "done";
@@ -289,7 +289,7 @@ function applyLiveNotificationUpdate(
   liveTurn: LiveTranscriptTurn,
   notification: CodexNotification,
 ): LiveTranscriptTurn {
-  return (applyNotification(
+  const nextTurn = applyNotification(
     [
       {
         id: liveTurn.id,
@@ -299,20 +299,33 @@ function applyLiveNotificationUpdate(
       },
     ],
     notification,
-  )[0] ?? {
-    id: liveTurn.id,
-    status: liveTurn.status,
-    error: liveTurn.error,
-    events: liveTurn.events,
-    items: liveTurn.items,
-  }) as LiveTranscriptTurn;
+  )[0];
+
+  if (!nextTurn) {
+    return {
+      id: liveTurn.id,
+      status: liveTurn.status,
+      error: liveTurn.error,
+      events: Array.isArray(liveTurn.events) ? liveTurn.events : [],
+      items: liveTurn.items,
+    };
+  }
+
+  return {
+    id: nextTurn.id,
+    status: nextTurn.status,
+    error: nextTurn.error,
+    events: Array.isArray(liveTurn.events) ? liveTurn.events : [],
+    items: nextTurn.items,
+  };
 }
 
 function appendLiveEvent(
   events: LiveTranscriptTurn["events"],
   event: LiveTranscriptTurn["events"][number],
 ): LiveTranscriptTurn["events"] {
-  const next = events.filter((item) => item.id !== event.id);
+  const current = Array.isArray(events) ? events : [];
+  const next = current.filter((item) => item.id !== event.id);
   return [...next, event];
 }
 
@@ -320,7 +333,8 @@ function removeLiveEventByPrefix(
   events: LiveTranscriptTurn["events"],
   prefix: string,
 ): LiveTranscriptTurn["events"] {
-  return events.filter((item) => !item.id.startsWith(prefix));
+  const current = Array.isArray(events) ? events : [];
+  return current.filter((item) => !item.id.startsWith(prefix));
 }
 
 function liveProgressEvent(
@@ -628,7 +642,9 @@ export function liveTranscriptItemTitle(
     case "file-change":
       return item.status === "streaming" ? "Updating files" : "File changes";
     case "tool":
-      return item.status === "streaming" ? `${item.label} running` : item.label;
+      return item.status === "streaming"
+        ? `Running ${item.label}`
+        : `Completed ${item.label}`;
     case "event":
       return item.label;
     case "user":
@@ -905,13 +921,9 @@ function selectLiveTurn(
   turns: TranscriptTurn[],
   activeTurnId: string | null,
 ): TranscriptTurn | null {
-  if (activeTurnId) {
-    return turns.find((turn) => turn.id === activeTurnId) ?? null;
-  }
-
-  return (
-    [...turns].reverse().find((turn) => turn.status === "inProgress") ?? null
-  );
+  return activeTurnId
+    ? (turns.find((turn) => turn.id === activeTurnId) ?? null)
+    : null;
 }
 
 function findActiveTurnId(thread: Thread): string | null {
@@ -996,6 +1008,23 @@ function appendCommandOutput(
   itemId: string,
   delta: string,
 ): TranscriptItem[] {
+  const existing = items.find((item) => item.id === itemId);
+  if (!existing) {
+    return [
+      ...items,
+      {
+        id: itemId,
+        kind: "command",
+        command: "command",
+        cwd: "",
+        output: delta,
+        exitCode: null,
+        terminalInputs: [],
+        status: "streaming",
+      },
+    ];
+  }
+
   return items.map((item) => {
     if (item.id !== itemId || item.kind !== "command") {
       return item;
@@ -1013,6 +1042,23 @@ function appendTerminalInput(
   itemId: string,
   stdin: string,
 ): TranscriptItem[] {
+  const existing = items.find((item) => item.id === itemId);
+  if (!existing) {
+    return [
+      ...items,
+      {
+        id: itemId,
+        kind: "command",
+        command: "command",
+        cwd: "",
+        output: "",
+        exitCode: null,
+        terminalInputs: [stdin],
+        status: "streaming",
+      },
+    ];
+  }
+
   return items.map((item) => {
     if (item.id !== itemId || item.kind !== "command") {
       return item;
@@ -1030,6 +1076,20 @@ function appendFileChangeOutput(
   itemId: string,
   delta: string,
 ): TranscriptItem[] {
+  const existing = items.find((item) => item.id === itemId);
+  if (!existing) {
+    return [
+      ...items,
+      {
+        id: itemId,
+        kind: "file-change",
+        changes: [],
+        output: delta,
+        status: "streaming",
+      },
+    ];
+  }
+
   return items.map((item) => {
     if (item.id !== itemId || item.kind !== "file-change") {
       return item;
@@ -1117,7 +1177,7 @@ function mapItem(
           item.result?.content
             .map((content) => renderToolContent(content))
             .join("\n") ??
-          item.status,
+          formatToolStatus(item.status),
         status: lifecycle,
       };
     case "dynamicToolCall":
@@ -1128,7 +1188,8 @@ function mapItem(
         detail:
           item.contentItems
             ?.map((content) => renderToolContent(content))
-            .join("\n") || (item.success === false ? "failed" : item.status),
+            .join("\n") ||
+          (item.success === false ? "failed" : formatToolStatus(item.status)),
         status: lifecycle,
       };
     case "webSearch":
@@ -1136,7 +1197,7 @@ function mapItem(
         id: item.id,
         kind: "tool",
         label: `Web search: ${item.query}`,
-        detail: item.action?.type ?? "searching",
+        detail: describeWebSearchAction(item.action),
         status: lifecycle,
       };
     case "imageGeneration":
@@ -1208,6 +1269,46 @@ function renderToolContent(content: unknown): string {
     return content.text;
   }
   return JSON.stringify(content, null, 2);
+}
+
+function formatToolStatus(status: string): string {
+  switch (status) {
+    case "inProgress":
+      return "in progress";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    default:
+      return status;
+  }
+}
+
+function describeWebSearchAction(action: WebSearchAction | null): string {
+  if (!action) {
+    return "searching";
+  }
+
+  switch (action.type) {
+    case "search": {
+      const query = action.query || action.queries?.[0] || null;
+      return query ? `searching for ${query}` : "searching";
+    }
+    case "openPage":
+      return action.url ? `opening ${action.url}` : "opening result";
+    case "findInPage":
+      if (action.pattern && action.url) {
+        return `finding ${action.pattern} in ${action.url}`;
+      }
+      if (action.pattern) {
+        return `finding ${action.pattern}`;
+      }
+      return action.url ? `scanning ${action.url}` : "scanning page";
+    case "other":
+      return "working";
+    default:
+      return "working";
+  }
 }
 
 function emptyFilled(index: number, delta: string): string[] {

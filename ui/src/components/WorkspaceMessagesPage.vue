@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import type { Model, Thread, ThreadTokenUsage } from "../lib/protocol";
 import { slashCommands } from "../lib/slash-commands";
 import {
@@ -22,7 +29,6 @@ import type {
 } from "../stores/chat/workspace-messages";
 
 const props = defineProps<{
-  approvalPolicy: string;
   autoCompactTokenLimit: number | null;
   loading: boolean;
   connected: boolean;
@@ -30,11 +36,10 @@ const props = defineProps<{
   agents: WorkspaceAgentRow[];
   modelLabel: string;
   models: Model[];
+  modelProviders: string[];
   pendingRequest: WorkspacePendingRequest | null;
-  personality: string;
   restoredDraft: string | null;
   restoredDraftVersion: number;
-  sandboxMode: string;
   statusMessage: string | null;
   statusTone: "info" | "warning" | "error" | null;
   activeTurnId: string | null;
@@ -42,8 +47,10 @@ const props = defineProps<{
   liveTranscriptTurn: LiveTranscriptTurn | null;
   selectedAgentId: string | null;
   selectedModelProvider: string | null;
+  selectedAgentThreadIds: string[];
   selectedThreadId: string | null;
   selectedTokenUsage: ThreadTokenUsage | null;
+  collapseOverrides: Record<string, boolean>;
   theme: string;
   threads: Thread[];
 }>();
@@ -53,9 +60,12 @@ const emit = defineEmits<{
   rejectRequest: [message?: string];
   resolveRequest: [response: unknown];
   select: [threadId: string];
+  selectThread: [threadId: string];
   send: [message: string];
   interrupt: [];
   openConversation: [];
+  setCollapseOverride: [key: string, expanded: boolean];
+  setCollapseOverrides: [updates: Record<string, boolean>];
 }>();
 
 const draft = ref("");
@@ -66,14 +76,82 @@ const elicitationAnswers = ref<Record<string, string | boolean>>({});
 const dynamicToolResult = ref("");
 const dynamicToolSuccess = ref(true);
 const composerField = ref<HTMLTextAreaElement | null>(null);
+const transcriptBody = ref<HTMLElement | null>(null);
 const activeCommandIndex = ref(0);
+const commandControlOpen = ref(false);
+const commandControlQuery = ref("");
+const commandControlInput = ref<HTMLInputElement | null>(null);
 const settlingLiveTurn = ref<LiveTranscriptTurn | null>(null);
 let settlingLiveTurnTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function scrollTranscriptToLatest() {
+  await nextTick();
+  if (!hasTranscriptContent.value) {
+    return;
+  }
+
+  const container = transcriptBody.value;
+  if (!container) {
+    return;
+  }
+
+  container.scrollTop = container.scrollHeight;
+}
 
 const selectedAgent = computed(
   () =>
     props.agents.find((agent) => agent.id === props.selectedAgentId) ?? null,
 );
+
+const AGENT_FALLBACK_COLORS = [
+  "#6366f1",
+  "#8b5cf6",
+  "#22c55e",
+  "#f59e0b",
+  "#ef4444",
+  "#06b6d4",
+  "#3b82f6",
+  "#ec4899",
+];
+
+function hashColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AGENT_FALLBACK_COLORS[Math.abs(hash) % AGENT_FALLBACK_COLORS.length];
+}
+
+function resolvedAgentColor(agent: WorkspaceAgentRow | null): string {
+  if (!agent) {
+    return "var(--accent)";
+  }
+  return agent.color || hashColor(agent.name || agent.id);
+}
+
+const selectedAgentColor = computed(() =>
+  resolvedAgentColor(selectedAgent.value),
+);
+
+const workspaceColorVars = computed(() => ({
+  "--workspace-agent-color": selectedAgentColor.value,
+}));
+
+function agentAvatarStyle(agent: WorkspaceAgentRow) {
+  const color = resolvedAgentColor(agent);
+  return {
+    backgroundColor: `${color}1f`,
+    color,
+  };
+}
+
+const selectedAgentAvatarStyle = computed(() => {
+  const color = selectedAgentColor.value;
+  return {
+    backgroundColor: `${color}1f`,
+    color,
+  };
+});
 
 const filteredAgents = computed(() => {
   const query = search.value.trim().toLowerCase();
@@ -88,32 +166,93 @@ const filteredAgents = computed(() => {
   });
 });
 
+type ThreadChoice = {
+  id: string;
+  label: string;
+};
+
+const threadChoices = computed<ThreadChoice[]>(() => {
+  const threadsById = new Map(
+    props.threads.map((thread) => [thread.id, thread]),
+  );
+  const sortedThreadIds = [...props.selectedAgentThreadIds].sort(
+    (left, right) => {
+      const leftThread = threadsById.get(left);
+      const rightThread = threadsById.get(right);
+      if (leftThread && rightThread) {
+        return rightThread.updatedAt - leftThread.updatedAt;
+      }
+      if (rightThread) {
+        return 1;
+      }
+      if (leftThread) {
+        return -1;
+      }
+      return (
+        props.selectedAgentThreadIds.indexOf(left) -
+        props.selectedAgentThreadIds.indexOf(right)
+      );
+    },
+  );
+
+  const choices = sortedThreadIds.map((threadId) => {
+    const thread = threadsById.get(threadId);
+    if (thread) {
+      const primary = thread.name || thread.preview || thread.id;
+      const stamp = formatTime(thread.updatedAt) || "recent";
+      return {
+        id: thread.id,
+        label: `${primary} · ${stamp}`,
+      };
+    }
+
+    return {
+      id: threadId,
+      label: `${threadId} · not materialized yet`,
+    };
+  });
+
+  if (
+    props.selectedThreadId &&
+    !choices.some((choice) => choice.id === props.selectedThreadId)
+  ) {
+    choices.unshift({
+      id: props.selectedThreadId,
+      label: `${props.selectedThreadId} · current`,
+    });
+  }
+
+  return choices;
+});
+
+function onThreadSelectionChange(event: Event) {
+  const threadId = (event.target as HTMLSelectElement).value;
+  if (!threadId || threadId === props.selectedThreadId) {
+    return;
+  }
+  emit("selectThread", threadId);
+}
+
 const composerMeta = computed(() => [
-  props.modelLabel ? `Model ${props.modelLabel}` : null,
-  props.selectedModelProvider
-    ? `Provider ${props.selectedModelProvider}`
-    : null,
-  props.selectedTokenUsage
-    ? `Tokens ${formatTokenCount(props.selectedTokenUsage.total.totalTokens)}`
-    : null,
-  props.selectedTokenUsage
-    ? `Last ${formatTokenCount(props.selectedTokenUsage.last.totalTokens)}`
-    : null,
-  props.contextWindow
-    ? `Window ${formatTokenCount(props.contextWindow)}`
-    : null,
   props.autoCompactTokenLimit
     ? `Auto-compact ${formatTokenCount(props.autoCompactTokenLimit)}`
     : null,
 ]);
 
-const statusBannerMessage = computed(() => {
-  if (props.liveTranscriptTurn) {
-    return null;
-  }
-
-  return props.statusMessage || (props.activeTurnId ? "Working" : null);
+const composerModelUsageLine = computed(() => {
+  const modelName = props.modelLabel || "default";
+  const consumed = formatTokenCount(
+    props.selectedTokenUsage?.total.totalTokens ?? 0,
+  );
+  const capacity = formatTokenCount(
+    props.contextWindow ?? props.selectedTokenUsage?.modelContextWindow ?? 0,
+  );
+  return `${modelName} - ${consumed}/${capacity}`;
 });
+
+const statusMessage = computed(
+  () => props.statusMessage || (props.activeTurnId ? "Working" : null),
+);
 
 const hasTranscriptContent = computed(
   () =>
@@ -121,9 +260,17 @@ const hasTranscriptContent = computed(
     activeOrSettlingLiveTurn.value !== null,
 );
 
-const activeOrSettlingLiveTurn = computed(
-  () => props.liveTranscriptTurn ?? settlingLiveTurn.value,
-);
+const activeOrSettlingLiveTurn = computed(() => {
+  const turn = props.liveTranscriptTurn ?? settlingLiveTurn.value;
+  if (!turn) {
+    return null;
+  }
+
+  return {
+    ...turn,
+    events: Array.isArray(turn.events) ? turn.events : [],
+  };
+});
 
 const settlingLiveTone = computed(() => {
   const turn = activeOrSettlingLiveTurn.value;
@@ -168,22 +315,314 @@ const displayedCommittedTranscript = computed(() => {
   return props.committedTranscript.filter((turn) => turn.id !== hiddenTurnId);
 });
 
-const showCommandMenu = computed(() => draft.value.trimStart().startsWith("/"));
+const collapseOverrides = ref<Record<string, boolean>>({});
+
+watch(
+  () => props.collapseOverrides,
+  (next) => {
+    collapseOverrides.value = { ...next };
+  },
+  { deep: true, immediate: true },
+);
+
+function collapseKey(turnId: string, itemId: string): string {
+  return `${props.selectedThreadId ?? "no-thread"}:${turnId}:${itemId}`;
+}
+
+function isCollapsibleItem(item: TranscriptItem | LiveTranscriptItem): boolean {
+  return (
+    item.kind === "command" ||
+    item.kind === "file-change" ||
+    item.kind === "tool" ||
+    item.kind === "reasoning"
+  );
+}
+
+function shouldAutoCollapse(
+  item: TranscriptItem | LiveTranscriptItem,
+): boolean {
+  if (!isCollapsibleItem(item)) {
+    return false;
+  }
+
+  if (!("status" in item) || item.status === "streaming") {
+    return false;
+  }
+
+  const rendered = renderTranscriptItem(item);
+  const lineCount = rendered.split("\n").length;
+  return lineCount >= 4 || rendered.length >= 220;
+}
+
+function isItemExpanded(
+  turnId: string,
+  item: TranscriptItem | LiveTranscriptItem,
+): boolean {
+  if (!isCollapsibleItem(item)) {
+    return true;
+  }
+
+  const override = collapseOverrides.value[collapseKey(turnId, item.id)];
+  if (override !== undefined) {
+    return override;
+  }
+
+  return !shouldAutoCollapse(item);
+}
+
+function toggleItemExpanded(
+  turnId: string,
+  item: TranscriptItem | LiveTranscriptItem,
+) {
+  const key = collapseKey(turnId, item.id);
+  const expanded = !isItemExpanded(turnId, item);
+  collapseOverrides.value[key] = expanded;
+  emit("setCollapseOverride", key, expanded);
+}
+
+function collapsedPreview(item: TranscriptItem | LiveTranscriptItem): string {
+  const rendered = renderTranscriptItem(item)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join("\n");
+  return rendered.slice(0, 220);
+}
+
+function expandAllItems() {
+  const next = { ...collapseOverrides.value };
+  for (const turn of displayedCommittedTranscript.value) {
+    for (const item of turn.items) {
+      if (isCollapsibleItem(item)) {
+        next[collapseKey(turn.id, item.id)] = true;
+      }
+    }
+  }
+
+  const liveTurn = activeOrSettlingLiveTurn.value;
+  if (liveTurn) {
+    for (const item of liveTurn.items) {
+      if (isCollapsibleItem(item)) {
+        next[collapseKey(liveTurn.id, item.id)] = true;
+      }
+    }
+  }
+
+  collapseOverrides.value = next;
+  emit("setCollapseOverrides", next);
+}
+
+function collapseAllItems() {
+  const next = { ...collapseOverrides.value };
+  for (const turn of displayedCommittedTranscript.value) {
+    for (const item of turn.items) {
+      if (isCollapsibleItem(item)) {
+        next[collapseKey(turn.id, item.id)] = false;
+      }
+    }
+  }
+
+  const liveTurn = activeOrSettlingLiveTurn.value;
+  if (liveTurn) {
+    for (const item of liveTurn.items) {
+      if (isCollapsibleItem(item)) {
+        next[collapseKey(liveTurn.id, item.id)] = false;
+      }
+    }
+  }
+
+  collapseOverrides.value = next;
+  emit("setCollapseOverrides", next);
+}
+
+type LiveToolOutputPreview = {
+  id: string;
+  label: string;
+  text: string;
+};
+
+type TranscriptStatusChip = {
+  id: string;
+  text: string;
+  tone: "info" | "warning" | "error" | "muted";
+};
+
+function compactPreviewText(text: string): string {
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const tail = lines.slice(-2).join("\n");
+  return tail.slice(0, 180);
+}
+
+const liveToolOutputPreviews = computed<LiveToolOutputPreview[]>(() => {
+  const turn = activeOrSettlingLiveTurn.value;
+  if (!turn) {
+    return [];
+  }
+
+  return turn.items
+    .flatMap((item) => {
+      if (
+        item.kind !== "command" &&
+        item.kind !== "file-change" &&
+        item.kind !== "tool"
+      ) {
+        return [];
+      }
+      if (item.status !== "streaming") {
+        return [];
+      }
+
+      const text =
+        item.kind === "command"
+          ? compactPreviewText(item.output)
+          : item.kind === "file-change"
+            ? compactPreviewText(item.output)
+            : compactPreviewText(item.detail);
+      if (!text) {
+        return [];
+      }
+
+      const label =
+        item.kind === "command"
+          ? item.command
+          : item.kind === "file-change"
+            ? "File changes"
+            : item.label;
+
+      return [{ id: item.id, label, text }];
+    })
+    .slice(-3);
+});
+
+const waitingForToolOutput = computed(() => {
+  const turn = activeOrSettlingLiveTurn.value;
+  if (!turn) {
+    return false;
+  }
+
+  const hasStreamingTool = turn.items.some(
+    (item) =>
+      (item.kind === "command" ||
+        item.kind === "file-change" ||
+        item.kind === "tool") &&
+      item.status === "streaming",
+  );
+
+  return hasStreamingTool && liveToolOutputPreviews.value.length === 0;
+});
+
+const transcriptStatusChips = computed<TranscriptStatusChip[]>(() => {
+  const chips: TranscriptStatusChip[] = [];
+
+  if (statusMessage.value) {
+    chips.push({
+      id: "status",
+      text: statusMessage.value,
+      tone: props.statusTone ?? "info",
+    });
+  }
+
+  if (settlingLiveLabel.value) {
+    chips.push({
+      id: "settling",
+      text: settlingLiveLabel.value,
+      tone: settlingLiveTone.value ?? "muted",
+    });
+  }
+
+  if (waitingForToolOutput.value) {
+    chips.push({
+      id: "waiting",
+      text: "Waiting for tool output...",
+      tone: "muted",
+    });
+  }
+
+  const events = activeOrSettlingLiveTurn.value?.events ?? [];
+  for (const event of events) {
+    chips.push({
+      id: `event-${event.id}`,
+      text: `${event.label}: ${truncate(event.detail, 120)}`,
+      tone: event.tone,
+    });
+  }
+
+  return chips;
+});
+
+const COMMAND_PANEL_PREFIXES = new Set([
+  "/model",
+  "/resume",
+  "/agent",
+  "/subagents",
+  "/approvals",
+  "/permissions",
+  "/settings",
+]);
+
+const COMMANDS_REQUIRING_THREAD = new Set([
+  "/rename",
+  "/compact",
+  "/fork",
+  "/diff",
+  "/copy",
+  "/review",
+]);
+
+const activeCommandQuery = computed(() => commandControlQuery.value.trim());
+
+const selectedThread = computed(
+  () =>
+    props.threads.find((thread) => thread.id === props.selectedThreadId) ??
+    null,
+);
+
+const commandContextLabel = computed(() => {
+  const agentLabel = selectedAgent.value?.name ?? "No agent";
+  const threadLabel =
+    selectedThread.value?.name ||
+    selectedThread.value?.preview ||
+    props.selectedThreadId ||
+    "No active thread";
+  return `${agentLabel} · ${threadLabel}`;
+});
+
+function commandDisabledReason(command: string): string | null {
+  if (!props.connected) {
+    return "Reconnect to run commands";
+  }
+  if (!props.selectedAgentId) {
+    return "Select an agent";
+  }
+  if (COMMANDS_REQUIRING_THREAD.has(command) && !props.selectedThreadId) {
+    return "Select a thread";
+  }
+  return null;
+}
 
 const visibleCommands = computed(() => {
-  const query = draft.value.trim().toLowerCase();
+  const query = activeCommandQuery.value.toLowerCase();
   if (!query || query === "/") {
     return slashCommands;
   }
+
+  const commandTerm = query.startsWith("/") ? query : `/${query}`;
+  const textTerm = query.startsWith("/") ? query.slice(1) : query;
+
   return slashCommands.filter(
     (item) =>
-      item.command.startsWith(query) ||
-      item.description.toLowerCase().includes(query.slice(1)),
+      item.command.startsWith(commandTerm) ||
+      item.command.slice(1).includes(textTerm) ||
+      item.description.toLowerCase().includes(textTerm),
   );
 });
 
 const activeSlashCommand = computed(() => {
-  const trimmed = draft.value.trim();
+  const trimmed = activeCommandQuery.value;
   if (!trimmed.startsWith("/")) {
     return null;
   }
@@ -195,20 +634,76 @@ type CommandOption = {
   title: string;
   detail: string;
   value: string;
+  action: "execute" | "fill-query";
+  disabledReason?: string | null;
+  contextTag?: "picker" | "run" | "disabled";
 };
+
+function parseModelCommandArgs(value: string): string[] {
+  return value.trim().split(/\s+/).slice(1).filter(Boolean);
+}
+
+const modelCommandParts = computed(() =>
+  parseModelCommandArgs(activeCommandQuery.value),
+);
+
+const selectedModelProviderFromDraft = computed(() => {
+  if (activeSlashCommand.value !== "/model") {
+    return null;
+  }
+
+  const [first] = modelCommandParts.value;
+  if (!first) {
+    return null;
+  }
+
+  if (first.includes("/")) {
+    return first.split("/", 1)[0] || null;
+  }
+
+  return first;
+});
 
 const commandPanel = computed(() => {
   switch (activeSlashCommand.value) {
     case "/model":
+      if (modelCommandParts.value[0]?.includes("/")) {
+        return null;
+      }
+
+      if (!selectedModelProviderFromDraft.value) {
+        return {
+          title: "Choose provider",
+          subtitle: "Pick provider, then model",
+          options: props.modelProviders.map((provider) => ({
+            id: `provider:${provider}`,
+            title: provider,
+            detail: "Open model list",
+            value: `/model ${provider}`,
+            action: "fill-query" as const,
+            contextTag: "picker" as const,
+          })),
+        };
+      }
+
       return {
         title: "Choose model",
-        subtitle: `Current ${props.modelLabel || "default"}`,
-        options: props.models.slice(0, 12).map((model) => ({
-          id: `model:${model.id}`,
-          title: model.displayName || model.id,
-          detail: model.description,
-          value: `/model ${model.id}`,
-        })),
+        subtitle: `${selectedModelProviderFromDraft.value} · Current ${props.modelLabel || "default"}`,
+        options: props.models
+          .filter(
+            (model) =>
+              model.id.startsWith(`${selectedModelProviderFromDraft.value}/`) ||
+              !model.id.includes("/"),
+          )
+          .slice(0, 18)
+          .map((model) => ({
+            id: `model:${model.id}`,
+            title: model.displayName || model.id,
+            detail: model.description,
+            value: `/model ${model.id}`,
+            action: "execute" as const,
+            contextTag: "run" as const,
+          })),
       };
     case "/resume":
       return {
@@ -219,6 +714,8 @@ const commandPanel = computed(() => {
           title: thread.name || thread.preview || thread.id,
           detail: thread.id,
           value: `/resume ${JSON.stringify(thread.name || thread.preview || thread.id).slice(1, -1)}`,
+          action: "execute" as const,
+          contextTag: "run" as const,
         })),
       };
     case "/agent":
@@ -231,47 +728,54 @@ const commandPanel = computed(() => {
           title: agent.name,
           detail: agent.description,
           value: `${activeSlashCommand.value} ${agent.name}`,
+          action: "execute" as const,
+          contextTag: "run" as const,
         })),
       };
     case "/approvals":
     case "/permissions":
       return {
         title: "Permissions",
-        subtitle: `Current ${props.approvalPolicy} · ${props.sandboxMode}`,
+        subtitle: "Review permission and sandbox settings",
         options: [
           {
             id: "approval:show",
             title: "Show current permissions",
             detail: "Insert the command and run it",
             value: "/approvals",
+            action: "execute" as const,
+            contextTag: "run" as const,
           },
           {
             id: "settings:open",
             title: "Open settings",
             detail: "Adjust approval policy and sandbox defaults",
             value: "/settings",
+            action: "fill-query" as const,
+            contextTag: "picker" as const,
           },
         ],
       };
     case "/settings":
       return {
         title: "Quick settings",
-        subtitle: `Theme ${props.theme} · Personality ${props.personality}`,
+        subtitle: `Theme ${props.theme} · Personality options`,
         options: [
           ...["system", "light", "dark"].map((theme) => ({
             id: `theme:${theme}`,
             title: `Theme ${theme}`,
             detail: theme === props.theme ? "Current theme" : "Apply theme",
             value: `/theme ${theme}`,
+            action: "execute" as const,
+            contextTag: "run" as const,
           })),
           ...["friendly", "pragmatic", "none"].map((personality) => ({
             id: `personality:${personality}`,
             title: `Personality ${personality}`,
-            detail:
-              personality === props.personality
-                ? "Current personality"
-                : "Apply personality",
+            detail: "Apply personality",
             value: `/personality ${personality}`,
+            action: "execute" as const,
+            contextTag: "run" as const,
           })),
         ],
       };
@@ -282,16 +786,23 @@ const commandPanel = computed(() => {
 
 const commandOptions = computed<CommandOption[]>(() => {
   if (commandPanel.value) {
-    return commandPanel.value.options;
+    return commandPanel.value.options.map((option) => ({
+      ...option,
+      disabledReason: commandDisabledReason(option.value),
+    }));
   }
-  if (!showCommandMenu.value) {
+  if (!commandControlOpen.value) {
     return [];
   }
+
   return visibleCommands.value.map((item) => ({
     id: item.command,
     title: item.command,
     detail: item.description,
     value: item.command,
+    action: COMMAND_PANEL_PREFIXES.has(item.command) ? "fill-query" : "execute",
+    disabledReason: commandDisabledReason(item.command),
+    contextTag: COMMAND_PANEL_PREFIXES.has(item.command) ? "picker" : "run",
   }));
 });
 
@@ -342,8 +853,88 @@ function applySlashCommand(command: string) {
   composerField.value?.focus();
 }
 
-function chooseCommandOption(value: string) {
-  applySlashCommand(value);
+async function focusCommandControlInput() {
+  await nextTick();
+  commandControlInput.value?.focus();
+  commandControlInput.value?.select();
+}
+
+function openCommandControl(query = "") {
+  commandControlOpen.value = true;
+  commandControlQuery.value = query;
+  activeCommandIndex.value = 0;
+  void focusCommandControlInput();
+}
+
+function closeCommandControl() {
+  commandControlOpen.value = false;
+  commandControlQuery.value = "";
+  activeCommandIndex.value = 0;
+}
+
+function chooseCommandOption(option: CommandOption) {
+  if (option.disabledReason) {
+    return;
+  }
+
+  if (option.action === "fill-query") {
+    commandControlQuery.value = option.value;
+    return;
+  }
+
+  emit("send", option.value);
+  closeCommandControl();
+  draft.value = "";
+  void nextTick(() => composerField.value?.focus());
+}
+
+function handleCommandControlKeydown(event: KeyboardEvent) {
+  if (event.key === "ArrowDown") {
+    if (commandOptions.value.length > 0) {
+      event.preventDefault();
+      activeCommandIndex.value =
+        (activeCommandIndex.value + 1) % commandOptions.value.length;
+    }
+    return;
+  }
+
+  if (event.key === "ArrowUp") {
+    if (commandOptions.value.length > 0) {
+      event.preventDefault();
+      activeCommandIndex.value =
+        (activeCommandIndex.value - 1 + commandOptions.value.length) %
+        commandOptions.value.length;
+    }
+    return;
+  }
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeCommandControl();
+    void nextTick(() => composerField.value?.focus());
+    return;
+  }
+
+  if (event.key === "Enter") {
+    event.preventDefault();
+    if (highlightedCommand.value) {
+      chooseCommandOption(highlightedCommand.value);
+    }
+  }
+}
+
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    openCommandControl("");
+    return;
+  }
+
+  if (commandControlOpen.value && event.key === "Escape") {
+    event.preventDefault();
+    closeCommandControl();
+    void nextTick(() => composerField.value?.focus());
+  }
 }
 
 function handleComposerKeydown(event: KeyboardEvent) {
@@ -351,47 +942,33 @@ function handleComposerKeydown(event: KeyboardEvent) {
     return;
   }
 
-  const hasMenu = commandOptions.value.length > 0;
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    openCommandControl("");
+    return;
+  }
 
-  if (hasMenu) {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      activeCommandIndex.value =
-        (activeCommandIndex.value + 1) % commandOptions.value.length;
-      return;
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      activeCommandIndex.value =
-        (activeCommandIndex.value - 1 + commandOptions.value.length) %
-        commandOptions.value.length;
-      return;
-    }
+  if (
+    event.key === "/" &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    draft.value.trim().length === 0
+  ) {
+    event.preventDefault();
+    openCommandControl("/");
+    return;
   }
 
   if (event.key === "Escape") {
-    if (draft.value.startsWith("/")) {
+    if (commandControlOpen.value) {
       event.preventDefault();
-      draft.value = "";
-      activeCommandIndex.value = 0;
+      closeCommandControl();
     }
     return;
   }
 
   if (event.key === "Enter") {
-    if (hasMenu) {
-      const exactCommand = slashCommands.some(
-        (item) => item.command === draft.value.trim(),
-      );
-      if (showCommandMenu.value || commandPanel.value || exactCommand) {
-        event.preventDefault();
-        if (highlightedCommand.value) {
-          chooseCommandOption(highlightedCommand.value.value);
-        }
-        return;
-      }
-    }
-
     if (!event.shiftKey) {
       event.preventDefault();
       submit();
@@ -399,21 +976,21 @@ function handleComposerKeydown(event: KeyboardEvent) {
   }
 }
 
-function bubbleClass(item: TranscriptItem | LiveTranscriptItem) {
+function transcriptItemClass(item: TranscriptItem | LiveTranscriptItem) {
   if (item.kind === "user") {
-    return "bubble bubble--user";
+    return "card workspace-msg-item workspace-msg-item--user";
   }
   if (item.kind === "assistant") {
-    return "bubble bubble--assistant";
+    return "card workspace-msg-item workspace-msg-item--assistant";
   }
   if (item.kind === "event") {
-    return `bubble bubble--event bubble--event-${item.tone}`;
+    return `card workspace-msg-item workspace-msg-item--event workspace-msg-item--event-${item.tone}`;
   }
-  return "bubble bubble--activity";
+  return "card workspace-msg-item workspace-msg-item--work";
 }
 
-function liveBubbleClass(item: LiveTranscriptItem) {
-  return `${bubbleClass(item)} bubble--live`;
+function liveTranscriptItemClass(item: LiveTranscriptItem) {
+  return `${transcriptItemClass(item)} workspace-msg-item--live`;
 }
 
 function committedTurnClass(turn: TranscriptTurn) {
@@ -535,6 +1112,9 @@ watch(
 
 watch(draft, () => {
   resizeComposer();
+});
+
+watch(commandControlQuery, () => {
   activeCommandIndex.value = 0;
 });
 
@@ -601,12 +1181,38 @@ watch(
     }, 450);
   },
 );
+
+watch(
+  [
+    () => props.selectedThreadId,
+    () => props.committedTranscript,
+    () => props.liveTranscriptTurn,
+    () => settlingLiveTurn.value,
+  ],
+  () => {
+    void scrollTranscriptToLatest();
+  },
+  { deep: true, flush: "post" },
+);
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleGlobalKeydown);
+  if (settlingLiveTurnTimer) {
+    clearTimeout(settlingLiveTurnTimer);
+    settlingLiveTurnTimer = null;
+  }
+});
+
+onMounted(() => {
+  window.addEventListener("keydown", handleGlobalKeydown);
+});
 </script>
 
 <template>
   <section
     class="workspace-msg-page"
     :class="{ 'is-sidebar-collapsed': sidebarCollapsed }"
+    :style="workspaceColorVars"
   >
     <aside class="workspace-msg-page__sidebar">
       <section class="workspace-msg-list">
@@ -662,7 +1268,10 @@ watch(
             :class="{ 'active is-selected': agent.id === selectedAgentId }"
             @click="$emit('select', agent.id)"
           >
-            <div class="workspace-msg-list__avatar">
+            <div
+              class="workspace-msg-list__avatar"
+              :style="agentAvatarStyle(agent)"
+            >
               <span>{{ agent.name.slice(0, 1) }}</span>
             </div>
             <div class="workspace-msg-list__meta">
@@ -692,18 +1301,38 @@ watch(
     <section class="workspace-msg-thread">
       <header class="workspace-msg-thread__header">
         <button class="workspace-msg-thread__agent" type="button">
-          <div class="workspace-msg-thread__avatar">
+          <div
+            class="workspace-msg-thread__avatar"
+            :style="selectedAgentAvatarStyle"
+          >
             {{ selectedAgent ? selectedAgent.name.slice(0, 1) : "?" }}
           </div>
           <div>
             <div class="workspace-msg-thread__name">
               {{ selectedAgent ? selectedAgent.name : "Select an agent" }}
             </div>
-            <div class="workspace-msg-thread__title">
-              <!--              TODO: show status or active thread -->
-              {{}}
-            </div>
+            <div class="workspace-msg-thread__title"></div>
           </div>
+        </button>
+
+        <button>
+          <select
+            v-if="selectedAgent && threadChoices.length > 0"
+            class="workspace-msg-thread__select"
+            :value="selectedThreadId || ''"
+            aria-label="Select thread"
+            @change="onThreadSelectionChange"
+          >
+            <option value="" disabled>Select thread</option>
+            <option
+              v-for="thread in threadChoices"
+              :key="thread.id"
+              :value="thread.id"
+            >
+              {{ thread.label }}
+            </option>
+          </select>
+          <span v-else>{{ selectedThreadId || "No thread selected" }}</span>
         </button>
 
         <div class="workspace-msg-thread__actions">
@@ -1052,7 +1681,32 @@ watch(
           </div>
         </form>
 
-        <div v-if="hasTranscriptContent" class="workspace-chat__body">
+        <div
+          v-if="hasTranscriptContent"
+          ref="transcriptBody"
+          class="workspace-chat__body"
+        >
+          <div class="workspace-chat__view-actions">
+            <button class="btn btn--sm" type="button" @click="collapseAllItems">
+              Collapse all tools/reasoning
+            </button>
+            <button class="btn btn--sm" type="button" @click="expandAllItems">
+              Expand all
+            </button>
+          </div>
+          <div
+            v-if="transcriptStatusChips.length > 0"
+            class="workspace-chat__chips"
+          >
+            <span
+              v-for="chip in transcriptStatusChips"
+              :key="chip.id"
+              class="workspace-chat__chip"
+              :class="`workspace-chat__chip--${chip.tone}`"
+            >
+              {{ chip.text }}
+            </span>
+          </div>
           <div
             v-for="turn in displayedCommittedTranscript"
             :key="turn.id"
@@ -1071,175 +1725,159 @@ watch(
             <div
               v-for="item in turn.items"
               :key="item.id"
-              :class="bubbleClass(item)"
+              :class="transcriptItemClass(item)"
             >
-              <div v-if="transcriptItemTitle(item)" class="bubble__title">
-                {{ transcriptItemTitle(item) }}
-                <span v-if="'status' in item" class="bubble__status">{{
-                  item.status
-                }}</span>
+              <div class="workspace-msg-item__head">
+                <div
+                  v-if="transcriptItemTitle(item)"
+                  class="card-title workspace-msg-item__title"
+                >
+                  {{ transcriptItemTitle(item) }}
+                  <span
+                    v-if="'status' in item"
+                    class="workspace-msg-item__status"
+                    >{{ item.status }}</span
+                  >
+                </div>
+                <button
+                  v-if="isCollapsibleItem(item)"
+                  class="workspace-msg-item__toggle"
+                  type="button"
+                  @click="toggleItemExpanded(turn.id, item)"
+                >
+                  {{ isItemExpanded(turn.id, item) ? "Collapse" : "Expand" }}
+                </button>
               </div>
-              <pre class="bubble__body">{{ renderTranscriptItem(item) }}</pre>
+              <pre
+                v-if="isItemExpanded(turn.id, item)"
+                class="workspace-msg-item__body"
+                >{{ renderTranscriptItem(item) }}</pre
+              >
+              <pre v-else class="workspace-msg-item__preview">{{
+                collapsedPreview(item)
+              }}</pre>
             </div>
           </div>
 
-          <section
+          <div
+            v-if="liveToolOutputPreviews.length > 0"
+            class="workspace-chat__tool-strip"
+          >
+            <div
+              v-for="preview in liveToolOutputPreviews"
+              :key="preview.id"
+              class="workspace-chat__tool-chip"
+            >
+              <div class="workspace-chat__tool-chip-title">
+                {{ preview.label }}
+              </div>
+              <pre class="workspace-chat__tool-chip-body">{{
+                preview.text
+              }}</pre>
+            </div>
+          </div>
+
+          <div
             v-if="activeOrSettlingLiveTurn"
-            class="workspace-chat__live-turn"
+            class="turn-stack turn-stack--live"
             :class="{
-              'workspace-chat__live-turn--settling': !liveTranscriptTurn,
-              'workspace-chat__live-turn--settling-error':
-                settlingLiveTone === 'error',
-              'workspace-chat__live-turn--settling-warning':
-                settlingLiveTone === 'warning',
+              'turn-stack--warning': settlingLiveTone === 'warning',
+              'turn-stack--error': settlingLiveTone === 'error',
             }"
           >
-            <div class="workspace-chat__live-turn-header">
-              <span class="workspace-chat__live-turn-label">Live turn</span>
-              <span class="workspace-chat__live-turn-id">
-                Turn {{ activeOrSettlingLiveTurn.id.slice(0, 8) }}
+            <div class="turn-meta">
+              <span>Turn {{ activeOrSettlingLiveTurn.id.slice(0, 8) }}</span>
+              <span class="turn-meta__status">{{
+                liveTurnStatusLabel(activeOrSettlingLiveTurn)
+              }}</span>
+              <span
+                v-if="activeOrSettlingLiveTurn.error"
+                class="turn-meta__error"
+              >
+                {{ activeOrSettlingLiveTurn.error }}
               </span>
             </div>
-
             <div
-              v-if="settlingLiveLabel"
-              class="workspace-chat__live-turn-settling"
-              :class="[
-                settlingLiveTone
-                  ? `workspace-chat__live-turn-settling--${settlingLiveTone}`
-                  : '',
-              ]"
+              v-for="item in activeOrSettlingLiveTurn.items"
+              :key="item.id"
+              :class="liveTranscriptItemClass(item)"
             >
-              {{ settlingLiveLabel }}
-            </div>
-
-            <div
-              v-if="activeOrSettlingLiveTurn.events.length > 0"
-              class="workspace-chat__live-events"
-            >
-              <div
-                v-for="event in activeOrSettlingLiveTurn.events"
-                :key="event.id"
-                :class="[
-                  'bubble',
-                  'bubble--event',
-                  `bubble--event-${event.tone}`,
-                  'bubble--live',
-                ]"
-              >
-                <div class="bubble__title">{{ event.label }}</div>
-                <pre class="bubble__body">{{ event.detail }}</pre>
-              </div>
-            </div>
-
-            <div class="turn-stack turn-stack--live">
-              <div class="turn-meta">
-                <span>{{ liveTurnStatusLabel(activeOrSettlingLiveTurn) }}</span>
-                <span
-                  v-if="activeOrSettlingLiveTurn.error"
-                  class="turn-meta__error"
+              <div class="workspace-msg-item__head">
+                <div
+                  v-if="liveTranscriptItemTitle(item)"
+                  class="card-title workspace-msg-item__title"
                 >
-                  {{ activeOrSettlingLiveTurn.error }}
-                </span>
-              </div>
-              <div
-                v-for="item in activeOrSettlingLiveTurn.items"
-                :key="item.id"
-                :class="liveBubbleClass(item)"
-              >
-                <div v-if="liveTranscriptItemTitle(item)" class="bubble__title">
                   {{ liveTranscriptItemTitle(item) }}
                   <span
                     v-if="liveTranscriptItemStatus(item)"
-                    class="bubble__status"
+                    class="workspace-msg-item__status"
                     >{{ liveTranscriptItemStatus(item) }}</span
                   >
                 </div>
-                <pre class="bubble__body">{{ renderTranscriptItem(item) }}</pre>
+                <button
+                  v-if="isCollapsibleItem(item)"
+                  class="workspace-msg-item__toggle"
+                  type="button"
+                  @click="toggleItemExpanded(activeOrSettlingLiveTurn.id, item)"
+                >
+                  {{
+                    isItemExpanded(activeOrSettlingLiveTurn.id, item)
+                      ? "Collapse"
+                      : "Expand"
+                  }}
+                </button>
               </div>
+              <pre
+                v-if="isItemExpanded(activeOrSettlingLiveTurn.id, item)"
+                class="workspace-msg-item__body"
+                >{{ renderTranscriptItem(item) }}</pre
+              >
+              <pre v-else class="workspace-msg-item__preview">{{
+                collapsedPreview(item)
+              }}</pre>
             </div>
-          </section>
+          </div>
         </div>
         <div v-else class="workspace-chat__empty">
           {{
             selectedAgentId
-              ? "No transcript loaded for this agent yet."
+              ? selectedThreadId
+                ? "No messages in this thread yet."
+                : "No thread selected for this agent yet."
               : "Select an agent on the left to view its transcript."
           }}
         </div>
 
         <div
-          v-if="statusBannerMessage"
-          :class="[
-            'banner',
-            'workspace-chat__status',
-            statusTone ? `workspace-chat__status--${statusTone}` : '',
-          ]"
+          v-if="!hasTranscriptContent && transcriptStatusChips.length > 0"
+          class="workspace-chat__chips workspace-chat__chips--standalone"
         >
-          {{ statusBannerMessage }}
+          <span
+            v-for="chip in transcriptStatusChips"
+            :key="chip.id"
+            class="workspace-chat__chip"
+            :class="`workspace-chat__chip--${chip.tone}`"
+          >
+            {{ chip.text }}
+          </span>
         </div>
 
         <form class="workspace-chat__composer" @submit.prevent="submit">
-          <div
-            v-if="commandOptions.length > 0"
-            class="workspace-chat__command-menu"
-          >
-            <div v-if="commandPanel" class="workspace-chat__command-panel-head">
-              <div class="workspace-chat__command-panel-title">
-                {{ commandPanel.title }}
-              </div>
-              <div class="workspace-chat__command-panel-subtitle">
-                {{ commandPanel.subtitle }}
-              </div>
-            </div>
-            <button
-              v-for="(item, index) in commandOptions"
-              :key="item.id"
-              class="workspace-chat__command-item"
-              :class="{ 'is-active': index === activeCommandIndex }"
-              type="button"
-              @mouseenter="activeCommandIndex = index"
-              @click="chooseCommandOption(item.value)"
-            >
-              <span class="workspace-chat__command-name">{{ item.title }}</span>
-              <span class="workspace-chat__command-copy">{{
-                item.detail
-              }}</span>
-            </button>
-          </div>
           <div class="workspace-chat__composer-row">
             <button
               class="workspace-chat__composer-icon"
               type="button"
-              title="Available commands"
-              aria-label="Commands"
-              @click="applySlashCommand('/')"
+              title="Attach file"
+              aria-label="Attach file"
+              @click="applySlashCommand('/mention ')"
             >
               <svg viewBox="0 0 16 16" fill="none">
                 <path
-                  d="M3 4h10"
+                  d="M6.1 9.9l4.6-4.6a2.1 2.1 0 0 1 3 3l-5.4 5.4a3.5 3.5 0 0 1-5-5l5-5a2.4 2.4 0 1 1 3.4 3.4l-4.6 4.6a1.3 1.3 0 1 1-1.8-1.8l4.1-4.1"
                   stroke="currentColor"
                   stroke-width="1.5"
                   stroke-linecap="round"
-                />
-                <path
-                  d="M3 8h7"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  stroke-linecap="round"
-                />
-                <path
-                  d="M3 12h5"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  stroke-linecap="round"
-                />
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="2.5"
-                  stroke="currentColor"
-                  stroke-width="1.25"
+                  stroke-linejoin="round"
                 />
               </svg>
             </button>
@@ -1253,43 +1891,45 @@ watch(
                 @keydown="handleComposerKeydown"
               />
             </div>
-            <button
-              v-if="activeTurnId"
-              class="workspace-chat__composer-icon"
-              type="button"
-              title="Interrupt turn"
-              aria-label="Interrupt turn"
-              @click="$emit('interrupt')"
-            >
-              <svg viewBox="0 0 16 16" fill="none">
-                <rect
-                  x="4"
-                  y="4"
-                  width="8"
-                  height="8"
-                  rx="1.5"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                />
-              </svg>
-            </button>
-            <button
-              class="workspace-chat__composer-send"
-              type="submit"
-              title="Send message"
-              aria-label="Send message"
-              :disabled="loading || !connected || !selectedAgentId"
-            >
-              <svg viewBox="0 0 16 16" fill="none">
-                <path
-                  d="M14 2L2 7l5 2.5L9 14l2-5L14 2z"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-            </button>
+            <div class="workspace-chat__composer-actions">
+              <button
+                v-if="activeTurnId"
+                class="workspace-chat__composer-icon"
+                type="button"
+                title="Interrupt turn"
+                aria-label="Interrupt turn"
+                @click="$emit('interrupt')"
+              >
+                <svg viewBox="0 0 16 16" fill="none">
+                  <rect
+                    x="4"
+                    y="4"
+                    width="8"
+                    height="8"
+                    rx="1.5"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                  />
+                </svg>
+              </button>
+              <button
+                class="workspace-chat__composer-send"
+                type="submit"
+                title="Send message"
+                aria-label="Send message"
+                :disabled="loading || !connected || !selectedAgentId"
+              >
+                <svg viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M2.2 2.2L14 8l-11.8 5.8 2.9-5.1L2.2 2.2z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </button>
+            </div>
+            <span class="workspace-chat__composer-row-model">{{
+              composerModelUsageLine
+            }}</span>
           </div>
           <div class="workspace-chat__composer-meta">
             <span
@@ -1301,6 +1941,92 @@ watch(
             </span>
           </div>
         </form>
+
+        <div
+          v-if="commandControlOpen"
+          class="workspace-command-control__backdrop"
+          @mousedown.self="closeCommandControl"
+        >
+          <section
+            class="workspace-command-control"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div class="workspace-command-control__header">
+              <input
+                ref="commandControlInput"
+                v-model="commandControlQuery"
+                class="workspace-command-control__search"
+                type="text"
+                placeholder="Type a command or search..."
+                @keydown="handleCommandControlKeydown"
+              />
+              <button
+                class="workspace-command-control__close"
+                type="button"
+                @click="closeCommandControl"
+              >
+                Esc
+              </button>
+            </div>
+
+            <div class="workspace-command-control__context">
+              <span>{{ commandContextLabel }}</span>
+              <span v-if="commandPanel">{{ commandPanel.title }}</span>
+            </div>
+
+            <div
+              v-if="commandPanel"
+              class="workspace-command-control__panel-subtitle"
+            >
+              {{ commandPanel.subtitle }}
+            </div>
+
+            <div class="workspace-command-control__list">
+              <button
+                v-for="(item, index) in commandOptions"
+                :key="item.id"
+                class="workspace-command-control__item"
+                :class="{
+                  'is-active': index === activeCommandIndex,
+                  'is-disabled': Boolean(item.disabledReason),
+                }"
+                type="button"
+                :disabled="Boolean(item.disabledReason)"
+                @mouseenter="activeCommandIndex = index"
+                @click="chooseCommandOption(item)"
+              >
+                <span class="workspace-command-control__item-main">
+                  <span class="workspace-command-control__item-name">{{
+                    item.title
+                  }}</span>
+                  <span class="workspace-command-control__item-copy">{{
+                    item.detail
+                  }}</span>
+                </span>
+                <span
+                  v-if="item.disabledReason"
+                  class="workspace-command-control__item-tag workspace-command-control__item-tag--disabled"
+                >
+                  {{ item.disabledReason }}
+                </span>
+                <span
+                  v-else-if="item.contextTag"
+                  class="workspace-command-control__item-tag"
+                >
+                  {{ item.contextTag }}
+                </span>
+              </button>
+
+              <div
+                v-if="commandOptions.length === 0"
+                class="workspace-command-control__empty"
+              >
+                No commands found.
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
     </section>
   </section>
