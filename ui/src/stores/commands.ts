@@ -16,10 +16,9 @@ import type {
 } from "../lib/protocol";
 import {
   attachTurn,
-  buildLiveTranscriptTurn,
-  buildTranscript,
-  type TranscriptTurn,
-} from "../lib/transcript";
+  type HistoryTurn,
+  type LiveHistoryTurn,
+} from "../lib/history";
 import { slashCommands } from "../lib/slash-commands";
 import { clientRef, useAgentsStore } from "./agents";
 import { useChatStore } from "./chat";
@@ -38,9 +37,9 @@ type WorkspaceCommandContext = {
   selectedTokenUsage: ThreadTokenUsage | null;
   contextWindow: number | null;
   modelLabel: string;
-  transcript: TranscriptTurn[];
+  history: HistoryTurn[];
   activeTurnId: string | null;
-  liveTranscriptTurn: ReturnType<typeof buildLiveTranscriptTurn> | null;
+  liveHistoryTurn: LiveHistoryTurn | null;
   replaceThread(thread: Thread): void;
   startFreshThreadForSelectedAgent(): Promise<string | null>;
   addLocalEvent(
@@ -48,7 +47,8 @@ type WorkspaceCommandContext = {
     detail: string,
     tone?: "info" | "warning" | "error",
   ): void;
-  setTranscript(turns: TranscriptTurn[]): void;
+  clearSelectedThreadState(): void;
+  applyThreadSnapshot(thread: Thread): void;
   refreshRuntimeMetadata(): Promise<void>;
 };
 
@@ -276,8 +276,7 @@ export const useCommandsStore = defineStore("commands", {
           store.attachedThreadId = null;
           store.selectedTokenUsage = null;
           store.activeTurnId = null;
-          store.liveTranscriptTurn = null;
-          store.setTranscript(buildTranscript(null));
+          store.clearSelectedThreadState();
           await store.startFreshThreadForSelectedAgent();
           store.addLocalEvent(
             command === "/new" ? "Started new chat" : "Cleared chat",
@@ -362,12 +361,7 @@ export const useCommandsStore = defineStore("commands", {
           const currentThread = chatStore.getSelectedThread(store);
           if (currentThread && review.reviewThreadId === currentThread.id) {
             const updated = attachTurn(currentThread, review.turn) as Thread;
-            store.replaceThread(updated);
-            store.liveTranscriptTurn = buildLiveTranscriptTurn(
-              updated,
-              store.activeTurnId,
-            );
-            store.setTranscript(buildTranscript(updated));
+            store.applyThreadSnapshot(updated);
           }
           store.addLocalEvent(
             "Review started",
@@ -433,16 +427,7 @@ export const useCommandsStore = defineStore("commands", {
             chatStore.runtimeSettings(),
           )) as Thread;
           store.selectedThreadId = thread.id;
-          store.replaceThread(resumedThread);
-          store.attachedThreadId = thread.id;
-          store.selectedModelProvider = resumedThread.modelProvider ?? null;
-          store.selectedTokenUsage = null;
-          store.activeTurnId = chatStore.findActiveTurnId(resumedThread);
-          store.liveTranscriptTurn = buildLiveTranscriptTurn(
-            resumedThread,
-            store.activeTurnId,
-          );
-          store.setTranscript(buildTranscript(resumedThread));
+          store.applyThreadSnapshot(resumedThread);
           store.addLocalEvent(
             "Resumed chat",
             resumedThread.name || resumedThread.preview || thread.id,
@@ -602,17 +587,8 @@ export const useCommandsStore = defineStore("commands", {
             store.selectedThreadId,
             chatStore.runtimeSettings(),
           )) as Thread;
-          store.replaceThread(forkedThread);
           store.selectedThreadId = forkedThread.id;
-          store.attachedThreadId = forkedThread.id;
-          store.selectedModelProvider = forkedThread.modelProvider ?? null;
-          store.selectedTokenUsage = null;
-          store.activeTurnId = chatStore.findActiveTurnId(forkedThread);
-          store.liveTranscriptTurn = buildLiveTranscriptTurn(
-            forkedThread,
-            store.activeTurnId,
-          );
-          store.setTranscript(buildTranscript(forkedThread));
+          store.applyThreadSnapshot(forkedThread);
           store.addLocalEvent(
             "Forked chat",
             forkedThread.name || forkedThread.id,
@@ -655,7 +631,7 @@ export const useCommandsStore = defineStore("commands", {
           return true;
         }
         case "/copy": {
-          const text = chatStore.latestAssistantText(store.transcript);
+          const text = chatStore.latestAssistantText(store.history);
           if (!text) {
             store.addLocalEvent(
               "Copy unavailable",

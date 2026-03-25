@@ -34,6 +34,10 @@ export function agentTypeLabel(thread: Thread): string {
     return thread.source;
   }
 
+  if (!("subAgent" in thread.source)) {
+    return "Agent";
+  }
+
   const source = thread.source.subAgent;
   if (typeof source === "string") {
     switch (source) {

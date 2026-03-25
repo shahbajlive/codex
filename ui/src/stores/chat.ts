@@ -6,12 +6,16 @@ import type {
   ThreadTokenUsage,
 } from "../lib/protocol";
 import {
-  applyLiveNotification,
+  applyLiveHistoryNotification,
+  applyHistoryNotification,
   attachTurn,
-  applyNotification,
-  buildLiveTranscriptTurn,
-  buildTranscript,
-  splitTranscriptView,
+  buildHistory,
+  buildLiveHistoryTurn,
+  splitHistoryView,
+  type HistoryTurn,
+  type LiveHistoryTurn,
+} from "../lib/history";
+import {
   type LiveTranscriptTurn,
   type TranscriptTurn,
 } from "../lib/transcript";
@@ -57,9 +61,8 @@ export const useChatStore = defineStore("chat", {
   state: () => ({
     selectedThreadId: null as string | null,
     agentThreads: [] as Thread[],
-    transcript: buildTranscript(null),
-    committedTranscript: buildTranscript(null),
-    liveTranscriptTurn: null as LiveTranscriptTurn | null,
+    history: buildHistory(null),
+    liveHistoryTurn: null as LiveHistoryTurn | null,
     pendingRequest: null as WorkspacePendingRequest | null,
     busy: false,
     statusMessage: null as string | null,
@@ -81,6 +84,23 @@ export const useChatStore = defineStore("chat", {
     tokenUsageByThreadId: {} as Record<string, ThreadTokenUsage>,
     collapsedItemExpandedByKey: {} as Record<string, boolean | string>,
   }),
+
+  getters: {
+    transcript(state): TranscriptTurn[] {
+      return state.history;
+    },
+
+    committedTranscript(state): TranscriptTurn[] {
+      return splitHistoryView(state.history, state.activeTurnId).committedTurns;
+    },
+
+    liveTranscriptTurn(state): LiveTranscriptTurn | null {
+      return historyViewLiveTurn(
+        splitHistoryView(state.history, state.activeTurnId).liveTurn,
+        state.liveHistoryTurn,
+      );
+    },
+  },
 
   actions: {
     getSelectedThread(state: {
@@ -119,7 +139,9 @@ export const useChatStore = defineStore("chat", {
           nextThreads.push(candidate);
         }
       }
-      this.agentThreads = this.sortThreadsByUpdatedAt(nextThreads);
+      nextThreads.sort((left, right) => right.updatedAt - left.updatedAt);
+      // @ts-ignore Pinia deep type recursion with complex protocol types
+      this.agentThreads = nextThreads;
     },
 
     removeThread(threadId: string) {
@@ -130,6 +152,17 @@ export const useChatStore = defineStore("chat", {
         }
       }
       this.agentThreads = remainingThreads;
+    },
+
+    applyThreadSnapshot(thread: Thread) {
+      this.replaceThread(thread);
+      this.attachedThreadId = thread.id;
+      this.selectedModelProvider = thread.modelProvider ?? null;
+      this.selectedTokenUsage = this.tokenUsageByThreadId[thread.id] ?? null;
+      this.activeTurnId = this.findActiveTurnId(thread);
+      // @ts-ignore Pinia deep type recursion with complex protocol types
+      this.liveHistoryTurn = buildLiveHistoryTurn(thread, this.activeTurnId);
+      this.setHistory(buildHistory(thread));
     },
 
     findAgents(query: string) {
@@ -315,8 +348,8 @@ export const useChatStore = defineStore("chat", {
       this.selectedModelProvider = null;
       this.selectedTokenUsage = null;
       this.activeTurnId = null;
-      this.liveTranscriptTurn = null;
-      this.setTranscript(buildTranscript(null));
+      this.liveHistoryTurn = null;
+      this.setHistory(buildHistory(null));
     },
 
     async initialize() {
@@ -450,12 +483,8 @@ export const useChatStore = defineStore("chat", {
       }
 
       const thread = await client.startThreadForAgent(agentId);
-      this.replaceThread(thread);
       this.selectedThreadId = thread.id;
-      this.attachedThreadId = thread.id;
-      this.selectedModelProvider = thread.modelProvider || null;
-      this.selectedTokenUsage = null;
-      this.activeTurnId = this.findActiveTurnId(thread);
+      this.applyThreadSnapshot(thread);
       return thread.id;
     },
 
@@ -467,18 +496,8 @@ export const useChatStore = defineStore("chat", {
       }
 
       const thread = await client.startThreadForAgent(agentId);
-      this.replaceThread(thread);
       this.selectedThreadId = thread.id;
-      this.attachedThreadId = thread.id;
-      this.selectedModelProvider = thread.modelProvider || null;
-      this.selectedTokenUsage = null;
-      this.activeTurnId = this.findActiveTurnId(thread);
-      // @ts-ignore Pinia deep type recursion with complex protocol types
-      this.liveTranscriptTurn = buildLiveTranscriptTurn(
-        thread,
-        this.activeTurnId,
-      );
-      this.setTranscript(buildTranscript(thread));
+      this.applyThreadSnapshot(thread);
       return thread.id;
     },
 
@@ -500,16 +519,7 @@ export const useChatStore = defineStore("chat", {
           threadId,
           this.runtimeSettings(),
         )) as Thread;
-        this.replaceThread(thread);
-        this.attachedThreadId = threadId;
-        this.selectedModelProvider = thread.modelProvider ?? null;
-        this.selectedTokenUsage = null;
-        // @ts-ignore Pinia deep type recursion with complex protocol types
-        this.liveTranscriptTurn = buildLiveTranscriptTurn(
-          thread,
-          this.activeTurnId,
-        );
-        this.setTranscript(buildTranscript(thread));
+        this.applyThreadSnapshot(thread);
         return threadId;
       } catch (error) {
         if (!this.isStaleThreadError(error)) {
@@ -609,11 +619,11 @@ export const useChatStore = defineStore("chat", {
         );
         this.selectedTokenUsage = null;
         // @ts-ignore Pinia deep type recursion with complex protocol types
-        this.liveTranscriptTurn = buildLiveTranscriptTurn(
+        this.liveHistoryTurn = buildLiveHistoryTurn(
           this.getSelectedThread(this),
           this.activeTurnId,
         );
-        this.setTranscript(buildTranscript(this.getSelectedThread(this)));
+        this.setHistory(buildHistory(this.getSelectedThread(this)));
         this.statusMessage = this.threadActivityMessage(
           this.getSelectedThread(this),
           this.activeTurnId,
@@ -689,11 +699,11 @@ export const useChatStore = defineStore("chat", {
           this.replaceThread(thread);
           this.selectedTokenUsage = this.tokenUsageByThreadId[threadId] ?? null;
           // @ts-ignore Pinia deep type recursion with complex protocol types
-          this.liveTranscriptTurn = buildLiveTranscriptTurn(
+          this.liveHistoryTurn = buildLiveHistoryTurn(
             this.getSelectedThread(this),
             this.activeTurnId,
           );
-          this.setTranscript(buildTranscript(this.getSelectedThread(this)));
+          this.setHistory(buildHistory(this.getSelectedThread(this)));
 
           if (reconciledTurn.status === "interrupted") {
             this.setStatus("Interrupted", "warning");
@@ -749,17 +759,7 @@ export const useChatStore = defineStore("chat", {
         this.statusMessage = null;
         this.statusTone = null;
         const thread = (await client.readThread(threadId)) as Thread;
-        this.replaceThread(thread);
-        this.attachedThreadId = thread.id;
-        this.selectedModelProvider = thread.modelProvider ?? null;
-        this.selectedTokenUsage = this.tokenUsageByThreadId[threadId] ?? null;
-        this.activeTurnId = this.findActiveTurnId(thread);
-        // @ts-ignore Pinia deep type recursion with complex protocol types
-        this.liveTranscriptTurn = buildLiveTranscriptTurn(
-          thread,
-          this.activeTurnId,
-        );
-        this.setTranscript(buildTranscript(thread));
+        this.applyThreadSnapshot(thread);
         this.statusMessage = this.threadActivityMessage(
           thread,
           this.activeTurnId,
@@ -769,18 +769,7 @@ export const useChatStore = defineStore("chat", {
         if (this.isStaleThreadError(error)) {
           try {
             const thread = (await client.readThread(threadId, false)) as Thread;
-            this.replaceThread(thread);
-            this.attachedThreadId = thread.id;
-            this.selectedModelProvider = thread.modelProvider ?? null;
-            this.selectedTokenUsage =
-              this.tokenUsageByThreadId[threadId] ?? null;
-            this.activeTurnId = this.findActiveTurnId(thread);
-            // @ts-ignore Pinia deep type recursion with complex protocol types
-            this.liveTranscriptTurn = buildLiveTranscriptTurn(
-              thread,
-              this.activeTurnId,
-            );
-            this.setTranscript(buildTranscript(thread));
+            this.applyThreadSnapshot(thread);
             this.statusMessage = this.threadActivityMessage(
               thread,
               this.activeTurnId,
@@ -884,7 +873,7 @@ export const useChatStore = defineStore("chat", {
         }
         this.replaceThread(thread);
         this.selectedTokenUsage = this.tokenUsageByThreadId[threadId] ?? null;
-        this.setTranscript(buildTranscript(thread));
+        this.setHistory(buildHistory(thread));
         if (
           snapshotActiveTurnId &&
           this.interruptRequestedTurnId !== snapshotActiveTurnId &&
@@ -944,8 +933,8 @@ export const useChatStore = defineStore("chat", {
         ) {
           const turnId = this.notificationTurnId(notification);
           if (turnId && !this.transcriptHasTurn(this.transcript, turnId)) {
-            this.setTranscript(
-              applyNotification(this.transcript, {
+            this.setHistory(
+              applyHistoryNotification(this.history, {
                 method: "turn/started",
                 params: {
                   threadId: selectedThreadId,
@@ -976,11 +965,11 @@ export const useChatStore = defineStore("chat", {
           (!("threadId" in notification.params) ||
             notification.params.threadId === selectedThreadId)
         ) {
-          this.liveTranscriptTurn = applyLiveNotification(
-            this.liveTranscriptTurn,
+          this.liveHistoryTurn = applyLiveHistoryNotification(
+            this.liveHistoryTurn,
             notification,
           );
-          this.setTranscript(applyNotification(this.transcript, notification));
+          this.setHistory(applyHistoryNotification(this.history, notification));
         }
       } catch (error) {
         const message =
@@ -1095,31 +1084,29 @@ export const useChatStore = defineStore("chat", {
       tone: "info" | "warning" | "error" = "info",
     ) {
       const turnId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const turn: TranscriptTurn = {
+      const turn: HistoryTurn = {
         id: turnId,
         status: "completed",
         error: null,
         items: [{ id: `${turnId}-event`, kind: "event", label, detail, tone }],
       };
-      this.setTranscript([...this.transcript, turn]);
+      this.setHistory([...this.history, turn]);
     },
 
-    setTranscript(turns: TranscriptTurn[]) {
-      this.transcript = turns;
-      const view = splitTranscriptView(turns, this.activeTurnId);
-      this.committedTranscript = view.committedTurns;
-      this.liveTranscriptTurn = transcriptViewLiveTurn(
+    setHistory(turns: HistoryTurn[]) {
+      this.history = turns;
+      const view = splitHistoryView(turns, this.activeTurnId);
+      this.liveHistoryTurn = historyViewLiveTurn(
         view.liveTurn,
-        this.liveTranscriptTurn,
+        this.liveHistoryTurn,
       );
     },
 
     refreshTranscriptView() {
-      const view = splitTranscriptView(this.transcript, this.activeTurnId);
-      this.committedTranscript = view.committedTurns;
-      this.liveTranscriptTurn = transcriptViewLiveTurn(
+      const view = splitHistoryView(this.history, this.activeTurnId);
+      this.liveHistoryTurn = historyViewLiveTurn(
         view.liveTurn,
-        this.liveTranscriptTurn,
+        this.liveHistoryTurn,
       );
     },
 
@@ -1147,10 +1134,10 @@ export const useChatStore = defineStore("chat", {
   },
 });
 
-function transcriptViewLiveTurn(
-  liveTurn: TranscriptTurn | null,
-  current: LiveTranscriptTurn | null,
-): LiveTranscriptTurn | null {
+function historyViewLiveTurn(
+  liveTurn: HistoryTurn | null,
+  current: LiveHistoryTurn | null,
+): LiveHistoryTurn | null {
   if (!liveTurn) {
     return null;
   }
