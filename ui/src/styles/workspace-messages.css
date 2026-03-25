@@ -524,6 +524,16 @@
   cursor: pointer;
 }
 
+.workspace-chat__terminal-frame > .workspace-chat__command-toggle {
+  display: block;
+}
+
+.workspace-chat__terminal-frame
+  > .workspace-chat__command-toggle:hover
+  .workspace-chat__terminal-bar {
+  background: color-mix(in srgb, black 16%, var(--panel));
+}
+
 .workspace-chat__command-heading,
 .workspace-chat__tool-heading {
   display: flex;
@@ -1506,6 +1516,24 @@
   margin-bottom: 0.1rem;
   font-size: 0.73rem;
   color: color-mix(in srgb, var(--text) 95%, var(--muted));
+}
+
+.contact-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.contact-avatar--lg {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
 }
 
 @media (max-width: 1100px) {

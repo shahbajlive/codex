@@ -287,6 +287,7 @@ async fn thread_name_set_is_reflected_in_read_list_and_resume() -> Result<()> {
             archived: None,
             cwd: None,
             search_term: None,
+            agent_id: None,
         })
         .await?;
     let list_resp: JSONRPCResponse = timeout(

@@ -3235,6 +3235,11 @@ pub struct ThreadListParams {
     /// Optional substring filter for the extracted thread title.
     #[ts(optional = nullable)]
     pub search_term: Option<String>,
+    /// Optional agent filter; when set, only threads associated with this agent
+    /// are returned. Contact public threads are included even if they would not
+    /// otherwise match, and are tagged with a system reminder in `preview`.
+    #[ts(optional = nullable)]
+    pub agent_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
@@ -3819,6 +3824,7 @@ pub struct Thread {
     /// Optional random unique nickname assigned to an AgentControl-spawned sub-agent.
     pub agent_nickname: Option<String>,
     /// Optional role (agent_role) assigned to an AgentControl-spawned sub-agent.
+    #[serde(alias = "agentId")]
     pub agent_role: Option<String>,
     /// Optional Git metadata captured when the thread was created.
     pub git_info: Option<GitInfo>,

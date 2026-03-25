@@ -57,7 +57,17 @@ async fn list_threads(
     source_kinds: Option<Vec<ThreadSourceKind>>,
     archived: Option<bool>,
 ) -> Result<ThreadListResponse> {
-    list_threads_with_sort(mcp, cursor, limit, providers, source_kinds, None, archived).await
+    list_threads_with_sort(
+        mcp,
+        cursor,
+        limit,
+        providers,
+        source_kinds,
+        None,
+        archived,
+        None,
+    )
+    .await
 }
 
 async fn list_threads_with_sort(
@@ -68,6 +78,7 @@ async fn list_threads_with_sort(
     source_kinds: Option<Vec<ThreadSourceKind>>,
     sort_key: Option<ThreadSortKey>,
     archived: Option<bool>,
+    agent_id: Option<String>,
 ) -> Result<ThreadListResponse> {
     let request_id = mcp
         .send_thread_list_request(codex_app_server_protocol::ThreadListParams {
@@ -79,6 +90,7 @@ async fn list_threads_with_sort(
             archived,
             cwd: None,
             search_term: None,
+            agent_id,
         })
         .await?;
     let resp: JSONRPCResponse = timeout(
@@ -493,6 +505,7 @@ async fn thread_list_respects_cwd_filter() -> Result<()> {
             archived: None,
             cwd: Some(target_cwd.to_string_lossy().into_owned()),
             search_term: None,
+            agent_id: None,
         })
         .await?;
     let resp: JSONRPCResponse = timeout(
@@ -572,6 +585,7 @@ sqlite = true
             archived: None,
             cwd: None,
             search_term: Some("needle".to_string()),
+            agent_id: None,
         })
         .await?;
     let resp: JSONRPCResponse = timeout(
@@ -586,6 +600,104 @@ sqlite = true
     assert_eq!(next_cursor, None);
     let ids: Vec<_> = data.iter().map(|thread| thread.id.as_str()).collect();
     assert_eq!(ids, vec![newer_match, older_match]);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn thread_list_filters_by_agent_id_and_tags_public_threads() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    create_minimal_config(codex_home.path())?;
+
+    let matching_thread_id = create_fake_rollout_with_source(
+        codex_home.path(),
+        "2026-03-25T02-20-00",
+        "2026-03-25T02:20:00Z",
+        "Developer lead private thread",
+        Some("mock_provider"),
+        None,
+        CoreSessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+            parent_thread_id: ThreadId::new(),
+            depth: 1,
+            agent_nickname: None,
+            agent_role: Some("developer_lead".to_string()),
+        }),
+    )?;
+    let public_thread_id = create_fake_rollout(
+        codex_home.path(),
+        "2026-03-25T02-30-00",
+        "2026-03-25T02:30:00Z",
+        r#"<contact_message>
+{
+  "senderAgentId": "backend_engineer",
+  "senderThreadId": "sender-thread",
+  "senderTurnId": "sender-turn",
+  "recipientAgentId": "developer_lead",
+  "replyThreadId": null,
+  "message": "Hi! Just checking in."
+}
+</contact_message>"#,
+        Some("mock_provider"),
+        None,
+    )?;
+    let _unrelated_thread_id = create_fake_rollout_with_source(
+        codex_home.path(),
+        "2026-03-25T02-40-00",
+        "2026-03-25T02:40:00Z",
+        "Backend private thread",
+        Some("mock_provider"),
+        None,
+        CoreSessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+            parent_thread_id: ThreadId::new(),
+            depth: 1,
+            agent_nickname: None,
+            agent_role: Some("backend_engineer".to_string()),
+        }),
+    )?;
+
+    fs::write(
+        codex_home.path().join("contacts.json5"),
+        format!(
+            r#"{{
+  contacts: [
+    {{ id: "developer_lead", publicThreadId: "{public_thread_id}" }}
+  ]
+}}"#
+        ),
+    )?;
+
+    let mut mcp = init_mcp(codex_home.path()).await?;
+    let response = list_threads_with_sort(
+        &mut mcp,
+        None,
+        Some(10),
+        Some(vec!["mock_provider".to_string()]),
+        None,
+        Some(ThreadSortKey::UpdatedAt),
+        Some(false),
+        Some("developer_lead".to_string()),
+    )
+    .await?;
+
+    let ids: Vec<_> = response
+        .data
+        .iter()
+        .map(|thread| thread.id.as_str())
+        .collect();
+    assert_eq!(
+        ids,
+        vec![public_thread_id.as_str(), matching_thread_id.as_str()]
+    );
+
+    let public_thread = response
+        .data
+        .iter()
+        .find(|thread| thread.id == public_thread_id)
+        .expect("public thread should be included");
+    assert_eq!(
+        public_thread.preview,
+        "<system-reminder>public thread</system-reminder>\nHi! Just checking in."
+    );
 
     Ok(())
 }
@@ -1039,6 +1151,7 @@ async fn thread_list_default_sorts_by_created_at() -> Result<()> {
         None,
         None,
         None,
+        None,
     )
     .await?;
 
@@ -1100,6 +1213,7 @@ async fn thread_list_sort_updated_at_orders_by_mtime() -> Result<()> {
         Some(vec!["mock_provider".to_string()]),
         None,
         Some(ThreadSortKey::UpdatedAt),
+        None,
         None,
     )
     .await?;
@@ -1167,6 +1281,7 @@ async fn thread_list_updated_at_paginates_with_cursor() -> Result<()> {
         None,
         Some(ThreadSortKey::UpdatedAt),
         None,
+        None,
     )
     .await?;
     let ids_page1: Vec<_> = page1.iter().map(|thread| thread.id.as_str()).collect();
@@ -1184,6 +1299,7 @@ async fn thread_list_updated_at_paginates_with_cursor() -> Result<()> {
         Some(vec!["mock_provider".to_string()]),
         None,
         Some(ThreadSortKey::UpdatedAt),
+        None,
         None,
     )
     .await?;
@@ -1279,6 +1395,7 @@ async fn thread_list_updated_at_tie_breaks_by_uuid() -> Result<()> {
         None,
         Some(ThreadSortKey::UpdatedAt),
         None,
+        None,
     )
     .await?;
 
@@ -1319,6 +1436,7 @@ async fn thread_list_updated_at_uses_mtime() -> Result<()> {
         Some(vec!["mock_provider".to_string()]),
         None,
         Some(ThreadSortKey::UpdatedAt),
+        None,
         None,
     )
     .await?;
@@ -1415,6 +1533,7 @@ async fn thread_list_invalid_cursor_returns_error() -> Result<()> {
             archived: None,
             cwd: None,
             search_term: None,
+            agent_id: None,
         })
         .await?;
     let error: JSONRPCError = timeout(

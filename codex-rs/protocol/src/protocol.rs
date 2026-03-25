@@ -2289,7 +2289,7 @@ pub enum SubAgentSource {
         depth: i32,
         #[serde(default)]
         agent_nickname: Option<String>,
-        #[serde(default, alias = "agent_type")]
+        #[serde(default, alias = "agent_type", alias = "agent_id")]
         agent_role: Option<String>,
     },
     MemoryConsolidation,
@@ -2409,7 +2409,12 @@ pub struct SessionMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_nickname: Option<String>,
     /// Optional role (agent_role) assigned to an AgentControl-spawned sub-agent.
-    #[serde(default, alias = "agent_type", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "agent_type",
+        alias = "agent_id",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub agent_role: Option<String>,
     pub model_provider: Option<String>,
     /// base_instructions for the session. This *should* always be present when creating a new session,

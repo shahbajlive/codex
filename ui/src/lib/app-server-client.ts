@@ -157,10 +157,11 @@ export class CodexAppServerClient {
     return response.providers;
   }
 
-  async listAgentThreads(): Promise<Thread[]> {
+  async listAgentThreads(agentId?: string): Promise<Thread[]> {
     const response = await this.transport.request<ThreadListResponse>(
       "thread/list",
       {
+        agentId: agentId || null,
         archived: false,
         cursor: null,
         cwd: null,
@@ -168,13 +169,15 @@ export class CodexAppServerClient {
         modelProviders: null,
         searchTerm: null,
         sortKey: "updated_at",
-        sourceKinds: [
-          "subAgent",
-          "subAgentReview",
-          "subAgentCompact",
-          "subAgentThreadSpawn",
-          "subAgentOther",
-        ],
+        sourceKinds: agentId
+          ? null
+          : [
+              "subAgent",
+              "subAgentReview",
+              "subAgentCompact",
+              "subAgentThreadSpawn",
+              "subAgentOther",
+            ],
       },
     );
     return response.data;

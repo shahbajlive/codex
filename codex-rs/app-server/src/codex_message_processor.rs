@@ -197,6 +197,7 @@ use codex_core::ThreadSortKey as CoreThreadSortKey;
 use codex_core::auth::AuthMode as CoreAuthMode;
 use codex_core::auth::CLIENT_ID;
 use codex_core::auth::login_with_api_key;
+use codex_core::config::AgentConfigService;
 use codex_core::config::Config;
 use codex_core::config::ConfigOverrides;
 use codex_core::config::NetworkProxyAuditMetadata;
@@ -338,6 +339,8 @@ struct ThreadListFilters {
     archived: bool,
     cwd: Option<PathBuf>,
     search_term: Option<String>,
+    agent_id: Option<String>,
+    public_thread_id: Option<ThreadId>,
 }
 
 // Duration before a ChatGPT login attempt is abandoned.
@@ -1894,6 +1897,8 @@ impl CodexMessageProcessor {
             persist_extended_history,
             agent_id,
         } = params;
+        let cwd =
+            resolve_thread_start_cwd(self.config.codex_home.as_path(), agent_id.as_deref(), cwd);
         let mut model = model;
         let mut model_provider = model_provider;
         let mut approval_policy = approval_policy;
@@ -2088,6 +2093,7 @@ impl CodexMessageProcessor {
                 service_name,
                 request_trace,
                 agent_id,
+                /*apply_agent_runtime_overrides*/ false,
             )
             .instrument(tracing::info_span!(
                 "app_server.thread_start.create_thread",
@@ -2854,7 +2860,15 @@ impl CodexMessageProcessor {
                 });
             };
 
-            let sessions_folder = self.config.codex_home.join(codex_core::SESSIONS_SUBDIR);
+            let sessions_folder =
+                codex_core::owner_agent_id_from_rollout_path(canonical_rollout_path.as_path())
+                    .map(|agent_id| {
+                        codex_core::sessions_root_for_agent(
+                            self.config.codex_home.as_path(),
+                            &agent_id,
+                        )
+                    })
+                    .unwrap_or_else(|| self.config.codex_home.join(codex_core::SESSIONS_SUBDIR));
             let dest_dir = sessions_folder.join(year).join(month).join(day);
             let restored_path = dest_dir.join(&file_name);
             tokio::fs::create_dir_all(&dest_dir)
@@ -3125,7 +3139,24 @@ impl CodexMessageProcessor {
             archived,
             cwd,
             search_term,
+            agent_id,
         } = params;
+
+        let public_thread_id = if let Some(agent_id) = agent_id.as_ref() {
+            match ContactsConfig::load(&self.config.codex_home) {
+                Ok(config) => config
+                    .list()
+                    .into_iter()
+                    .find(|record| record.agent_id == *agent_id)
+                    .map(|record| record.public_thread_id),
+                Err(err) => {
+                    warn!("Failed to load contacts config while listing agent threads: {err}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
         let requested_page_size = limit
             .map(|value| value as usize)
@@ -3146,6 +3177,8 @@ impl CodexMessageProcessor {
                     archived: archived.unwrap_or(false),
                     cwd: cwd.map(PathBuf::from),
                     search_term,
+                    agent_id,
+                    public_thread_id,
                 },
             )
             .await
@@ -4336,6 +4369,8 @@ impl CodexMessageProcessor {
             archived,
             cwd,
             search_term,
+            agent_id,
+            public_thread_id,
         } = filters;
         let mut cursor_obj: Option<RolloutCursor> = match cursor.as_ref() {
             Some(cursor_str) => {
@@ -4363,6 +4398,22 @@ impl CodexMessageProcessor {
             None => Some(vec![self.config.model_provider_id.clone()]),
         };
         let fallback_provider = self.config.model_provider_id.clone();
+        let source_kinds = if agent_id.is_some() && source_kinds.is_none() {
+            Some(vec![
+                ThreadSourceKind::Cli,
+                ThreadSourceKind::VsCode,
+                ThreadSourceKind::Exec,
+                ThreadSourceKind::AppServer,
+                ThreadSourceKind::SubAgent,
+                ThreadSourceKind::SubAgentReview,
+                ThreadSourceKind::SubAgentCompact,
+                ThreadSourceKind::SubAgentThreadSpawn,
+                ThreadSourceKind::SubAgentOther,
+                ThreadSourceKind::Unknown,
+            ])
+        } else {
+            source_kinds
+        };
         let (allowed_sources_vec, source_kind_filter) = compute_source_filters(source_kinds);
         let allowed_sources = allowed_sources_vec.as_slice();
         let state_db_ctx = get_state_db(&self.config).await;
@@ -4407,7 +4458,7 @@ impl CodexMessageProcessor {
 
             let mut filtered = Vec::with_capacity(page.items.len());
             for it in page.items {
-                let Some(summary) = summary_from_thread_list_item(
+                let Some(mut summary) = summary_from_thread_list_item(
                     it,
                     fallback_provider.as_str(),
                     state_db_ctx.as_ref(),
@@ -4416,13 +4467,27 @@ impl CodexMessageProcessor {
                 else {
                     continue;
                 };
+                let matches_agent = match agent_id.as_ref() {
+                    Some(agent_id) => {
+                        summary_matches_agent(&summary, agent_id, public_thread_id.as_ref()).await
+                    }
+                    None => true,
+                };
                 if source_kind_filter
                     .as_ref()
                     .is_none_or(|filter| source_kind_matches(&summary.source, filter))
                     && cwd
                         .as_ref()
                         .is_none_or(|expected_cwd| &summary.cwd == expected_cwd)
+                    && matches_agent
                 {
+                    normalize_agent_thread_preview(
+                        &mut summary.preview,
+                        public_thread_id.as_ref() == Some(&summary.conversation_id),
+                    );
+                    if public_thread_id.as_ref() == Some(&summary.conversation_id) {
+                        tag_public_thread_preview(&mut summary.preview);
+                    }
                     filtered.push(summary);
                     if filtered.len() >= remaining {
                         break;
@@ -5223,10 +5288,19 @@ impl CodexMessageProcessor {
 
         // Move the rollout file to archived.
         let result: std::io::Result<()> = async move {
-            let archive_folder = self
-                .config
-                .codex_home
-                .join(codex_core::ARCHIVED_SESSIONS_SUBDIR);
+            let archive_folder =
+                codex_core::owner_agent_id_from_rollout_path(canonical_rollout_path.as_path())
+                    .map(|agent_id| {
+                        codex_core::archived_sessions_root_for_agent(
+                            self.config.codex_home.as_path(),
+                            &agent_id,
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        self.config
+                            .codex_home
+                            .join(codex_core::ARCHIVED_SESSIONS_SUBDIR)
+                    });
             tokio::fs::create_dir_all(&archive_folder).await?;
             let archived_path = archive_folder.join(&file_name);
             tokio::fs::rename(&canonical_rollout_path, &archived_path).await?;
@@ -7436,6 +7510,24 @@ impl CodexMessageProcessor {
     }
 }
 
+fn resolve_thread_start_cwd(
+    codex_home: &Path,
+    agent_id: Option<&str>,
+    cwd: Option<String>,
+) -> Option<String> {
+    match (agent_id, cwd) {
+        (_, Some(cwd)) => Some(cwd),
+        (Some(agent_id), None) => {
+            let service = AgentConfigService::new(codex_home.join("agents"));
+            service
+                .ensure_workspace(agent_id)
+                .ok()
+                .map(|path| path.to_string_lossy().into_owned())
+        }
+        (None, None) => None,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn handle_thread_listener_command(
     conversation_id: ThreadId,
@@ -8488,6 +8580,11 @@ fn build_thread_from_snapshot(
     path: Option<PathBuf>,
 ) -> Thread {
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let owner_agent_id = path
+        .as_deref()
+        .and_then(codex_core::owner_agent_id_from_rollout_path)
+        .or_else(|| config_snapshot.session_source.get_agent_role())
+        .or_else(|| config_snapshot.agent_id.clone());
     Thread {
         id: thread_id.to_string(),
         preview: String::new(),
@@ -8500,10 +8597,7 @@ fn build_thread_from_snapshot(
         cwd: config_snapshot.cwd.clone(),
         cli_version: env!("CARGO_PKG_VERSION").to_string(),
         agent_nickname: config_snapshot.session_source.get_nickname(),
-        agent_role: config_snapshot
-            .session_source
-            .get_agent_role()
-            .or_else(|| config_snapshot.agent_id.clone()),
+        agent_role: owner_agent_id,
         source: config_snapshot.session_source.clone().into(),
         git_info: None,
         name: None,
@@ -8532,6 +8626,8 @@ pub(crate) fn summary_to_thread(summary: ConversationSummary) -> Thread {
         branch: info.branch,
         origin_url: info.origin_url,
     });
+    let owner_agent_id = codex_core::owner_agent_id_from_rollout_path(path.as_path())
+        .or_else(|| source.get_agent_role());
 
     Thread {
         id: conversation_id.to_string(),
@@ -8545,12 +8641,67 @@ pub(crate) fn summary_to_thread(summary: ConversationSummary) -> Thread {
         cwd,
         cli_version,
         agent_nickname: source.get_nickname(),
-        agent_role: source.get_agent_role(),
+        agent_role: owner_agent_id,
         source: source.into(),
         git_info,
         name: None,
         turns: Vec::new(),
     }
+}
+
+const PUBLIC_THREAD_SYSTEM_REMINDER: &str = "<system-reminder>public thread</system-reminder>\n";
+
+fn tag_public_thread_preview(preview: &mut String) {
+    if !preview.starts_with(PUBLIC_THREAD_SYSTEM_REMINDER) {
+        *preview = format!("{PUBLIC_THREAD_SYSTEM_REMINDER}{preview}");
+    }
+}
+
+fn normalize_agent_thread_preview(preview: &mut String, is_public_thread: bool) {
+    let normalized = parse_contact_message_preview(preview)
+        .map(|payload| payload.message)
+        .unwrap_or_else(|| preview.trim().to_string());
+    let normalized = if normalized.is_empty() {
+        preview.trim().to_string()
+    } else {
+        normalized
+    };
+    *preview = if is_public_thread {
+        format!("{PUBLIC_THREAD_SYSTEM_REMINDER}{normalized}")
+    } else {
+        normalized
+    };
+}
+
+async fn summary_matches_agent(
+    summary: &ConversationSummary,
+    agent_id: &str,
+    public_thread_id: Option<&ThreadId>,
+) -> bool {
+    if public_thread_id == Some(&summary.conversation_id) {
+        return true;
+    }
+
+    codex_core::owner_agent_id_from_rollout_path(summary.path.as_path())
+        == Some(agent_id.to_string())
+        || summary.source.get_agent_role().as_deref() == Some(agent_id)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ContactMessagePreview {
+    message: String,
+}
+
+fn parse_contact_message_preview(preview: &str) -> Option<ContactMessagePreview> {
+    let preview = preview
+        .strip_prefix(PUBLIC_THREAD_SYSTEM_REMINDER)
+        .unwrap_or(preview);
+    let json_text = preview
+        .strip_prefix("<contact_message>")?
+        .strip_suffix("</contact_message>")?
+        .trim();
+    serde_json::from_str(json_text).ok()
 }
 
 #[cfg(test)]

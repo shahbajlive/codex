@@ -39,6 +39,7 @@ use super::list::parse_timestamp_uuid_from_filename;
 use super::metadata;
 use super::policy::EventPersistenceMode;
 use super::policy::is_persisted_response_item;
+use super::sessions_root_for_agent;
 use crate::config::Config;
 use crate::default_client::originator;
 use crate::git_info::collect_git_info;
@@ -383,7 +384,8 @@ impl RolloutRecorder {
                     dynamic_tools,
                     event_persistence_mode,
                 } => {
-                    let log_file_info = precompute_log_file_info(config, conversation_id)?;
+                    let log_file_info =
+                        precompute_log_file_info(config, conversation_id, source.get_agent_role())?;
                     let path = log_file_info.path.clone();
                     let session_id = log_file_info.conversation_id;
                     let started_at = log_file_info.timestamp;
@@ -661,12 +663,14 @@ struct LogFileInfo {
 fn precompute_log_file_info(
     config: &Config,
     conversation_id: ThreadId,
+    agent_role: Option<String>,
 ) -> std::io::Result<LogFileInfo> {
-    // Resolve ~/.codex/sessions/YYYY/MM/DD path.
     let timestamp = OffsetDateTime::now_local()
         .map_err(|e| IoError::other(format!("failed to get local time: {e}")))?;
-    let mut dir = config.codex_home.clone();
-    dir.push(SESSIONS_SUBDIR);
+    let mut dir = agent_role.as_deref().map_or_else(
+        || config.codex_home.join(SESSIONS_SUBDIR),
+        |agent_role| sessions_root_for_agent(config.codex_home.as_path(), agent_role),
+    );
     dir.push(timestamp.year().to_string());
     dir.push(format!("{:02}", u8::from(timestamp.month())));
     dir.push(format!("{:02}", timestamp.day()));

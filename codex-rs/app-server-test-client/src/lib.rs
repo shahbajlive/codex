@@ -1104,6 +1104,7 @@ async fn thread_list(endpoint: &Endpoint, config_overrides: &[String], limit: u3
             archived: None,
             cwd: None,
             search_term: None,
+            agent_id: None,
         })?;
         println!("< thread/list response: {response:?}");
 

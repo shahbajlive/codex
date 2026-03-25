@@ -11606,6 +11606,13 @@
     "ThreadListParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "agentId": {
+          "description": "Optional agent filter; when set, only threads associated with this agent are returned. Contact public threads are included even if they would not otherwise match, and are tagged with a system reminder in `preview`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "archived": {
           "description": "Optional archived filter; when set to true, only archived threads are returned. If false or null, only non-archived threads are returned.",
           "type": [

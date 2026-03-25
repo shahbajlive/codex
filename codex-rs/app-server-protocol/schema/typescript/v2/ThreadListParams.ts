@@ -40,4 +40,10 @@ cwd?: string | null,
 /**
  * Optional substring filter for the extracted thread title.
  */
-searchTerm?: string | null, };
+searchTerm?: string | null, 
+/**
+ * Optional agent filter; when set, only threads associated with this agent
+ * are returned. Contact public threads are included even if they would not
+ * otherwise match, and are tagged with a system reminder in `preview`.
+ */
+agentId?: string | null, };

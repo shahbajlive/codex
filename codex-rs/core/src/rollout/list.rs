@@ -13,8 +13,10 @@ use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
 use uuid::Uuid;
 
+use super::AGENTS_SUBDIR;
 use super::ARCHIVED_SESSIONS_SUBDIR;
 use super::SESSIONS_SUBDIR;
+use super::owner_agent_id_from_rollout_path;
 use crate::protocol::EventMsg;
 use crate::state_db;
 use codex_file_search as file_search;
@@ -59,7 +61,7 @@ pub struct ThreadItem {
     pub source: Option<SessionSource>,
     /// Random unique nickname from session metadata for AgentControl-spawned sub-agents.
     pub agent_nickname: Option<String>,
-    /// Role (agent_role) from session metadata for AgentControl-spawned sub-agents.
+    /// Role (agent_role) derived from the rollout path.
     pub agent_role: Option<String>,
     /// Model provider from session metadata.
     pub model_provider: Option<String>,
@@ -309,7 +311,12 @@ pub(crate) async fn get_threads(
     model_providers: Option<&[String]>,
     default_provider: &str,
 ) -> io::Result<ThreadsPage> {
-    let root = codex_home.join(SESSIONS_SUBDIR);
+    let agents_root = codex_home.join(AGENTS_SUBDIR);
+    let root = if agents_root.exists() {
+        agents_root
+    } else {
+        codex_home.join(SESSIONS_SUBDIR)
+    };
     get_threads_in_root(
         root,
         page_size,
@@ -319,7 +326,7 @@ pub(crate) async fn get_threads(
             allowed_sources,
             model_providers,
             default_provider,
-            layout: ThreadListLayout::NestedByDate,
+            layout: ThreadListLayout::Flat,
         },
     )
     .await
@@ -722,7 +729,7 @@ async fn build_thread_item(
             git_origin_url,
             source,
             agent_nickname,
-            agent_role,
+            agent_role: _agent_role,
             model_provider,
             cli_version,
             created_at,
@@ -732,6 +739,7 @@ async fn build_thread_item(
         if summary_updated_at.is_none() {
             summary_updated_at = updated_at.or_else(|| created_at.clone());
         }
+        let agent_role = owner_agent_id_from_rollout_path(&path);
         return Some(ThreadItem {
             path,
             thread_id,
@@ -803,35 +811,41 @@ async fn collect_flat_rollout_files(
     root: &Path,
     scanned_files: &mut usize,
 ) -> io::Result<Vec<(OffsetDateTime, Uuid, PathBuf)>> {
-    let mut dir = tokio::fs::read_dir(root).await?;
+    let mut stack = vec![root.to_path_buf()];
     let mut collected = Vec::new();
-    while let Some(entry) = dir.next_entry().await? {
-        if *scanned_files >= MAX_SCAN_FILES {
-            break;
+    while let Some(dir) = stack.pop() {
+        let mut entries = tokio::fs::read_dir(&dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            if *scanned_files >= MAX_SCAN_FILES {
+                break;
+            }
+            let file_type = match entry.file_type().await {
+                Ok(file_type) => file_type,
+                Err(_) => continue,
+            };
+            if file_type.is_dir() {
+                stack.push(entry.path());
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+            let file_name = entry.file_name();
+            let Some(name_str) = file_name.to_str() else {
+                continue;
+            };
+            if !name_str.starts_with("rollout-") || !name_str.ends_with(".jsonl") {
+                continue;
+            }
+            let Some((ts, id)) = parse_timestamp_uuid_from_filename(name_str) else {
+                continue;
+            };
+            *scanned_files += 1;
+            if *scanned_files > MAX_SCAN_FILES {
+                break;
+            }
+            collected.push((ts, id, entry.path()));
         }
-        if !entry
-            .file_type()
-            .await
-            .map(|ft| ft.is_file())
-            .unwrap_or(false)
-        {
-            continue;
-        }
-        let file_name = entry.file_name();
-        let Some(name_str) = file_name.to_str() else {
-            continue;
-        };
-        if !name_str.starts_with("rollout-") || !name_str.ends_with(".jsonl") {
-            continue;
-        }
-        let Some((ts, id)) = parse_timestamp_uuid_from_filename(name_str) else {
-            continue;
-        };
-        *scanned_files += 1;
-        if *scanned_files > MAX_SCAN_FILES {
-            break;
-        }
-        collected.push((ts, id, entry.path()));
     }
     collected.sort_by_key(|(ts, sid, _path)| (Reverse(*ts), Reverse(*sid)));
     Ok(collected)
@@ -894,39 +908,45 @@ async fn collect_flat_files_by_updated_at(
     scanned_files: &mut usize,
 ) -> io::Result<Vec<ThreadCandidate>> {
     let mut candidates = Vec::new();
-    let mut dir = tokio::fs::read_dir(root).await?;
-    while let Some(entry) = dir.next_entry().await? {
-        if *scanned_files >= MAX_SCAN_FILES {
-            break;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let mut entries = tokio::fs::read_dir(&dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            if *scanned_files >= MAX_SCAN_FILES {
+                break;
+            }
+            let file_type = match entry.file_type().await {
+                Ok(file_type) => file_type,
+                Err(_) => continue,
+            };
+            if file_type.is_dir() {
+                stack.push(entry.path());
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+            let file_name = entry.file_name();
+            let Some(name_str) = file_name.to_str() else {
+                continue;
+            };
+            if !name_str.starts_with("rollout-") || !name_str.ends_with(".jsonl") {
+                continue;
+            }
+            let Some((_ts, id)) = parse_timestamp_uuid_from_filename(name_str) else {
+                continue;
+            };
+            *scanned_files += 1;
+            if *scanned_files > MAX_SCAN_FILES {
+                break;
+            }
+            let updated_at = file_modified_time(&entry.path()).await.unwrap_or(None);
+            candidates.push(ThreadCandidate {
+                path: entry.path(),
+                id,
+                updated_at,
+            });
         }
-        if !entry
-            .file_type()
-            .await
-            .map(|ft| ft.is_file())
-            .unwrap_or(false)
-        {
-            continue;
-        }
-        let file_name = entry.file_name();
-        let Some(name_str) = file_name.to_str() else {
-            continue;
-        };
-        if !name_str.starts_with("rollout-") || !name_str.ends_with(".jsonl") {
-            continue;
-        }
-        let Some((_ts, id)) = parse_timestamp_uuid_from_filename(name_str) else {
-            continue;
-        };
-        *scanned_files += 1;
-        if *scanned_files > MAX_SCAN_FILES {
-            break;
-        }
-        let updated_at = file_modified_time(&entry.path()).await.unwrap_or(None);
-        candidates.push(ThreadCandidate {
-            path: entry.path(),
-            id,
-            updated_at,
-        });
     }
 
     Ok(candidates)

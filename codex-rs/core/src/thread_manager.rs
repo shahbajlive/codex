@@ -504,6 +504,7 @@ impl ThreadManager {
             /*metrics_service_name*/ None,
             /*parent_trace*/ None,
             /*agent_id*/ None,
+            /*apply_agent_runtime_overrides*/ true,
         ))
         .await
     }
@@ -516,13 +517,16 @@ impl ThreadManager {
         metrics_service_name: Option<String>,
         parent_trace: Option<W3cTraceContext>,
         agent_id: Option<String>,
+        apply_agent_runtime_overrides: bool,
     ) -> CodexResult<NewThread> {
         let agent_overrides = agent_id
             .as_deref()
             .map(|agent_id| resolve_agent_runtime_overrides(&config, agent_id))
             .transpose()?;
         if let Some(agent_overrides) = &agent_overrides {
-            apply_agent_runtime_overrides_to_config(&mut config, agent_overrides)?;
+            if apply_agent_runtime_overrides {
+                apply_agent_runtime_overrides_to_config(&mut config, agent_overrides)?;
+            }
         }
 
         let session_source = if let Some(ref agent_id) = agent_id {

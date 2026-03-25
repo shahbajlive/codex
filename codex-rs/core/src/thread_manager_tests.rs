@@ -228,6 +228,7 @@ async fn start_thread_with_agent_id_uses_agent_tools_and_skills_config() {
             None,
             None,
             Some("developer_lead".to_string()),
+            true,
         )
         .await
         .expect("start thread");
@@ -291,6 +292,7 @@ async fn start_thread_with_agent_id_uses_agent_model_provider_override() {
             None,
             None,
             Some("developer_lead".to_string()),
+            true,
         )
         .await
         .expect("start thread");
@@ -350,6 +352,7 @@ async fn start_thread_with_agent_id_inherits_model_provider_from_extended_agent(
             None,
             None,
             Some("developer_lead".to_string()),
+            true,
         )
         .await
         .expect("start thread");

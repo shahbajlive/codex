@@ -28,6 +28,7 @@ use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
 use std::path::Path;
+use std::path::PathBuf;
 use tempfile::TempDir;
 use tokio::time::timeout;
 use wiremock::Mock;
@@ -306,6 +307,104 @@ async fn thread_start_request_runtime_overrides_beat_agent_defaults() -> Result<
     assert_eq!(model, "request-model");
     assert_eq!(approval_policy, AskForApproval::Never);
     assert!(matches!(sandbox, SandboxPolicy::DangerFullAccess));
+    Ok(())
+}
+
+#[tokio::test]
+async fn thread_start_agent_without_cwd_uses_agent_workspace() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+
+    let codex_home = TempDir::new()?;
+    create_config_toml(codex_home.path(), &server.uri())?;
+
+    let agent_dir = codex_home.path().join("agents").join("developer_lead");
+    std::fs::create_dir_all(&agent_dir)?;
+    std::fs::write(
+        agent_dir.join("agent.json5"),
+        r#"{
+  name: "Developer Lead",
+  extends: "main",
+}"#,
+    )?;
+
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+
+    let req_id = mcp
+        .send_thread_start_request(ThreadStartParams {
+            agent_id: Some("developer_lead".to_string()),
+            ..Default::default()
+        })
+        .await?;
+
+    let resp: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(req_id)),
+    )
+    .await??;
+    let ThreadStartResponse { thread, .. } = to_response::<ThreadStartResponse>(resp)?;
+
+    let expected_cwd = std::fs::canonicalize(
+        codex_home
+            .path()
+            .join("agents")
+            .join("developer_lead")
+            .join("workspace"),
+    )?;
+    assert_eq!(thread.cwd, expected_cwd);
+    assert!(thread.cwd.exists());
+    Ok(())
+}
+
+#[tokio::test]
+async fn thread_start_agent_with_explicit_cwd_keeps_explicit_cwd() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+
+    let codex_home = TempDir::new()?;
+    create_config_toml(codex_home.path(), &server.uri())?;
+
+    let agent_dir = codex_home.path().join("agents").join("developer_lead");
+    std::fs::create_dir_all(&agent_dir)?;
+    std::fs::write(
+        agent_dir.join("agent.json5"),
+        r#"{
+  name: "Developer Lead",
+  extends: "main",
+}"#,
+    )?;
+
+    let explicit_cwd = codex_home.path().join("shared-project");
+    std::fs::create_dir_all(&explicit_cwd)?;
+
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+
+    let req_id = mcp
+        .send_thread_start_request(ThreadStartParams {
+            cwd: Some(explicit_cwd.to_string_lossy().into_owned()),
+            agent_id: Some("developer_lead".to_string()),
+            ..Default::default()
+        })
+        .await?;
+
+    let resp: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(req_id)),
+    )
+    .await??;
+    let ThreadStartResponse { thread, .. } = to_response::<ThreadStartResponse>(resp)?;
+
+    assert_eq!(thread.cwd, explicit_cwd);
+    assert_ne!(
+        thread.cwd,
+        PathBuf::from(
+            codex_home
+                .path()
+                .join("agents")
+                .join("developer_lead")
+                .join("workspace")
+        )
+    );
     Ok(())
 }
 

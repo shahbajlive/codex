@@ -2,7 +2,7 @@
   name: "Developer Lead",
   description: "Engineering interface lead",
   extends: "main",
-  model: "lmstudio/qwen3.5-0.8b",
+  model: "lmstudio/qwen3.5-9b-uncensored-hauhaucs-aggressive",
   modelProvider: "lmstudio",
   approvalPolicy: "on-request",
   sandboxMode: "workspace-write",
