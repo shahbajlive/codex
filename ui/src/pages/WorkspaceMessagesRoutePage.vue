@@ -4,12 +4,15 @@ import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
 import PageHeader from "../components/PageHeader.vue";
 import WorkspaceMessagesPage from "../components/WorkspaceMessagesPage.vue";
+import { findLatestUserPreview } from "../lib/transcript";
 import { useCodexStore } from "../stores/codex";
+import { useAgentsStore } from "../stores/agents";
 import { useSettingsStore } from "../stores/settings";
-import { useWorkspaceMessagesStore } from "../stores/chat/workspace-messages";
+import { useChatStore } from "../stores/chat";
 
 const codexStore = useCodexStore();
-const workspaceStore = useWorkspaceMessagesStore();
+const agentsStore = useAgentsStore();
+const workspaceStore = useChatStore();
 const settingsStore = useSettingsStore();
 const router = useRouter();
 const {
@@ -19,7 +22,7 @@ const {
   providers,
 } = storeToRefs(codexStore);
 const {
-  agents,
+  agentThreads,
   autoCompactTokenLimit,
   busy,
   collapsedItemExpandedByKey,
@@ -35,20 +38,36 @@ const {
   statusTone,
   activeTurnId,
   selectedModelProvider,
-  selectedAgentId,
   selectedThreadId,
   selectedTokenUsage,
-  threadIdsByAgentId,
-  threads,
 } = storeToRefs(workspaceStore);
+const { agents, selectedAgentId } = storeToRefs(agentsStore);
 const { theme } = storeToRefs(settingsStore);
 
-const selectedAgentThreadIds = computed(() => {
-  const agentId = selectedAgentId.value;
-  if (!agentId) {
-    return [] as string[];
-  }
-  return threadIdsByAgentId.value[agentId] ?? [];
+const workspaceAgents = computed(() => {
+  const selectedThread = agentThreads.value.find(
+    (thread) => thread.id === selectedThreadId.value,
+  );
+
+  return agents.value.map((agent) => {
+    const thread = selectedAgentId.value === agent.id ? selectedThread : null;
+
+    return {
+      id: agent.id,
+      name: agent.name || agent.id,
+      color: agent.color ?? null,
+      description:
+        agent.description || agent.workspace || "Ready for a new thread",
+      workspace: agent.workspace,
+      hasThread: thread !== null,
+      threadId: thread?.id ?? null,
+      updatedAt: thread?.updatedAt ?? 0,
+      preview:
+        (thread && findLatestUserPreview(thread)) ||
+        agent.description ||
+        "No messages yet",
+    };
+  });
 });
 
 const modelProviders = computed(() => {
@@ -61,6 +80,10 @@ const modelProviders = computed(() => {
   }
   return Array.from(ids).sort();
 });
+
+const selectedAgentThreadIds = computed(() =>
+  agentThreads.value.map((thread) => thread.id),
+);
 
 async function openConversation(threadId: string) {
   await codexStore.selectThread(threadId);
@@ -76,8 +99,18 @@ async function openSelectedConversation() {
 
 async function initializeWorkspace() {
   if (isConnected.value) {
+    await agentsStore.refreshAgents();
     await workspaceStore.initialize();
   }
+}
+
+async function refreshWorkspace() {
+  await agentsStore.refreshAgents();
+  await workspaceStore.refreshSelectedAgentThreads();
+}
+
+async function selectAgent(agentId: string) {
+  await agentsStore.selectAgent(agentId);
 }
 
 onMounted(() => {
@@ -89,6 +122,15 @@ watch(isConnected, async (connected) => {
     await workspaceStore.initialize();
   }
 });
+
+watch(selectedAgentId, async (agentId, previousAgentId) => {
+  if (!isConnected.value || !agentId || agentId === previousAgentId) {
+    return;
+  }
+
+  await workspaceStore.refreshRuntimeMetadata();
+  await workspaceStore.refreshSelectedAgentThreads();
+});
 </script>
 
 <template>
@@ -98,16 +140,16 @@ watch(isConnected, async (connected) => {
       :auto-compact-token-limit="autoCompactTokenLimit"
       :connected="isConnected"
       :context-window="contextWindow"
-      :agents="agents"
+      :agents="workspaceAgents"
       :model-label="modelLabel"
       :models="models"
       :model-providers="modelProviders"
       :selected-agent-id="selectedAgentId"
       :selected-model-provider="selectedModelProvider"
+      :selected-agent-thread-ids="selectedAgentThreadIds"
       :selected-thread-id="selectedThreadId"
       :selected-token-usage="selectedTokenUsage"
       :collapse-overrides="collapsedItemExpandedByKey"
-      :selected-agent-thread-ids="selectedAgentThreadIds"
       :pending-request="pendingRequest"
       :pending-user-draft="pendingUserDraft"
       :restored-draft="restoredDraft"
@@ -118,9 +160,9 @@ watch(isConnected, async (connected) => {
       :committed-transcript="committedTranscript"
       :live-transcript-turn="liveTranscriptTurn"
       :theme="theme"
-      :threads="threads"
-      @refresh="workspaceStore.refreshWorkspaceAgents"
-      @select="workspaceStore.selectAgent"
+      :threads="agentThreads"
+      @refresh="refreshWorkspace"
+      @select="selectAgent"
       @select-thread="workspaceStore.selectThreadForSelectedAgent"
       @resolve-request="workspaceStore.resolvePendingRequest"
       @reject-request="workspaceStore.rejectPendingRequest"

@@ -1,0 +1,1200 @@
+import { defineStore } from "pinia";
+import type {
+  ApprovalPolicy,
+  CodexNotification,
+  Thread,
+  ThreadTokenUsage,
+} from "../lib/protocol";
+import {
+  applyLiveNotification,
+  attachTurn,
+  applyNotification,
+  buildLiveTranscriptTurn,
+  buildTranscript,
+  splitTranscriptView,
+  type LiveTranscriptTurn,
+  type TranscriptTurn,
+} from "../lib/transcript";
+import { type WorkspacePendingRequest, useCommandsStore } from "./commands";
+import { useSettingsStore } from "./settings";
+import { useAgentsStore, clientRef, setAgentsClient } from "./agents";
+
+export type WorkspaceAgentRow = {
+  id: string;
+  name: string;
+  color: string | null;
+  description: string;
+  workspace: string | null;
+  hasThread: boolean;
+  threadId: string | null;
+  updatedAt: number;
+  preview: string;
+};
+
+export const INTERRUPT_RECONCILE_DELAY_MS = 2500;
+export const ACTIVE_TURN_RECONCILE_INTERVAL_MS = 1500;
+export const INTERRUPT_RETRY_INTERVAL_MS = 2000;
+export const INTERRUPT_MAX_RETRIES = 3;
+
+let interruptReconcileTimer: ReturnType<typeof setTimeout> | null = null;
+let activeTurnReconcileTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearInterruptReconcileTimer() {
+  if (interruptReconcileTimer !== null) {
+    clearTimeout(interruptReconcileTimer);
+    interruptReconcileTimer = null;
+  }
+}
+
+function clearActiveTurnReconcileTimer() {
+  if (activeTurnReconcileTimer !== null) {
+    clearTimeout(activeTurnReconcileTimer);
+    activeTurnReconcileTimer = null;
+  }
+}
+
+export const useChatStore = defineStore("chat", {
+  state: () => ({
+    selectedThreadId: null as string | null,
+    agentThreads: [] as Thread[],
+    transcript: buildTranscript(null),
+    committedTranscript: buildTranscript(null),
+    liveTranscriptTurn: null as LiveTranscriptTurn | null,
+    pendingRequest: null as WorkspacePendingRequest | null,
+    busy: false,
+    statusMessage: null as string | null,
+    statusTone: null as "info" | "warning" | "error" | null,
+    activeTurnId: null as string | null,
+    pendingUserDraft: null as string | null,
+    restoredDraft: null as string | null,
+    restoredDraftVersion: 0,
+    attachedThreadId: null as string | null,
+    interruptRequestedTurnId: null as string | null,
+    interruptRequestedAt: null as number | null,
+    interruptRetryCount: 0,
+    initialized: false,
+    modelLabel: "" as string,
+    contextWindow: null as number | null,
+    autoCompactTokenLimit: null as number | null,
+    selectedModelProvider: null as string | null,
+    selectedTokenUsage: null as ThreadTokenUsage | null,
+    tokenUsageByThreadId: {} as Record<string, ThreadTokenUsage>,
+    collapsedItemExpandedByKey: {} as Record<string, boolean | string>,
+  }),
+
+  actions: {
+    getSelectedThread(state: {
+      agentThreads: Thread[];
+      selectedThreadId: string | null;
+    }): Thread | null {
+      if (!state.selectedThreadId) {
+        return null;
+      }
+
+      return (
+        state.agentThreads.find(
+          (thread) => thread.id === state.selectedThreadId,
+        ) ?? null
+      );
+    },
+
+    getSelectedAgentId(): string | null {
+      return useAgentsStore().selectedAgentId;
+    },
+
+    getSelectedAgentName(): string {
+      const agentsStore = useAgentsStore();
+      const selectedId = agentsStore.selectedAgentId;
+      return (
+        agentsStore.agents.find((agent) => agent.id === selectedId)?.name ||
+        selectedId ||
+        "none"
+      );
+    },
+
+    replaceThread(thread: Thread) {
+      const nextThreads: Thread[] = [thread];
+      for (const candidate of this.agentThreads as Thread[]) {
+        if (candidate.id !== thread.id) {
+          nextThreads.push(candidate);
+        }
+      }
+      this.agentThreads = this.sortThreadsByUpdatedAt(nextThreads);
+    },
+
+    removeThread(threadId: string) {
+      const remainingThreads: Thread[] = [];
+      for (const thread of this.agentThreads as Thread[]) {
+        if (thread.id !== threadId) {
+          remainingThreads.push(thread);
+        }
+      }
+      this.agentThreads = remainingThreads;
+    },
+
+    findAgents(query: string) {
+      const agentsStore = useAgentsStore();
+      const normalized = query.trim().toLowerCase();
+      return agentsStore.agents.filter((agent) => {
+        const haystack =
+          `${agent.id} ${agent.name} ${agent.description}`.toLowerCase();
+        return haystack.includes(normalized);
+      });
+    },
+
+    latestAssistantText(transcript?: TranscriptTurn[]) {
+      const source = transcript ?? this.transcript;
+      for (let ti = source.length - 1; ti >= 0; ti -= 1) {
+        const turn = source[ti];
+        if (!turn) continue;
+        for (let ii = turn.items.length - 1; ii >= 0; ii -= 1) {
+          const item = turn.items[ii];
+          if (!item) continue;
+          switch (item.kind) {
+            case "assistant":
+            case "plan":
+              return item.text;
+            case "reasoning":
+              return [...item.summary, ...item.content].join("\n");
+            case "command":
+              return [item.command, item.output].filter(Boolean).join("\n\n");
+            case "file-change":
+              return [item.changes.join("\n"), item.output]
+                .filter(Boolean)
+                .join("\n\n");
+            case "tool":
+              return [item.label, item.output ?? item.error ?? item.input ?? ""]
+                .filter(Boolean)
+                .join("\n");
+            case "event":
+              return `${item.label}\n${item.detail}`;
+            case "user":
+              break;
+          }
+        }
+      }
+      return "";
+    },
+
+    runtimeSettings() {
+      const settings = useSettingsStore();
+      const agentsStore = useAgentsStore();
+      const agentConfig = agentsStore.config;
+      const selectedAgentWorkspace = agentsStore.agents.find(
+        (agent) => agent.id === agentsStore.selectedAgentId,
+      )?.workspace;
+
+      return {
+        cwd: selectedAgentWorkspace || settings.cwd || "",
+        model: agentConfig?.model || null,
+        modelProvider: agentConfig?.modelProvider || null,
+        personality: settings.personality || "friendly",
+        approvalPolicy: this.normalizeApprovalPolicy(
+          agentConfig?.approvalPolicy,
+        ),
+        sandboxMode: agentConfig?.sandboxMode || "workspace-write",
+      };
+    },
+
+    sortThreadsByUpdatedAt(threads: Thread[]): Thread[] {
+      return [...threads].sort(
+        (left, right) => right.updatedAt - left.updatedAt,
+      );
+    },
+
+    getSelectedAgentPublicThreadId(agentId: string | null): string | null {
+      if (!agentId) {
+        return null;
+      }
+
+      return (
+        useAgentsStore().contactsList.find((contact) => contact.id === agentId)
+          ?.publicThreadId ?? null
+      );
+    },
+
+    findActiveTurnId(thread: Thread | null): string | null {
+      if (!thread) {
+        return null;
+      }
+
+      for (let index = thread.turns.length - 1; index >= 0; index -= 1) {
+        const turn = thread.turns[index];
+        if (turn?.status === "inProgress") {
+          return turn.id;
+        }
+      }
+
+      return null;
+    },
+
+    threadActivityMessage(
+      thread: Thread | null,
+      activeTurnId: string | null,
+    ): string | null {
+      if (!thread) {
+        return null;
+      }
+
+      if (activeTurnId) {
+        return "Working";
+      }
+
+      return thread.status.type === "active" ? "Working" : null;
+    },
+
+    transcriptHasTurn(turns: TranscriptTurn[], turnId: string): boolean {
+      return turns.some((turn) => turn.id === turnId);
+    },
+
+    notificationTargetsSelectedThread(
+      notification: CodexNotification,
+      selectedThreadId: string,
+    ): boolean {
+      return (
+        !("threadId" in notification.params) ||
+        notification.params.threadId === selectedThreadId
+      );
+    },
+
+    notificationTurnId(notification: CodexNotification): string | null {
+      switch (notification.method) {
+        case "turn/started":
+          return notification.params.turn.id;
+        case "turn/completed":
+          return notification.params.turn.id;
+        case "turn/aborted":
+          return notification.params.turnId;
+        case "item/started":
+        case "item/completed":
+        case "item/agentMessage/delta":
+        case "item/plan/delta":
+        case "item/reasoning/summaryTextDelta":
+        case "item/reasoning/summaryPartAdded":
+        case "item/reasoning/textDelta":
+        case "item/commandExecution/outputDelta":
+        case "item/commandExecution/terminalInteraction":
+        case "item/fileChange/outputDelta":
+        case "turn/plan/updated":
+        case "turn/diff/updated":
+        case "error":
+          return notification.params.turnId;
+        case "thread/tokenUsage/updated":
+        case "thread/started":
+          return null;
+      }
+    },
+
+    normalizeApprovalPolicy(value: unknown): ApprovalPolicy {
+      if (
+        value === "untrusted" ||
+        value === "on-failure" ||
+        value === "on-request" ||
+        value === "never"
+      ) {
+        return value;
+      }
+      return "on-request";
+    },
+
+    isStaleThreadError(error: unknown): boolean {
+      const message = error instanceof Error ? error.message : String(error);
+      const normalized = message.toLowerCase();
+      return (
+        normalized.includes("no rollout found for thread id") ||
+        normalized.includes(
+          "is not materialized yet; includeturns is unavailable",
+        ) ||
+        normalized.includes("thread not found:")
+      );
+    },
+
+    clearSelectedThreadState() {
+      this.selectedThreadId = null;
+      this.attachedThreadId = null;
+      this.selectedModelProvider = null;
+      this.selectedTokenUsage = null;
+      this.activeTurnId = null;
+      this.liveTranscriptTurn = null;
+      this.setTranscript(buildTranscript(null));
+    },
+
+    async initialize() {
+      const client = clientRef.client;
+      if (!client || this.initialized) {
+        return;
+      }
+
+      this.initialized = true;
+      this.registerRequestHandlers();
+      client.onNotification((notification) =>
+        this.handleNotification(notification),
+      );
+      await this.refreshRuntimeMetadata();
+      await this.refreshSelectedAgentThreads();
+    },
+
+    async refreshRuntimeMetadata() {
+      const client = clientRef.client;
+      const settings = useSettingsStore();
+      const agentsStore = useAgentsStore();
+      this.modelLabel =
+        agentsStore.config?.model || settings.model || "default";
+      if (!client) {
+        return;
+      }
+
+      try {
+        const response = await client.readConfig(settings.cwd || undefined);
+        const agentModel = agentsStore.config?.model || "";
+        const agentProvider = agentsStore.config?.modelProvider || "";
+        this.modelLabel =
+          agentModel || settings.model || response.config.model || "default";
+        this.selectedModelProvider =
+          agentProvider ||
+          (agentModel.includes("/")
+            ? agentModel.slice(0, agentModel.indexOf("/"))
+            : null) ||
+          response.config.model_provider ||
+          null;
+        this.contextWindow = toNumber(response.config.model_context_window);
+        this.autoCompactTokenLimit = toNumber(
+          response.config.model_auto_compact_token_limit,
+        );
+      } catch {
+        this.contextWindow = null;
+        this.autoCompactTokenLimit = null;
+      }
+    },
+
+    async refreshSelectedAgentThreads() {
+      const client = clientRef.client;
+      const agentsStore = useAgentsStore();
+      const agentId = agentsStore.selectedAgentId;
+      if (!client || !agentId) {
+        return;
+      }
+
+      const publicThreadId = this.getSelectedAgentPublicThreadId(agentId);
+      const threadList = await client.listAgentThreads(agentId);
+      const threads = this.sortThreadsByUpdatedAt(threadList);
+      this.agentThreads = threads;
+
+      const existingThreadId = this.selectedThreadId;
+      const resolvedThreadId =
+        (existingThreadId &&
+        threads.some((thread) => thread.id === existingThreadId)
+          ? existingThreadId
+          : null) ??
+        (publicThreadId &&
+        threads.some((thread) => thread.id === publicThreadId)
+          ? publicThreadId
+          : null) ??
+        threads[0]?.id ??
+        null;
+
+      const hasLoadedResolvedThread =
+        this.attachedThreadId === resolvedThreadId;
+
+      this.selectedThreadId = resolvedThreadId;
+      if (!resolvedThreadId) {
+        this.clearSelectedThreadState();
+        return;
+      }
+
+      if (hasLoadedResolvedThread) {
+        return;
+      }
+
+      await this.loadThread(resolvedThreadId);
+    },
+
+    async selectThreadForSelectedAgent(threadId: string) {
+      if (!threadId) {
+        return;
+      }
+
+      this.selectedThreadId = threadId;
+      await this.loadThread(threadId);
+    },
+
+    async ensureSelectedThread(): Promise<string | null> {
+      const client = clientRef.client;
+      const agentId = this.getSelectedAgentId();
+      if (!client || !agentId) {
+        return null;
+      }
+
+      const publicThreadId = this.getSelectedAgentPublicThreadId(agentId);
+      const existingThreadId =
+        (this.selectedThreadId &&
+        this.agentThreads.some((thread) => thread.id === this.selectedThreadId)
+          ? this.selectedThreadId
+          : null) ??
+        (publicThreadId &&
+        this.agentThreads.some((thread) => thread.id === publicThreadId)
+          ? publicThreadId
+          : null) ??
+        this.agentThreads[0]?.id ??
+        null;
+
+      if (existingThreadId) {
+        this.selectedThreadId = existingThreadId;
+        if (this.getSelectedThread(this)?.id === existingThreadId) {
+          this.attachedThreadId = this.attachedThreadId ?? existingThreadId;
+          return existingThreadId;
+        }
+
+        await this.loadThread(existingThreadId);
+        return this.selectedThreadId;
+      }
+
+      const thread = await client.startThreadForAgent(agentId);
+      this.replaceThread(thread);
+      this.selectedThreadId = thread.id;
+      this.attachedThreadId = thread.id;
+      this.selectedModelProvider = thread.modelProvider || null;
+      this.selectedTokenUsage = null;
+      this.activeTurnId = this.findActiveTurnId(thread);
+      return thread.id;
+    },
+
+    async startFreshThreadForSelectedAgent(): Promise<string | null> {
+      const client = clientRef.client;
+      const agentId = this.getSelectedAgentId();
+      if (!client || !agentId) {
+        return null;
+      }
+
+      const thread = await client.startThreadForAgent(agentId);
+      this.replaceThread(thread);
+      this.selectedThreadId = thread.id;
+      this.attachedThreadId = thread.id;
+      this.selectedModelProvider = thread.modelProvider || null;
+      this.selectedTokenUsage = null;
+      this.activeTurnId = this.findActiveTurnId(thread);
+      // @ts-ignore Pinia deep type recursion with complex protocol types
+      this.liveTranscriptTurn = buildLiveTranscriptTurn(
+        thread,
+        this.activeTurnId,
+      );
+      this.setTranscript(buildTranscript(thread));
+      return thread.id;
+    },
+
+    async attachThread(threadId: string): Promise<string> {
+      const client = clientRef.client;
+      if (!client) {
+        throw new Error("Client not connected");
+      }
+
+      if (
+        this.attachedThreadId === threadId ||
+        this.getSelectedThread(this)?.id === threadId
+      ) {
+        return threadId;
+      }
+
+      try {
+        const thread = (await client.resumeThread(
+          threadId,
+          this.runtimeSettings(),
+        )) as Thread;
+        this.replaceThread(thread);
+        this.attachedThreadId = threadId;
+        this.selectedModelProvider = thread.modelProvider ?? null;
+        this.selectedTokenUsage = null;
+        // @ts-ignore Pinia deep type recursion with complex protocol types
+        this.liveTranscriptTurn = buildLiveTranscriptTurn(
+          thread,
+          this.activeTurnId,
+        );
+        this.setTranscript(buildTranscript(thread));
+        return threadId;
+      } catch (error) {
+        if (!this.isStaleThreadError(error)) {
+          throw error;
+        }
+
+        this.removeThread(threadId);
+        const freshThreadId = await this.startFreshThreadForSelectedAgent();
+        if (!freshThreadId) {
+          throw error;
+        }
+
+        this.setStatus(
+          "Previous thread is no longer available. Sent your message in a fresh chat.",
+          "warning",
+        );
+        return freshThreadId;
+      }
+    },
+
+    async startTurnWithRecovery(
+      threadId: string,
+      message: string,
+    ): Promise<{
+      threadId: string;
+      turn: Awaited<
+        ReturnType<NonNullable<typeof clientRef.client>["startTurn"]>
+      >;
+    }> {
+      const client = clientRef.client;
+      if (!client) {
+        throw new Error("Client not connected");
+      }
+
+      try {
+        const turn = await client.startTurn(
+          threadId,
+          message,
+          this.runtimeSettings(),
+        );
+        return { threadId, turn };
+      } catch (error) {
+        if (!this.isStaleThreadError(error)) {
+          throw error;
+        }
+
+        this.removeThread(threadId);
+        const freshThreadId = await this.startFreshThreadForSelectedAgent();
+        if (!freshThreadId) {
+          throw error;
+        }
+
+        const turn = await client.startTurn(
+          freshThreadId,
+          message,
+          this.runtimeSettings(),
+        );
+        this.setStatus(
+          "Previous thread is no longer available. Sent your message in a fresh chat.",
+          "warning",
+        );
+        return { threadId: freshThreadId, turn };
+      }
+    },
+
+    async sendMessage(message: string) {
+      const client = clientRef.client;
+      if (!client || !this.getSelectedAgentId()) {
+        return;
+      }
+
+      const trimmed = message.trim();
+
+      try {
+        this.busy = true;
+        this.statusMessage = null;
+        this.statusTone = null;
+        if (await this.handleSlashCommand(trimmed)) {
+          return;
+        }
+
+        let threadId = await this.ensureSelectedThread();
+        if (!threadId) {
+          return;
+        }
+
+        threadId = await this.attachThread(threadId);
+
+        const started = await this.startTurnWithRecovery(threadId, message);
+        threadId = started.threadId;
+        const { turn } = started;
+
+        this.activeTurnId = turn.id;
+        this.pendingUserDraft = trimmed;
+        this.replaceThread(
+          attachTurn(this.getSelectedThread(this) as Thread, turn) as Thread,
+        );
+        this.selectedTokenUsage = null;
+        // @ts-ignore Pinia deep type recursion with complex protocol types
+        this.liveTranscriptTurn = buildLiveTranscriptTurn(
+          this.getSelectedThread(this),
+          this.activeTurnId,
+        );
+        this.setTranscript(buildTranscript(this.getSelectedThread(this)));
+        this.statusMessage = this.threadActivityMessage(
+          this.getSelectedThread(this),
+          this.activeTurnId,
+        );
+        this.statusTone = this.statusMessage ? "info" : null;
+        this.refreshActiveTurnReconcileLoop();
+      } catch (error) {
+        this.setStatus(
+          error instanceof Error ? error.message : String(error),
+          "error",
+        );
+      } finally {
+        this.busy = false;
+      }
+    },
+
+    async interruptActiveTurn() {
+      const client = clientRef.client;
+      if (!client || !this.selectedThreadId || !this.activeTurnId) {
+        return;
+      }
+
+      clearInterruptReconcileTimer();
+
+      const threadId = this.selectedThreadId;
+      const turnId = this.activeTurnId;
+      this.interruptRequestedTurnId = turnId;
+      this.interruptRequestedAt = Date.now();
+      this.interruptRetryCount = 1;
+      this.setStatus("Interrupting...", "warning");
+
+      interruptReconcileTimer = setTimeout(async () => {
+        interruptReconcileTimer = null;
+        if (
+          this.interruptRequestedTurnId !== turnId ||
+          this.activeTurnId !== turnId ||
+          this.selectedThreadId !== threadId
+        ) {
+          return;
+        }
+
+        const connectedClient = clientRef.client;
+        if (!connectedClient) {
+          return;
+        }
+
+        try {
+          const thread = (await connectedClient.readThread(threadId)) as Thread;
+          if (this.selectedThreadId !== threadId) {
+            return;
+          }
+
+          const reconciledTurn = thread.turns.find(
+            (turn) => turn.id === turnId,
+          );
+          if (!reconciledTurn || reconciledTurn.status === "inProgress") {
+            return;
+          }
+
+          if (
+            this.pendingUserDraft &&
+            reconciledTurn.status === "interrupted"
+          ) {
+            this.restoredDraft = this.pendingUserDraft;
+            this.restoredDraftVersion += 1;
+          }
+
+          this.pendingUserDraft = null;
+          this.activeTurnId = this.findActiveTurnId(thread);
+          this.interruptRequestedTurnId = null;
+          this.interruptRequestedAt = null;
+          this.interruptRetryCount = 0;
+          this.replaceThread(thread);
+          this.selectedTokenUsage = this.tokenUsageByThreadId[threadId] ?? null;
+          // @ts-ignore Pinia deep type recursion with complex protocol types
+          this.liveTranscriptTurn = buildLiveTranscriptTurn(
+            this.getSelectedThread(this),
+            this.activeTurnId,
+          );
+          this.setTranscript(buildTranscript(this.getSelectedThread(this)));
+
+          if (reconciledTurn.status === "interrupted") {
+            this.setStatus("Interrupted", "warning");
+            return;
+          }
+
+          if (reconciledTurn.status === "completed") {
+            this.setStatus("Interrupt requested; turn completed", "warning");
+            return;
+          }
+
+          this.setStatus(
+            reconciledTurn.error?.message ?? "Turn failed",
+            "error",
+          );
+        } catch {
+          // If reconcile fails, keep waiting for stream notifications.
+        }
+      }, INTERRUPT_RECONCILE_DELAY_MS);
+
+      void client.interruptTurn(threadId, turnId).catch((error) => {
+        if (
+          this.interruptRequestedTurnId !== turnId ||
+          this.activeTurnId !== turnId ||
+          this.selectedThreadId !== threadId
+        ) {
+          return;
+        }
+
+        clearInterruptReconcileTimer();
+        this.interruptRequestedTurnId = null;
+        this.interruptRequestedAt = null;
+        this.interruptRetryCount = 0;
+        this.setStatus(
+          error instanceof Error ? error.message : String(error),
+          "error",
+        );
+      });
+    },
+
+    async openConversationInMainChat() {
+      return this.ensureSelectedThread();
+    },
+
+    async loadThread(threadId: string) {
+      const client = clientRef.client;
+      if (!client) {
+        return;
+      }
+
+      this.busy = true;
+      try {
+        this.statusMessage = null;
+        this.statusTone = null;
+        const thread = (await client.readThread(threadId)) as Thread;
+        this.replaceThread(thread);
+        this.attachedThreadId = thread.id;
+        this.selectedModelProvider = thread.modelProvider ?? null;
+        this.selectedTokenUsage = this.tokenUsageByThreadId[threadId] ?? null;
+        this.activeTurnId = this.findActiveTurnId(thread);
+        // @ts-ignore Pinia deep type recursion with complex protocol types
+        this.liveTranscriptTurn = buildLiveTranscriptTurn(
+          thread,
+          this.activeTurnId,
+        );
+        this.setTranscript(buildTranscript(thread));
+        this.statusMessage = this.threadActivityMessage(
+          thread,
+          this.activeTurnId,
+        );
+        this.statusTone = this.statusMessage ? "info" : null;
+      } catch (error) {
+        if (this.isStaleThreadError(error)) {
+          try {
+            const thread = (await client.readThread(threadId, false)) as Thread;
+            this.replaceThread(thread);
+            this.attachedThreadId = thread.id;
+            this.selectedModelProvider = thread.modelProvider ?? null;
+            this.selectedTokenUsage =
+              this.tokenUsageByThreadId[threadId] ?? null;
+            this.activeTurnId = this.findActiveTurnId(thread);
+            // @ts-ignore Pinia deep type recursion with complex protocol types
+            this.liveTranscriptTurn = buildLiveTranscriptTurn(
+              thread,
+              this.activeTurnId,
+            );
+            this.setTranscript(buildTranscript(thread));
+            this.statusMessage = this.threadActivityMessage(
+              thread,
+              this.activeTurnId,
+            );
+            this.statusTone = this.statusMessage ? "info" : null;
+            return;
+          } catch {
+            // Continue with stale-thread fallback below.
+          }
+        }
+
+        this.removeThread(threadId);
+        this.clearSelectedThreadState();
+
+        if (
+          this.getSelectedAgentId() &&
+          this.selectedThreadId === threadId &&
+          this.isStaleThreadError(error)
+        ) {
+          const freshThreadId = await this.startFreshThreadForSelectedAgent();
+          if (freshThreadId) {
+            this.setStatus(
+              "Previous thread is no longer available. Started a fresh chat.",
+              "warning",
+            );
+            return;
+          }
+        }
+        this.setStatus(
+          error instanceof Error ? error.message : String(error),
+          "error",
+        );
+      } finally {
+        this.refreshActiveTurnReconcileLoop();
+        this.busy = false;
+      }
+    },
+
+    async reconcileActiveTurnSnapshot() {
+      const client = clientRef.client;
+      const threadId = this.selectedThreadId;
+      const trackedTurnId = this.activeTurnId;
+      if (!client || !threadId) {
+        return;
+      }
+
+      try {
+        const thread = (await client.readThread(threadId)) as Thread;
+        if (this.selectedThreadId !== threadId) {
+          return;
+        }
+
+        const trackedTurn = trackedTurnId
+          ? thread.turns.find((turn) => turn.id === trackedTurnId)
+          : null;
+        if (trackedTurn && trackedTurn.status !== "inProgress") {
+          if (this.pendingUserDraft && trackedTurn.status === "interrupted") {
+            this.restoredDraft = this.pendingUserDraft;
+            this.restoredDraftVersion += 1;
+          }
+          this.pendingUserDraft = null;
+
+          const interruptedRequested =
+            this.interruptRequestedTurnId === trackedTurn.id;
+          this.interruptRequestedTurnId = null;
+          this.interruptRequestedAt = null;
+          this.interruptRetryCount = 0;
+          if (trackedTurn.status === "interrupted") {
+            this.setStatus("Interrupted", "warning");
+          } else if (
+            interruptedRequested &&
+            trackedTurn.status === "completed"
+          ) {
+            this.setStatus("Interrupt requested; turn completed", "warning");
+          } else if (trackedTurn.status === "failed") {
+            this.setStatus(
+              trackedTurn.error?.message ?? "Turn failed",
+              "error",
+            );
+          } else {
+            this.statusMessage = null;
+            this.statusTone = null;
+          }
+        }
+
+        const snapshotActiveTurnId = this.findActiveTurnId(thread);
+        this.activeTurnId = snapshotActiveTurnId;
+        if (
+          this.interruptRequestedTurnId &&
+          snapshotActiveTurnId === this.interruptRequestedTurnId &&
+          this.interruptRequestedAt !== null &&
+          this.interruptRetryCount < INTERRUPT_MAX_RETRIES
+        ) {
+          const elapsed = Date.now() - this.interruptRequestedAt;
+          const retryDueAt =
+            this.interruptRetryCount * INTERRUPT_RETRY_INTERVAL_MS;
+          if (elapsed >= retryDueAt) {
+            this.interruptRetryCount += 1;
+            void client.interruptTurn(threadId, this.interruptRequestedTurnId);
+          }
+        }
+        this.replaceThread(thread);
+        this.selectedTokenUsage = this.tokenUsageByThreadId[threadId] ?? null;
+        this.setTranscript(buildTranscript(thread));
+        if (
+          snapshotActiveTurnId &&
+          this.interruptRequestedTurnId !== snapshotActiveTurnId &&
+          !this.pendingRequest &&
+          !this.pendingUserDraft
+        ) {
+          this.setStatus(
+            this.threadActivityMessage(thread, snapshotActiveTurnId),
+            "info",
+          );
+        }
+      } catch {
+        // Keep waiting for streamed notifications; this is best-effort fallback.
+      }
+    },
+
+    refreshActiveTurnReconcileLoop() {
+      clearActiveTurnReconcileTimer();
+      const shouldTrack =
+        !!this.activeTurnId ||
+        !!this.pendingUserDraft ||
+        !!this.interruptRequestedTurnId ||
+        this.statusMessage === "Working" ||
+        this.statusMessage === "Interrupting...";
+      if (!this.selectedThreadId || !shouldTrack) {
+        return;
+      }
+
+      activeTurnReconcileTimer = setTimeout(async () => {
+        await this.reconcileActiveTurnSnapshot();
+        this.refreshActiveTurnReconcileLoop();
+      }, ACTIVE_TURN_RECONCILE_INTERVAL_MS);
+    },
+
+    handleNotification(notification: CodexNotification) {
+      const selectedThreadId =
+        this.selectedThreadId ?? this.getSelectedThread(this)?.id;
+
+      if (
+        notification.method === "thread/tokenUsage/updated" &&
+        notification.params.threadId
+      ) {
+        this.tokenUsageByThreadId = {
+          ...this.tokenUsageByThreadId,
+          [notification.params.threadId]: notification.params.tokenUsage,
+        };
+        if (notification.params.threadId === this.selectedThreadId) {
+          this.selectedTokenUsage = notification.params.tokenUsage;
+        }
+        this.contextWindow = notification.params.tokenUsage.modelContextWindow;
+      }
+
+      try {
+        if (
+          selectedThreadId &&
+          this.notificationTargetsSelectedThread(notification, selectedThreadId)
+        ) {
+          const turnId = this.notificationTurnId(notification);
+          if (turnId && !this.transcriptHasTurn(this.transcript, turnId)) {
+            this.setTranscript(
+              applyNotification(this.transcript, {
+                method: "turn/started",
+                params: {
+                  threadId: selectedThreadId,
+                  turn: {
+                    id: turnId,
+                    status: "inProgress",
+                    error: null,
+                    items: [],
+                  },
+                },
+              } as unknown as CodexNotification),
+            );
+          }
+
+          if (
+            turnId &&
+            !this.activeTurnId &&
+            notification.method !== "turn/completed" &&
+            notification.method !== "turn/aborted"
+          ) {
+            this.activeTurnId = turnId;
+            this.refreshTranscriptView();
+          }
+        }
+
+        if (
+          selectedThreadId &&
+          (!("threadId" in notification.params) ||
+            notification.params.threadId === selectedThreadId)
+        ) {
+          this.liveTranscriptTurn = applyLiveNotification(
+            this.liveTranscriptTurn,
+            notification,
+          );
+          this.setTranscript(applyNotification(this.transcript, notification));
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "failed to render update";
+        this.setStatus(`Live update error: ${message}`, "warning");
+      }
+
+      if (notification.method === "turn/started") {
+        clearInterruptReconcileTimer();
+        this.activeTurnId = notification.params.turn.id;
+        this.interruptRequestedTurnId = null;
+        this.interruptRequestedAt = null;
+        this.interruptRetryCount = 0;
+        this.refreshTranscriptView();
+        this.setStatus("Working", "info");
+      }
+
+      if (notification.method === "item/started") {
+        if (this.interruptRequestedTurnId !== notification.params.turnId) {
+          this.setStatus(describeStartedItem(notification.params.item), "info");
+        }
+      }
+
+      if (notification.method === "error" && notification.params.willRetry) {
+        this.setStatus(notification.params.error.message, "warning");
+      }
+
+      if (notification.method === "turn/aborted") {
+        clearInterruptReconcileTimer();
+        const isInterruptAbort = notification.params.reason === "interrupted";
+        if (
+          this.pendingUserDraft &&
+          (isInterruptAbort || notification.params.reason === "reviewEnded")
+        ) {
+          this.restoredDraft = this.pendingUserDraft;
+          this.restoredDraftVersion += 1;
+        }
+        this.pendingUserDraft = null;
+        this.activeTurnId = null;
+        this.interruptRequestedTurnId = null;
+        this.interruptRequestedAt = null;
+        this.interruptRetryCount = 0;
+        this.refreshTranscriptView();
+        if (isInterruptAbort) {
+          this.setStatus("Interrupted", "warning");
+        } else {
+          this.statusMessage = null;
+          this.statusTone = null;
+        }
+      }
+
+      if (notification.method === "turn/completed") {
+        clearInterruptReconcileTimer();
+        const interruptedTurnCompleted =
+          this.interruptRequestedTurnId === notification.params.turn.id;
+        const interruptedStatus =
+          notification.params.turn.status === "interrupted";
+        this.busy = false;
+        this.interruptRequestedTurnId = null;
+        this.interruptRequestedAt = null;
+        this.interruptRetryCount = 0;
+        if (this.pendingUserDraft && interruptedStatus) {
+          this.restoredDraft = this.pendingUserDraft;
+          this.restoredDraftVersion += 1;
+        }
+        if (interruptedStatus) {
+          this.setStatus("Interrupted", "warning");
+        } else if (interruptedTurnCompleted) {
+          this.setStatus("Interrupt requested; turn completed", "warning");
+        } else {
+          this.statusMessage = null;
+          this.statusTone = null;
+        }
+        this.pendingUserDraft = null;
+        if (notification.params.turn.id === this.activeTurnId) {
+          this.activeTurnId = null;
+          this.refreshTranscriptView();
+        }
+      }
+
+      this.refreshActiveTurnReconcileLoop();
+    },
+
+    registerRequestHandlers() {
+      useCommandsStore().registerWorkspaceRequestHandlers(this);
+    },
+
+    async waitForPendingRequest(request: WorkspacePendingRequest) {
+      return useCommandsStore().waitForPendingRequest(this, request);
+    },
+
+    async selectThreadForRequest(threadId: string) {
+      this.selectedThreadId = threadId;
+      await this.loadThread(threadId);
+    },
+
+    resolvePendingRequest(response: unknown) {
+      useCommandsStore().resolvePendingRequest(this, response);
+    },
+
+    rejectPendingRequest(message = "Request cancelled") {
+      useCommandsStore().rejectPendingRequest(this, message);
+    },
+
+    async handleSlashCommand(message: string) {
+      return useCommandsStore().handleWorkspaceSlashCommand(this, message);
+    },
+
+    addLocalEvent(
+      label: string,
+      detail: string,
+      tone: "info" | "warning" | "error" = "info",
+    ) {
+      const turnId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const turn: TranscriptTurn = {
+        id: turnId,
+        status: "completed",
+        error: null,
+        items: [{ id: `${turnId}-event`, kind: "event", label, detail, tone }],
+      };
+      this.setTranscript([...this.transcript, turn]);
+    },
+
+    setTranscript(turns: TranscriptTurn[]) {
+      this.transcript = turns;
+      const view = splitTranscriptView(turns, this.activeTurnId);
+      this.committedTranscript = view.committedTurns;
+      this.liveTranscriptTurn = transcriptViewLiveTurn(
+        view.liveTurn,
+        this.liveTranscriptTurn,
+      );
+    },
+
+    refreshTranscriptView() {
+      const view = splitTranscriptView(this.transcript, this.activeTurnId);
+      this.committedTranscript = view.committedTurns;
+      this.liveTranscriptTurn = transcriptViewLiveTurn(
+        view.liveTurn,
+        this.liveTranscriptTurn,
+      );
+    },
+
+    setStatus(
+      message: string | null,
+      tone: "info" | "warning" | "error" | null,
+    ) {
+      this.statusMessage = message;
+      this.statusTone = tone;
+    },
+
+    setCollapsedItemExpanded(key: string, expanded: boolean | string) {
+      this.collapsedItemExpandedByKey = {
+        ...this.collapsedItemExpandedByKey,
+        [key]: expanded,
+      };
+    },
+
+    mergeCollapsedItemExpanded(updates: Record<string, boolean | string>) {
+      this.collapsedItemExpandedByKey = {
+        ...this.collapsedItemExpandedByKey,
+        ...updates,
+      };
+    },
+  },
+});
+
+function transcriptViewLiveTurn(
+  liveTurn: TranscriptTurn | null,
+  current: LiveTranscriptTurn | null,
+): LiveTranscriptTurn | null {
+  if (!liveTurn) {
+    return null;
+  }
+
+  return {
+    id: liveTurn.id,
+    status: liveTurn.status,
+    error: liveTurn.error,
+    events: current?.id === liveTurn.id ? current.events : [],
+    items: liveTurn.items,
+  };
+}
+
+function describeStartedItem(
+  item: Thread["turns"][number]["items"][number],
+): string {
+  switch (item.type) {
+    case "commandExecution":
+      return item.command ? `Running ${item.command}` : "Running command";
+    case "fileChange":
+      return "Updating files";
+    case "reasoning":
+      return "Thinking";
+    case "plan":
+      return "Updating plan";
+    case "agentMessage":
+      return "Drafting response";
+    case "mcpToolCall":
+      return `Running ${item.server}:${item.tool}`;
+    case "dynamicToolCall":
+      return `Running ${item.tool}`;
+    case "webSearch":
+      return `Searching web for ${item.query}`;
+    case "imageGeneration":
+      return "Generating image";
+    case "imageView":
+      return `Opening ${item.path}`;
+    default:
+      return "Working";
+  }
+}
+
+function toNumber(value: bigint | number | null | undefined) {
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "number") return value;
+  return null;
+}
