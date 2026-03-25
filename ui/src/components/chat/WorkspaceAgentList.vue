@@ -55,7 +55,7 @@ const filteredAgents = computed(() => {
       </div>
 
       <label class="workspace-msg-search field">
-        <div class="workspace-msg-search__control">
+        <div class="input-control workspace-msg-search__control">
           <span class="workspace-msg-search__icon" aria-hidden="true">
             <svg viewBox="0 0 16 16" fill="none">
               <circle

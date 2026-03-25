@@ -11,6 +11,8 @@ import { truncate } from "../../lib/format";
 
 const props = defineProps<{
   selectedAgentId: string | null;
+  selectedAgentName: string | null;
+  selectedAgentColor: string | null;
   selectedThreadId: string | null;
   committedTranscript: TranscriptTurn[];
   liveTranscriptTurn: LiveTranscriptTurn | null;
@@ -34,11 +36,11 @@ type TranscriptStatusChip = {
 
 type TurnLike = TranscriptTurn | LiveTranscriptTurn;
 type ItemLike = TranscriptItem | LiveTranscriptItem;
+type UserItemLike = Extract<ItemLike, { kind: "user" }>;
 
 const transcriptBody = ref<HTMLElement | null>(null);
 const settlingLiveTurn = ref<LiveTranscriptTurn | null>(null);
 const rowFilter = ref<"all" | "work" | "messages" | "errors">("all");
-const compactMode = ref(false);
 let settlingLiveTurnTimer: ReturnType<typeof setTimeout> | null = null;
 
 const statusMessage = computed(
@@ -185,15 +187,24 @@ function isErrorItem(item: ItemLike): boolean {
   return false;
 }
 
-function userPrompt(turn: TurnLike, isLive: boolean): string | null {
-  const userItem = turn.items.find((item) => item.kind === "user");
-  if (userItem?.kind === "user") {
-    return userItem.text;
+function userItem(turn: TurnLike, isLive: boolean): UserItemLike | null {
+  const existing = turn.items.find((item) => item.kind === "user");
+  if (existing?.kind === "user") {
+    return existing;
   }
   if (isLive && props.pendingUserDraft?.trim()) {
-    return props.pendingUserDraft.trim();
+    return {
+      id: `${turn.id}:pending-user`,
+      kind: "user",
+      text: props.pendingUserDraft.trim(),
+      source: "human",
+    };
   }
   return null;
+}
+
+function userPrompt(turn: TurnLike, isLive: boolean): string | null {
+  return userItem(turn, isLive)?.text ?? null;
 }
 
 function responseItem(
@@ -248,7 +259,10 @@ function isStepsExpanded(turn: TurnLike, isLive: boolean): boolean {
   if (typeof override === "boolean") {
     return override;
   }
-  return true;
+  if (isLive) {
+    return true;
+  }
+  return turn.status === "failed" || turn.status === "interrupted";
 }
 
 function toggleSteps(turn: TurnLike, isLive: boolean) {
@@ -264,31 +278,6 @@ function turnToneClass(turn: TurnLike, isLive: boolean): string[] {
   ].filter(Boolean);
 }
 
-function turnSuffix(turn: TurnLike, isLive: boolean): string | null {
-  if (isLive && props.liveTranscriptTurn) {
-    return "live";
-  }
-  if (turn.status === "failed") {
-    return "error";
-  }
-  if (turn.status === "interrupted") {
-    return "interrupted";
-  }
-  if (turn.status === "completed") {
-    return "done";
-  }
-  return null;
-}
-
-function turnSuffixClass(turn: TurnLike, isLive: boolean): string[] {
-  return [
-    "turn-header__suffix",
-    isLive ? "turn-header__suffix--running" : "",
-    turn.status === "failed" ? "turn-header__suffix--error" : "",
-    turn.status === "interrupted" ? "turn-header__suffix--warning" : "",
-  ].filter(Boolean);
-}
-
 function stepToggleLabel(turn: TurnLike, isLive: boolean): string {
   if (isLive && props.liveTranscriptTurn) {
     return "Working";
@@ -298,6 +287,127 @@ function stepToggleLabel(turn: TurnLike, isLive: boolean): string {
 
 function stepCount(turn: TurnLike): number {
   return stepItems(turn).length;
+}
+
+function traceSummary(turn: TurnLike): string {
+  const counts = {
+    reasoning: 0,
+    plan: 0,
+    command: 0,
+    tool: 0,
+    fileChange: 0,
+    event: 0,
+  };
+
+  for (const item of stepItems(turn)) {
+    switch (item.kind) {
+      case "reasoning":
+        counts.reasoning += 1;
+        break;
+      case "plan":
+        counts.plan += 1;
+        break;
+      case "command":
+        counts.command += 1;
+        break;
+      case "tool":
+        counts.tool += 1;
+        break;
+      case "file-change":
+        counts.fileChange += 1;
+        break;
+      case "event":
+        counts.event += 1;
+        break;
+      default:
+        break;
+    }
+  }
+
+  const totalActions =
+    counts.reasoning +
+    counts.plan +
+    counts.command +
+    counts.tool +
+    counts.fileChange +
+    counts.event;
+
+  const segments = [
+    totalActions
+      ? `${totalActions} action${totalActions === 1 ? "" : "s"}`
+      : null,
+    counts.command
+      ? `${counts.command} command${counts.command === 1 ? "" : "s"}`
+      : null,
+    counts.tool ? `${counts.tool} tool${counts.tool === 1 ? "" : "s"}` : null,
+    counts.fileChange
+      ? `${counts.fileChange} file${counts.fileChange === 1 ? "" : "s"}`
+      : null,
+  ].filter((segment): segment is string => Boolean(segment));
+
+  return segments.join(" · ") || "Trace available";
+}
+
+function isContactUserItem(item: UserItemLike | null): boolean {
+  return item?.source === "contact";
+}
+
+function initials(label: string | null | undefined, fallback: string): string {
+  const value = label?.trim();
+  if (!value) {
+    return fallback;
+  }
+  return value.slice(0, 1).toUpperCase();
+}
+
+function avatarStyle(color: string | null | undefined) {
+  const resolved = color?.trim() || "var(--accent)";
+  return {
+    backgroundColor: `${resolved}1f`,
+    color: resolved,
+  };
+}
+
+function userSenderLabel(item: UserItemLike | null): string {
+  if (isContactUserItem(item)) {
+    return item?.contact?.senderAgentId || "Contact";
+  }
+  return "You";
+}
+
+function assistantSenderLabel(): string {
+  return props.selectedAgentName?.trim() || "Assistant";
+}
+
+function assistantAvatarLabel(): string {
+  return initials(assistantSenderLabel(), "A");
+}
+
+function assistantAvatarStyle() {
+  return avatarStyle(props.selectedAgentColor);
+}
+
+function bubbleStatus(
+  turn: TurnLike,
+  isLive: boolean,
+): {
+  icon: string;
+  label: string;
+} {
+  if (isLive || turn.status === "inProgress") {
+    return { icon: "✓✓", label: "Working" };
+  }
+  if (turn.status === "failed") {
+    return { icon: "!", label: "Failed" };
+  }
+  if (turn.status === "interrupted") {
+    return { icon: "!", label: "Interrupted" };
+  }
+  return { icon: "✓", label: "Sent" };
+}
+
+function showBubbleStatus(item: UserItemLike | null): boolean {
+  return !isContactUserItem(item);
 }
 
 function renderMessageMarkdown(text: string): string {
@@ -728,265 +838,301 @@ watch(
       >
         <article
           v-if="userPrompt(entry.turn, entry.isLive)"
-          class="turn-header workspace-chat__prompt-card"
+          class="workspace-chat__message-row workspace-chat__message-row--right"
         >
-          <span class="turn-header__content">
-            <span class="turn-header__label-row">
-              <span class="turn-header__label">User</span>
-              <span
-                v-if="turnSuffix(entry.turn, entry.isLive)"
-                :class="turnSuffixClass(entry.turn, entry.isLive)"
-              >
-                {{ turnSuffix(entry.turn, entry.isLive) }}
+          <div class="workspace-chat__message-stack">
+            <div
+              class="workspace-chat__bubble"
+              :class="[
+                isContactUserItem(userItem(entry.turn, entry.isLive))
+                  ? 'workspace-chat__bubble--contact'
+                  : 'workspace-chat__bubble--user',
+              ]"
+              :title="
+                isContactUserItem(userItem(entry.turn, entry.isLive))
+                  ? userSenderLabel(userItem(entry.turn, entry.isLive))
+                  : undefined
+              "
+            >
+              <span class="workspace-chat__bubble-copy">
+                {{ userPrompt(entry.turn, entry.isLive) }}
               </span>
-            </span>
-            <span class="turn-header__preview">
-              {{ userPrompt(entry.turn, entry.isLive) }}
-            </span>
-          </span>
+              <span
+                v-if="showBubbleStatus(userItem(entry.turn, entry.isLive))"
+                class="workspace-chat__bubble-status"
+                :title="bubbleStatus(entry.turn, entry.isLive).label"
+              >
+                {{ bubbleStatus(entry.turn, entry.isLive).icon }}
+              </span>
+            </div>
+          </div>
         </article>
 
-        <button
-          v-if="stepItems(entry.turn).length > 0"
-          type="button"
-          class="workspace-chat__steps-toggle"
-          :aria-expanded="isStepsExpanded(entry.turn, entry.isLive)"
-          @click="toggleSteps(entry.turn, entry.isLive)"
-        >
-          <span class="workspace-chat__steps-toggle-icon" aria-hidden="true">
-            {{ isStepsExpanded(entry.turn, entry.isLive) ? "▾" : "▸" }}
-          </span>
-          <span class="workspace-chat__steps-toggle-text">
-            {{ stepToggleLabel(entry.turn, entry.isLive) }}
-          </span>
-          <span class="workspace-chat__steps-toggle-count">
-            {{ stepCount(entry.turn) }} steps
-          </span>
-        </button>
-
         <div
-          class="turn-stack__items"
-          :class="{
-            'workspace-chat__items--compact': compactMode,
-            'workspace-chat__markdown--compact': compactMode,
-          }"
+          class="workspace-chat__message-row workspace-chat__message-row--left"
+          v-if="responseItem(entry.turn) || stepItems(entry.turn).length > 0"
         >
-          <section
-            v-if="
-              stepItems(entry.turn).length > 0 &&
-              isStepsExpanded(entry.turn, entry.isLive)
-            "
-            class="workspace-chat__steps workspace-chat__steps-panel"
+          <div
+            class="workspace-msg-list__avatar"
+            :style="assistantAvatarStyle()"
+            :title="assistantSenderLabel()"
+          >
+            {{ assistantAvatarLabel() }}
+          </div>
+
+          <div
+            class="turn-stack__items workspace-chat__message-stack workspace-chat__message-stack--agent"
           >
             <article
-              v-for="item in stepItems(entry.turn)"
-              :key="item.id"
-              class="workspace-msg-item workspace-chat__step-item"
-              :class="[
-                item.kind === 'command'
-                  ? 'workspace-msg-item--command'
-                  : 'workspace-msg-item--work',
-                item.kind === 'event' ? 'workspace-msg-item--event' : '',
-                item.kind === 'command' &&
-                item.exitCode !== null &&
-                item.exitCode !== 0
-                  ? 'workspace-msg-item--terminal-error'
-                  : '',
-              ]"
+              v-if="
+                responseItem(entry.turn) &&
+                matchesFilter(responseItem(entry.turn)!)
+              "
+              class="workspace-chat__bubble workspace-chat__bubble--assistant"
             >
-              <template v-if="item.kind === 'reasoning'">
-                <div class="workspace-msg-item__title">Thinking</div>
-                <div
-                  class="workspace-chat__step-body workspace-chat__step-body--subtle"
-                >
-                  <MarkdownRenderer
-                    :content="renderReasoningMarkdown(item)"
-                    compact
-                  />
-                </div>
-              </template>
-
-              <template v-else-if="item.kind === 'plan'">
-                <div class="workspace-msg-item__title">Plan</div>
-                <div
-                  class="workspace-chat__step-body workspace-chat__step-body--subtle"
-                >
-                  <MarkdownRenderer
-                    :content="renderMessageMarkdown(item.text)"
-                    compact
-                  />
-                </div>
-              </template>
-
-              <template v-else-if="item.kind === 'command'">
-                <button
-                  type="button"
-                  class="workspace-chat__command-toggle"
-                  :aria-expanded="isCommandExpanded(item)"
-                  @click="toggleCommand(item)"
-                >
-                  <div class="workspace-chat__terminal-frame">
-                    <div class="workspace-chat__terminal-bar">
-                      <span class="workspace-chat__terminal-dot"></span>
-                      <span class="workspace-chat__terminal-dot"></span>
-                      <span class="workspace-chat__terminal-dot"></span>
-                      <span
-                        class="workspace-msg-item__title workspace-chat__terminal-label"
-                        >Shell</span
-                      >
-                      <span
-                        v-if="commandBodyLabel(item)"
-                        class="workspace-chat__terminal-title"
-                        >{{ commandBodyLabel(item) }}</span
-                      >
-                      <span class="workspace-chat__terminal-spacer"></span>
-                      <span
-                        v-if="commandExitLabel(item)"
-                        class="workspace-chat__terminal-chip"
-                        :class="[
-                          commandExitTone(item)
-                            ? `workspace-chat__terminal-chip--${commandExitTone(item)}`
-                            : '',
-                        ]"
-                      >
-                        {{ commandExitLabel(item) }}
-                      </span>
-                    </div>
-                    <pre
-                      class="workspace-chat__code-block workspace-chat__code-block--terminal"
-                      :class="{
-                        'workspace-chat__code-block--terminal-preview':
-                          !isCommandExpanded(item),
-                      }"
-                    ><code>{{ isCommandExpanded(item) ? commandDisplay(item) : commandPreview(item) }}</code></pre>
-                  </div>
-                </button>
-                <div
-                  v-if="isCommandExpanded(item)"
-                  class="workspace-chat__command-body"
-                >
-                  <div
-                    v-if="item.exitCode !== null && item.exitCode !== 0"
-                    class="workspace-chat__meta-line workspace-chat__meta-line--error"
-                  >
-                    Command exited with {{ item.exitCode }}
-                  </div>
-                </div>
-              </template>
-
-              <template v-else-if="item.kind === 'tool'">
-                <button
-                  type="button"
-                  class="workspace-chat__command-toggle workspace-chat__tool-toggle"
-                  :aria-expanded="isToolExpanded(item)"
-                  @click="toggleTool(item)"
-                >
-                  <div
-                    class="workspace-chat__terminal-frame workspace-chat__tool-frame"
-                  >
-                    <div class="workspace-chat__terminal-bar">
-                      <span class="workspace-chat__terminal-dot"></span>
-                      <span class="workspace-chat__terminal-dot"></span>
-                      <span class="workspace-chat__terminal-dot"></span>
-                      <span
-                        class="workspace-msg-item__title workspace-chat__terminal-label"
-                        >{{ item.label }}</span
-                      >
-                      <span class="workspace-chat__terminal-spacer"></span>
-                      <span
-                        v-if="item.status === 'streaming'"
-                        class="workspace-chat__terminal-chip workspace-chat__terminal-chip--running"
-                      >
-                        running
-                      </span>
-                    </div>
-                    <pre
-                      class="workspace-chat__code-block workspace-chat__code-block--terminal"
-                      :class="{
-                        'workspace-chat__code-block--terminal-preview':
-                          !isToolExpanded(item),
-                      }"
-                    ><code>{{ isToolExpanded(item) ? toolTerminalContent(item) : toolPreview(item) }}</code></pre>
-                  </div>
-                </button>
-                <div
-                  v-if="isToolExpanded(item)"
-                  class="workspace-chat__tool-body"
-                >
-                  <div
-                    v-if="hasToolInternalContext(item)"
-                    class="workspace-chat__tool-internal"
-                  >
-                    <button
-                      type="button"
-                      class="workspace-chat__tool-internal-toggle"
-                      :aria-expanded="isToolInternalContextExpanded(item)"
-                      @click="toggleToolInternalContext(item)"
-                    >
-                      <span>{{
-                        isToolInternalContextExpanded(item)
-                          ? "Hide internal context"
-                          : "Show internal context"
-                      }}</span>
-                      <span class="workspace-chat__tool-internal-count"
-                        >{{ toolHiddenSystemBlocks(item).length }} hidden</span
-                      >
-                    </button>
-                    <pre
-                      v-if="isToolInternalContextExpanded(item)"
-                      class="workspace-chat__code-block workspace-chat__code-block--internal"
-                    ><code>{{ toolHiddenSystemBlocks(item).join('\n\n') }}</code></pre>
-                  </div>
-                </div>
-              </template>
-
-              <template v-else-if="item.kind === 'file-change'">
-                <div class="workspace-msg-item__title">File changes</div>
-                <div class="workspace-chat__step-body">
-                  <MarkdownRenderer
-                    :content="fileChangeMarkdown(item)"
-                    compact
-                  />
-                </div>
-              </template>
-
-              <template v-else-if="item.kind === 'event'">
-                <div class="workspace-msg-item__title">{{ item.label }}</div>
-                <div
-                  class="workspace-chat__step-body workspace-chat__step-body--subtle"
-                >
-                  <MarkdownRenderer
-                    :content="renderMessageMarkdown(item.detail)"
-                    compact
-                  />
-                </div>
-              </template>
-
-              <template v-else-if="item.kind === 'assistant'">
-                <div
-                  class="workspace-chat__step-body workspace-chat__step-body--subtle"
-                >
-                  <MarkdownRenderer
-                    :content="renderMessageMarkdown(item.text)"
-                    compact
-                  />
-                </div>
-              </template>
+              <MarkdownRenderer
+                :content="renderMessageMarkdown(responseItem(entry.turn)!.text)"
+                compact
+              />
             </article>
-          </section>
 
-          <article
-            v-if="
-              responseItem(entry.turn) &&
-              matchesFilter(responseItem(entry.turn)!)
-            "
-            class="workspace-msg-item workspace-msg-item--assistant workspace-chat__response-card"
-          >
-            <MarkdownRenderer
-              :content="renderMessageMarkdown(responseItem(entry.turn)!.text)"
-              compact
-            />
-          </article>
+            <button
+              v-if="stepItems(entry.turn).length > 0"
+              type="button"
+              class="chip workspace-chat__steps-toggle"
+              :class="{
+                'workspace-chat__steps-toggle--summary': !isStepsExpanded(
+                  entry.turn,
+                  entry.isLive,
+                ),
+              }"
+              :aria-expanded="isStepsExpanded(entry.turn, entry.isLive)"
+              @click="toggleSteps(entry.turn, entry.isLive)"
+            >
+              <span
+                class="workspace-chat__steps-toggle-icon"
+                aria-hidden="true"
+              >
+                {{ isStepsExpanded(entry.turn, entry.isLive) ? "▾" : "▸" }}
+              </span>
+              <span class="workspace-chat__steps-toggle-text">
+                {{
+                  isStepsExpanded(entry.turn, entry.isLive)
+                    ? stepToggleLabel(entry.turn, entry.isLive)
+                    : traceSummary(entry.turn)
+                }}
+              </span>
+              <span class="workspace-chat__steps-toggle-count">
+                {{ stepCount(entry.turn) }} steps
+              </span>
+            </button>
+
+            <section
+              v-if="
+                stepItems(entry.turn).length > 0 &&
+                isStepsExpanded(entry.turn, entry.isLive)
+              "
+              class="workspace-chat__steps"
+            >
+              <article
+                v-for="item in stepItems(entry.turn)"
+                :key="item.id"
+                class="workspace-chat__step-item"
+                :class="[
+                  item.kind === 'command'
+                    ? 'workspace-msg-item--command'
+                    : 'workspace-msg-item--work',
+                  item.kind === 'command' &&
+                  item.exitCode !== null &&
+                  item.exitCode !== 0
+                    ? 'workspace-msg-item--terminal-error'
+                    : '',
+                ]"
+              >
+                <template v-if="item.kind === 'reasoning'">
+                  <div class="workspace-msg-item__title eyebrow">Thinking</div>
+                  <div
+                    class="workspace-chat__step-body workspace-chat__step-body--subtle"
+                  >
+                    <MarkdownRenderer
+                      :content="renderReasoningMarkdown(item)"
+                      compact
+                    />
+                  </div>
+                </template>
+
+                <template v-else-if="item.kind === 'plan'">
+                  <div class="workspace-msg-item__title eyebrow">Plan</div>
+                  <div
+                    class="workspace-chat__step-body workspace-chat__step-body--subtle"
+                  >
+                    <MarkdownRenderer
+                      :content="renderMessageMarkdown(item.text)"
+                      compact
+                    />
+                  </div>
+                </template>
+
+                <template v-else-if="item.kind === 'command'">
+                  <button
+                    type="button"
+                    class="workspace-chat__command-toggle"
+                    :aria-expanded="isCommandExpanded(item)"
+                    @click="toggleCommand(item)"
+                  >
+                    <div class="workspace-chat__terminal-frame">
+                      <div class="workspace-chat__terminal-bar">
+                        <span class="workspace-chat__terminal-dot"></span>
+                        <span class="workspace-chat__terminal-dot"></span>
+                        <span class="workspace-chat__terminal-dot"></span>
+                        <span class="workspace-msg-item__title eyebrow"
+                          >Shell</span
+                        >
+                        <span
+                          v-if="commandBodyLabel(item)"
+                          class="mono muted"
+                          >{{ commandBodyLabel(item) }}</span
+                        >
+                        <span style="flex: 1"></span>
+                        <span
+                          v-if="commandExitLabel(item)"
+                          class="chip workspace-chat__terminal-chip"
+                          :class="[
+                            commandExitTone(item)
+                              ? `workspace-chat__terminal-chip--${commandExitTone(item)}`
+                              : '',
+                          ]"
+                        >
+                          {{ commandExitLabel(item) }}
+                        </span>
+                      </div>
+                      <pre
+                        class="code-block workspace-chat__code-block workspace-chat__code-block--terminal"
+                        :class="{
+                          'workspace-chat__code-block--terminal-preview':
+                            !isCommandExpanded(item),
+                        }"
+                      ><code class="mono">{{ isCommandExpanded(item) ? commandDisplay(item) : commandPreview(item) }}</code></pre>
+                    </div>
+                  </button>
+                  <div
+                    v-if="isCommandExpanded(item)"
+                    class="workspace-chat__command-body"
+                  >
+                    <div
+                      v-if="item.exitCode !== null && item.exitCode !== 0"
+                      class="workspace-chat__meta-line eyebrow workspace-chat__meta-line--error"
+                    >
+                      Command exited with {{ item.exitCode }}
+                    </div>
+                  </div>
+                </template>
+
+                <template v-else-if="item.kind === 'tool'">
+                  <button
+                    type="button"
+                    class="workspace-chat__command-toggle"
+                    :aria-expanded="isToolExpanded(item)"
+                    @click="toggleTool(item)"
+                  >
+                    <div class="workspace-chat__terminal-frame">
+                      <div class="workspace-chat__terminal-bar">
+                        <span class="workspace-chat__terminal-dot"></span>
+                        <span class="workspace-chat__terminal-dot"></span>
+                        <span class="workspace-chat__terminal-dot"></span>
+                        <span class="workspace-msg-item__title eyebrow">{{
+                          item.label
+                        }}</span>
+                        <span style="flex: 1"></span>
+                        <span
+                          v-if="item.status === 'streaming'"
+                          class="chip workspace-chat__terminal-chip workspace-chat__terminal-chip--running"
+                        >
+                          running
+                        </span>
+                      </div>
+                      <pre
+                        class="code-block workspace-chat__code-block workspace-chat__code-block--terminal"
+                        :class="{
+                          'workspace-chat__code-block--terminal-preview':
+                            !isToolExpanded(item),
+                        }"
+                      ><code class="mono">{{ isToolExpanded(item) ? toolTerminalContent(item) : toolPreview(item) }}</code></pre>
+                    </div>
+                  </button>
+                  <div
+                    v-if="isToolExpanded(item)"
+                    class="workspace-chat__tool-body"
+                  >
+                    <div
+                      v-if="hasToolInternalContext(item)"
+                      class="workspace-chat__tool-internal"
+                    >
+                      <button
+                        type="button"
+                        class="btn workspace-chat__tool-internal-toggle"
+                        :aria-expanded="isToolInternalContextExpanded(item)"
+                        @click="toggleToolInternalContext(item)"
+                      >
+                        <span>{{
+                          isToolInternalContextExpanded(item)
+                            ? "Hide internal context"
+                            : "Show internal context"
+                        }}</span>
+                        <span class="workspace-chat__tool-internal-count muted"
+                          >{{
+                            toolHiddenSystemBlocks(item).length
+                          }}
+                          hidden</span
+                        >
+                      </button>
+                      <pre
+                        v-if="isToolInternalContextExpanded(item)"
+                        class="code-block workspace-chat__code-block workspace-chat__code-block--internal"
+                      ><code>{{ toolHiddenSystemBlocks(item).join('\n\n') }}</code></pre>
+                    </div>
+                  </div>
+                </template>
+
+                <template v-else-if="item.kind === 'file-change'">
+                  <div class="workspace-msg-item__title eyebrow">
+                    File changes
+                  </div>
+                  <div class="workspace-chat__step-body">
+                    <MarkdownRenderer
+                      :content="fileChangeMarkdown(item)"
+                      compact
+                    />
+                  </div>
+                </template>
+
+                <template v-else-if="item.kind === 'event'">
+                  <div class="workspace-msg-item__title eyebrow">
+                    {{ item.label }}
+                  </div>
+                  <div
+                    class="workspace-chat__step-body workspace-chat__step-body--subtle"
+                  >
+                    <MarkdownRenderer
+                      :content="renderMessageMarkdown(item.detail)"
+                      compact
+                    />
+                  </div>
+                </template>
+
+                <template v-else-if="item.kind === 'assistant'">
+                  <div
+                    class="workspace-chat__step-body workspace-chat__step-body--subtle"
+                  >
+                    <MarkdownRenderer
+                      :content="renderMessageMarkdown(item.text)"
+                      compact
+                    />
+                  </div>
+                </template>
+              </article>
+            </section>
+          </div>
         </div>
       </section>
     </div>

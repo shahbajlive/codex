@@ -59,7 +59,7 @@ watch(
         <input
           ref="searchInput"
           :value="query"
-          class="workspace-command-control__search"
+          class="input-control workspace-command-control__search"
           type="text"
           placeholder="Type a command or search..."
           @input="
@@ -67,11 +67,7 @@ watch(
           "
           @keydown="emit('keydown', $event)"
         />
-        <button
-          class="workspace-command-control__close"
-          type="button"
-          @click="emit('close')"
-        >
+        <button class="btn btn--sm" type="button" @click="emit('close')">
           Esc
         </button>
       </div>

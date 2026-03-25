@@ -109,35 +109,6 @@ const workspaceColorVars = computed(() => ({
   "--workspace-agent-color": selectedAgentColor.value,
 }));
 
-function agentAvatarStyle(agent: WorkspaceAgentRow) {
-  const color = resolvedAgentColor(agent);
-  return {
-    backgroundColor: `${color}1f`,
-    color,
-  };
-}
-
-const selectedAgentAvatarStyle = computed(() => {
-  const color = selectedAgentColor.value;
-  return {
-    backgroundColor: `${color}1f`,
-    color,
-  };
-});
-
-const filteredAgents = computed(() => {
-  const query = search.value.trim().toLowerCase();
-  if (!query) {
-    return props.agents;
-  }
-
-  return props.agents.filter((agent) => {
-    const haystack =
-      `${agent.name} ${agent.description} ${agent.preview} ${agent.workspace || ""}`.toLowerCase();
-    return haystack.includes(query);
-  });
-});
-
 type ThreadChoice = {
   id: string;
   label: string;
@@ -812,6 +783,8 @@ onMounted(() => {
 
         <WorkspaceTranscriptView
           :selected-agent-id="selectedAgentId"
+          :selected-agent-name="selectedAgent?.name ?? null"
+          :selected-agent-color="selectedAgentColor"
           :selected-thread-id="selectedThreadId"
           :committed-transcript="committedTranscript"
           :live-transcript-turn="liveTranscriptTurn"

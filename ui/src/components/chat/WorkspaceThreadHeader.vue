@@ -78,26 +78,22 @@ function onThreadSelectionChange(event: Event) {
       </div>
     </button>
 
-    <button>
-      <select
-        v-if="selectedAgent && threadChoices.length > 0"
-        class="workspace-msg-thread__select"
-        :value="selectedThreadId || ''"
-        aria-label="Select thread"
-        @change="onThreadSelectionChange"
+    <select
+      v-if="selectedAgent && threadChoices.length > 0"
+      class="input-control workspace-msg-thread__select"
+      :value="selectedThreadId || ''"
+      aria-label="Select thread"
+      @change="onThreadSelectionChange"
+    >
+      <option value="" disabled>Select thread</option>
+      <option
+        v-for="thread in threadChoices"
+        :key="thread.id"
+        :value="thread.id"
       >
-        <option value="" disabled>Select thread</option>
-        <option
-          v-for="thread in threadChoices"
-          :key="thread.id"
-          :value="thread.id"
-        >
-          {{ thread.label }}
-        </option>
-      </select>
-      <span v-else>{{ selectedThreadId || "No thread selected" }}</span>
-    </button>
-
+        {{ thread.label }}
+      </option>
+    </select>
     <div class="workspace-msg-thread__actions">
       <button
         class="workspace-msg-thread__icon-btn"
