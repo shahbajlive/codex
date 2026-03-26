@@ -1,13 +1,9 @@
 {
   name: "Frontend Engineer",
   description: "Frontend Engineer - UI development",
-  model_provider: "lmstudio",
-  model: "qwen3.5-2b",
-  color: "#f59e0b",
   extends: "developer_lead",
-  workspace: null,
-  tools: {
-    allow: null,
-    deny: null,
-  },
+  model: "lmstudio/qwen3.5-9b-uncensored-hauhaucs-aggressive",
+  color: "#f59e0b",
+  tools: {},
+  contacts: {},
 }

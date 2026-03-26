@@ -21,9 +21,6 @@ pub enum ContactsConfigError {
     #[error("JSON serialize error: {0}")]
     Serialize(#[from] serde_json::Error),
 
-    #[error("contact `{contact_id}` is missing publicThreadId in contacts.json5")]
-    MissingPublicThreadId { contact_id: String },
-
     #[error("invalid public thread id for contact `{contact_id}`: {source}")]
     InvalidPublicThreadId {
         contact_id: String,
@@ -39,14 +36,9 @@ pub struct ContactsConfig {
 }
 
 impl ContactsConfig {
-    pub fn add(&mut self, id: String, public_thread_id: ThreadId) {
-        self.contacts.insert(
-            id.clone(),
-            ContactRecord {
-                agent_id: id,
-                public_thread_id,
-            },
-        );
+    pub fn add(&mut self, id: String) {
+        self.contacts
+            .insert(id.clone(), ContactRecord { agent_id: id });
     }
 
     pub fn remove(&mut self, id: &str) -> bool {
@@ -77,7 +69,6 @@ impl ContactsConfig {
             .map(|r| {
                 json!({
                     "id": r.agent_id,
-                    "publicThreadId": r.public_thread_id.to_string(),
                 })
             })
             .collect();
@@ -88,7 +79,6 @@ impl ContactsConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContactRecord {
     pub agent_id: String,
-    pub public_thread_id: ThreadId,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -102,7 +92,8 @@ enum ContactsFile {
 #[serde(rename_all = "camelCase")]
 struct ContactDefinition {
     id: String,
-    public_thread_id: String,
+    #[serde(default)]
+    public_thread_id: Option<String>,
 }
 
 impl ContactsConfig {
@@ -128,45 +119,12 @@ impl ContactsConfig {
         match file {
             ContactsFile::Object { contacts: entries } => {
                 for entry in entries {
-                    let public_thread_id =
-                        parse_public_thread_id(&entry.public_thread_id, &entry.id)?;
-                    contacts.insert(
-                        entry.id.clone(),
-                        ContactRecord {
-                            agent_id: entry.id,
-                            public_thread_id,
-                        },
-                    );
+                    contacts.insert(entry.id.clone(), ContactRecord { agent_id: entry.id });
                 }
             }
             ContactsFile::LegacyMap(map) => {
-                for (agent_id, value) in map {
-                    let public_thread_id = match value {
-                        JsonValue::String(thread_id) => {
-                            parse_public_thread_id(&thread_id, &agent_id)?
-                        }
-                        JsonValue::Object(mut object) => {
-                            let thread_id = object
-                                .remove("publicThreadId")
-                                .and_then(|value| value.as_str().map(ToOwned::to_owned))
-                                .ok_or_else(|| ContactsConfigError::MissingPublicThreadId {
-                                    contact_id: agent_id.clone(),
-                                })?;
-                            parse_public_thread_id(&thread_id, &agent_id)?
-                        }
-                        _ => {
-                            return Err(ContactsConfigError::MissingPublicThreadId {
-                                contact_id: agent_id,
-                            });
-                        }
-                    };
-                    contacts.insert(
-                        agent_id.clone(),
-                        ContactRecord {
-                            agent_id,
-                            public_thread_id,
-                        },
-                    );
+                for (agent_id, _value) in map {
+                    contacts.insert(agent_id.clone(), ContactRecord { agent_id });
                 }
             }
         }
@@ -184,13 +142,6 @@ impl ContactsConfig {
     pub fn get(&self, agent_id: &str) -> Option<&ContactRecord> {
         self.contacts.get(agent_id)
     }
-}
-
-fn parse_public_thread_id(raw: &str, contact_id: &str) -> Result<ThreadId, ContactsConfigError> {
-    ThreadId::from_string(raw).map_err(|source| ContactsConfigError::InvalidPublicThreadId {
-        contact_id: contact_id.to_string(),
-        source,
-    })
 }
 
 #[cfg(test)]
@@ -219,39 +170,29 @@ mod tests {
     }
 
     #[test]
-    fn load_array_without_public_threads_fails() {
+    fn load_array_without_public_threads() {
         let dir = temp_dir_with_contacts(r#"["coder", "reviewer"]"#);
-        let err = ContactsConfig::load(dir.path()).expect_err("load should fail");
-        assert!(matches!(err, ContactsConfigError::Parse(_)));
+        let config = ContactsConfig::load(dir.path()).expect("load contacts");
+        assert_eq!(config.list().len(), 2);
     }
 
     #[test]
-    fn load_structured_contacts_with_public_threads() {
+    fn load_structured_contacts_without_public_threads() {
         let dir = temp_dir_with_contacts(
             r#"{
                 contacts: [
-                    { id: "coder", publicThreadId: "67e55044-10b1-426f-9247-bb680e5fe0c8" },
-                    { id: "reviewer", publicThreadId: "67e55044-10b1-426f-9247-bb680e5fe0c9" }
+                    { id: "coder" },
+                    { id: "reviewer" }
                 ]
             }"#,
         );
         let config = ContactsConfig::load(dir.path()).expect("load contacts");
-        assert_eq!(
-            config
-                .get("coder")
-                .map(|record| record.public_thread_id.to_string()),
-            Some("67e55044-10b1-426f-9247-bb680e5fe0c8".to_string())
-        );
-        assert_eq!(
-            config
-                .get("reviewer")
-                .map(|record| record.public_thread_id.to_string()),
-            Some("67e55044-10b1-426f-9247-bb680e5fe0c9".to_string())
-        );
+        assert!(config.get("coder").is_some());
+        assert!(config.get("reviewer").is_some());
     }
 
     #[test]
-    fn load_legacy_map_requires_public_threads() {
+    fn load_legacy_map() {
         let dir = temp_dir_with_contacts(
             r#"{
                 "coder": "67e55044-10b1-426f-9247-bb680e5fe0c8",
@@ -259,10 +200,9 @@ mod tests {
                 "planner": true
             }"#,
         );
-        let err = ContactsConfig::load(dir.path()).expect_err("load should fail");
-        assert!(matches!(
-            err,
-            ContactsConfigError::MissingPublicThreadId { ref contact_id } if contact_id == "planner"
-        ));
+        let config = ContactsConfig::load(dir.path()).expect("load contacts");
+        assert!(config.get("coder").is_some());
+        assert!(config.get("reviewer").is_some());
+        assert!(config.get("planner").is_some());
     }
 }

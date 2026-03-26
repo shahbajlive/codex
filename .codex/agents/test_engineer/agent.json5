@@ -1,10 +1,9 @@
 {
   name: "Test Engineer",
   description: "Test Engineer - Testing and QA",
-  model_provider: "lmstudio",
-  model: "qwen3.5-2b",
-  color: "#06b6d4",
   extends: "developer_lead",
+  model: "lmstudio/qwen3.5-9b-uncensored-hauhaucs-aggressive",
+  color: "#06b6d4",
   tools: {},
   contacts: {},
 }

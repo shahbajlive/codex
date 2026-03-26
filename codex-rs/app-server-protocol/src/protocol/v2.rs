@@ -3306,7 +3306,6 @@ pub struct ThreadLoadedListResponse {
 #[ts(export_to = "v2/")]
 pub struct ContactRecordResponse {
     pub id: String,
-    pub public_thread_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -3322,7 +3321,6 @@ pub struct ContactListResponse {
 #[ts(export_to = "v2/")]
 pub struct ContactCreateParams {
     pub id: String,
-    pub public_thread_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

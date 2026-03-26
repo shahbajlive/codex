@@ -1,4 +1,6 @@
 intents:
+  # === Base Navigation ===
+
   workspace-messages:
     startUrl: /workspace/messages
     steps:
@@ -18,6 +20,8 @@ intents:
         selector: ".workspace-msg-thread__name"
         timeoutMs: 10000
 
+  # === Smoke Test ===
+
   developer-lead-chat-smoke:
     startUrl: /workspace/messages
     steps:
@@ -28,17 +32,14 @@ intents:
         selector: ".workspace-msg-thread__name"
         timeoutMs: 10000
       - action: waitFor
-        selector: "textarea[placeholder='Message the selected workspace agent...']"
+        selector: "textarea[placeholder*='Message']"
         timeoutMs: 10000
       - action: click
-        selector: "textarea[placeholder='Message the selected workspace agent...']"
+        selector: "textarea[placeholder*='Message']"
         timeoutMs: 10000
       - action: fill
-        selector: "textarea[placeholder='Message the selected workspace agent...']"
+        selector: "textarea[placeholder*='Message']"
         text: hi
-        timeoutMs: 10000
-      - action: focus
-        selector: "textarea[placeholder='Message the selected workspace agent...']"
         timeoutMs: 10000
       - action: press
         key: Enter
@@ -49,3 +50,367 @@ intents:
           - "text=FAILED TURN"
           - "text=Error"
         timeoutMs: 30000
+
+  # === Slash Command Tests ===
+
+  slash-status:
+    startUrl: /workspace/messages
+    steps:
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: "/status"
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - "text=Model"
+          - "text=Tokens"
+          - "text=Context"
+          - "text=FAILED"
+          - "text=Error"
+        timeoutMs: 15000
+
+  slash-model:
+    startUrl: /workspace/messages
+    steps:
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: "/model"
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - "text=Choose model"
+          - "text=Model picker"
+          - "text=Model:"
+          - "text=sonnet"
+          - "text=haiku"
+          - "text=opus"
+        timeoutMs: 10000
+
+  slash-new:
+    startUrl: /workspace/messages
+    steps:
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: "/new"
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 5000
+
+  slash-clear:
+    startUrl: /workspace/messages
+    steps:
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: "/clear"
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 5000
+
+  slash-skills:
+    startUrl: /workspace/messages
+    steps:
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: "/skills"
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - "text=Available skills"
+          - "text=Skills"
+          - "text=skill"
+          - "text=No skills"
+        timeoutMs: 10000
+
+  slash-diff:
+    startUrl: /workspace/messages
+    steps:
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: "/diff"
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - "text=No changes"
+          - "text=changed"
+          - "text=diff"
+          - "text=--"
+          - "text=++"
+          - "text=FAILED"
+          - "text=Error"
+        timeoutMs: 15000
+
+  slash-collab:
+    startUrl: /workspace/messages
+    steps:
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: "/collab"
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - "text=Collaboration"
+          - "text=collab"
+          - "text=mode"
+          - "text=Multi"
+        timeoutMs: 10000
+
+  slash-agent:
+    startUrl: /workspace/messages
+    steps:
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: "/agent"
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - "text=Select agent"
+          - "text=Agent"
+          - "text=subagent"
+          - "text=thread"
+        timeoutMs: 10000
+
+  slash-subagents:
+    startUrl: /workspace/messages
+    steps:
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: "/subagents"
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - "text=Select agent"
+          - "text=Agent"
+          - "text=subagent"
+        timeoutMs: 10000
+
+  # === Subagent / Multi-Agent Tests ===
+
+  spawn-agent-coder:
+    startUrl: /workspace/messages
+    args:
+      - message
+    steps:
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: 'spawn_agent agent_type: "backend_engineer" message: "{{message}}"'
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - "text=agent_id"
+          - "text=thread-"
+          - "text=spawned"
+          - "text=LIVE TURN"
+          - "text=FAILED TURN"
+          - "text=Error"
+        timeoutMs: 60000
+
+  spawn-agent-reviewer:
+    startUrl: /workspace/messages
+    args:
+      - message
+    steps:
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: 'spawn_agent agent_type: "pr_reviewer" message: "{{message}}"'
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - "text=agent_id"
+          - "text=thread-"
+          - "text=spawned"
+          - "text=LIVE TURN"
+          - "text=FAILED TURN"
+          - "text=Error"
+        timeoutMs: 60000
+
+  # === Contacts / Peer Discovery ===
+
+  contacts-read:
+    startUrl: /workspace/messages
+    steps:
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: "contacts read"
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - "text=agent_id"
+          - "text=backend_engineer"
+          - "text=frontend_engineer"
+          - "text=pr_reviewer"
+          - "text=developer_lead"
+          - "text=security_engineer"
+          - "text=test_engineer"
+          - "text=FAILED"
+          - "text=Error"
+        timeoutMs: 15000
+
+  # === Full User Journeys ===
+
+  # Journey 1: Basic slash commands test
+  test-slash-commands:
+    startUrl: /workspace/messages
+    steps:
+      - action: click
+        selector: ".workspace-msg-list__row:first-child"
+        timeoutMs: 10000
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      # Test /status
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: "/status"
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors: ["text=Model", "text=Tokens", "text=Context"]
+        timeoutMs: 15000
+
+  # Journey 2: Spawn and communicate with subagent
+  test-spawn-subagent:
+    startUrl: /workspace/messages
+    steps:
+      - action: click
+        selector: ".workspace-msg-list__row:first-child"
+        timeoutMs: 10000
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      # Spawn agent
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: 'spawn_agent agent_type: "backend_engineer" message: "say hi"'
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - "text=agent_id"
+          - "text=thread-"
+          - "text=FAILED"
+          - "text=Error"
+        timeoutMs: 60000
+
+  # Journey 3: Peer discovery
+  test-peer-discovery:
+    startUrl: /workspace/messages
+    steps:
+      - action: click
+        selector: ".workspace-msg-list__row:first-child"
+        timeoutMs: 10000
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      # Read contacts
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: "contacts read"
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - "text=backend_engineer"
+          - "text=frontend_engineer"
+          - "text=pr_reviewer"
+          - "text=Error"
+        timeoutMs: 15000
+
+  # Journey 4: Full multi-peer workflow
+  test-multi-peer-workflow:
+    startUrl: /workspace/messages
+    steps:
+      - action: click
+        selector: ".workspace-msg-list__row:first-child"
+        timeoutMs: 10000
+      - action: waitFor
+        selector: "textarea[placeholder*='Message']"
+        timeoutMs: 10000
+      # Step 1: Discover peers
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: "contacts read"
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors: ["text=agent_id", "text=Error"]
+        timeoutMs: 15000
+      # Step 2: Spawn peer agent
+      - action: fill
+        selector: "textarea[placeholder*='Message']"
+        text: 'spawn_agent agent_type: "backend_engineer" message: "create hello.txt with Hello World"'
+        timeoutMs: 5000
+      - action: press
+        key: Enter
+      - action: waitForAny
+        selectors:
+          - "text=agent_id"
+          - "text=thread-"
+          - "text=FAILED"
+          - "text=Error"
+        timeoutMs: 60000

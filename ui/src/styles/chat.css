@@ -13,6 +13,7 @@
   color: var(--text);
   overflow: hidden;
   transition: grid-template-columns 180ms ease;
+  gap: 0.5rem;
 }
 
 .chat-layout.is-sidebar-collapsed {

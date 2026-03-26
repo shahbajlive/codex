@@ -1,9 +1,5 @@
 use codex_protocol::protocol::AgentStatus;
 
-use crate::contacts::ContactNotification;
-use crate::contextual_user_message::CONTACT_NOTIFICATION_FRAGMENT;
-/// Helpers for model-visible session state markers that are stored in user-role
-/// messages but are not user intent.
 use crate::contextual_user_message::SUBAGENT_NOTIFICATION_FRAGMENT;
 
 pub(crate) fn format_subagent_notification_message(agent_id: &str, status: &AgentStatus) -> String {
@@ -20,11 +16,4 @@ pub(crate) fn format_subagent_context_line(agent_id: &str, agent_nickname: Optio
         Some(agent_nickname) => format!("- {agent_id}: {agent_nickname}"),
         None => format!("- {agent_id}"),
     }
-}
-
-pub(crate) fn format_contact_notification_message(notification: &ContactNotification) -> String {
-    CONTACT_NOTIFICATION_FRAGMENT.wrap(
-        serde_json::to_string(notification)
-            .unwrap_or_else(|err| format!("{{\"error\":\"{err}\"}}")),
-    )
 }

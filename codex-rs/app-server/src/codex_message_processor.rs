@@ -3142,21 +3142,7 @@ impl CodexMessageProcessor {
             agent_id,
         } = params;
 
-        let public_thread_id = if let Some(agent_id) = agent_id.as_ref() {
-            match ContactsConfig::load(&self.config.codex_home) {
-                Ok(config) => config
-                    .list()
-                    .into_iter()
-                    .find(|record| record.agent_id == *agent_id)
-                    .map(|record| record.public_thread_id),
-                Err(err) => {
-                    warn!("Failed to load contacts config while listing agent threads: {err}");
-                    None
-                }
-            }
-        } else {
-            None
-        };
+        let public_thread_id = None;
 
         let requested_page_size = limit
             .map(|value| value as usize)
@@ -5623,10 +5609,7 @@ impl CodexMessageProcessor {
                 let data: Vec<ContactRecordResponse> = config
                     .list()
                     .into_iter()
-                    .map(|r| ContactRecordResponse {
-                        id: r.agent_id,
-                        public_thread_id: r.public_thread_id.to_string(),
-                    })
+                    .map(|r| ContactRecordResponse { id: r.agent_id })
                     .collect();
                 self.outgoing
                     .send_response(
@@ -5670,19 +5653,8 @@ impl CodexMessageProcessor {
                 return;
             }
         };
-        let ContactCreateParams {
-            id,
-            public_thread_id,
-        } = params;
-        let Ok(thread_id) = codex_protocol::ThreadId::from_string(&public_thread_id) else {
-            self.send_invalid_request_error(
-                request_id,
-                format!("invalid publicThreadId: {public_thread_id}"),
-            )
-            .await;
-            return;
-        };
-        config.add(id.clone(), thread_id);
+        let ContactCreateParams { id } = params;
+        config.add(id.clone());
         if let Err(error) = config.save() {
             self.outgoing
                 .send_error(
@@ -5700,10 +5672,7 @@ impl CodexMessageProcessor {
             .send_response(
                 request_id,
                 ContactCreateResponse {
-                    contact: ContactRecordResponse {
-                        id,
-                        public_thread_id,
-                    },
+                    contact: ContactRecordResponse { id },
                 },
             )
             .await;

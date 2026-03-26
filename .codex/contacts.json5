@@ -1,28 +1,10 @@
 {
   "contacts": [
-    {
-      "id": "backend_engineer",
-      "publicThreadId": "019d21a3-5ab6-78e2-87a2-e20b04dd9dd4"
-    },
-    {
-      "id": "developer_lead",
-      "publicThreadId": "019d21a3-6b5a-71d0-ba5d-dc175051ba88"
-    },
-    {
-      "id": "frontend_engineer",
-      "publicThreadId": "019d21a7-54a4-7c83-88c0-135f2f0edb5a"
-    },
-    {
-      "id": "pr_reviewer",
-      "publicThreadId": "019d21a7-3390-7d10-b000-e031f60afc85"
-    },
-    {
-      "id": "security_engineer",
-      "publicThreadId": "019d21a7-3e4c-77e0-b88c-0a5c577f6259"
-    },
-    {
-      "id": "test_engineer",
-      "publicThreadId": "019d21a7-4855-7be0-a479-ea6b1a4b7e77"
-    }
+    { "id": "backend_engineer" },
+    { "id": "developer_lead" },
+    { "id": "frontend_engineer" },
+    { "id": "pr_reviewer" },
+    { "id": "security_engineer" },
+    { "id": "test_engineer" }
   ]
 }

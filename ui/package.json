@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "browser": "node ./scripts/browser-debug.mjs",
+    "test:browser": "node ./scripts/codex-test.mjs",
     "browser:install": "playwright install chromium",
     "replay:responses": "node ./scripts/replay-response-log.mjs",
     "tap:endpoints": "node ./scripts/tap-endpoints.mjs",
@@ -22,6 +23,7 @@
     "vue-router": "^5.0.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/test-utils": "^2.4.6",
     "autoprefixer": "^10.4.27",

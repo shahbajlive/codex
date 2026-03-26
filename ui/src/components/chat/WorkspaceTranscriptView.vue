@@ -96,6 +96,9 @@ const waitingForToolOutput = computed(() => {
   );
 
   const hasVisibleStreamingOutput = turn.items.some((item) => {
+    if (item.kind === "user" || item.kind === "event") {
+      return false;
+    }
     if (item.status !== "streaming") {
       return false;
     }
@@ -350,10 +353,6 @@ function traceSummary(turn: TurnLike): string {
   return segments.join(" · ") || "Trace available";
 }
 
-function isContactUserItem(item: UserItemLike | null): boolean {
-  return item?.source === "contact";
-}
-
 function initials(label: string | null | undefined, fallback: string): string {
   const value = label?.trim();
   if (!value) {
@@ -370,10 +369,7 @@ function avatarStyle(color: string | null | undefined) {
   };
 }
 
-function userSenderLabel(item: UserItemLike | null): string {
-  if (isContactUserItem(item)) {
-    return item?.contact?.senderAgentId || "Contact";
-  }
+function userSenderLabel(): string {
   return "You";
 }
 
@@ -408,8 +404,8 @@ function bubbleStatus(
   return { icon: "✓", label: "Sent" };
 }
 
-function showBubbleStatus(item: UserItemLike | null): boolean {
-  return !isContactUserItem(item);
+function showBubbleStatus(): boolean {
+  return true;
 }
 
 function renderMessageMarkdown(text: string): string {
@@ -843,24 +839,12 @@ watch(
           class="workspace-chat__message-row workspace-chat__message-row--right"
         >
           <div class="workspace-chat__message-stack">
-            <div
-              class="workspace-chat__bubble"
-              :class="[
-                isContactUserItem(userItem(entry.turn, entry.isLive))
-                  ? 'workspace-chat__bubble--contact'
-                  : 'workspace-chat__bubble--user',
-              ]"
-              :title="
-                isContactUserItem(userItem(entry.turn, entry.isLive))
-                  ? userSenderLabel(userItem(entry.turn, entry.isLive))
-                  : undefined
-              "
-            >
+            <div class="workspace-chat__bubble workspace-chat__bubble--user">
               <span class="workspace-chat__bubble-copy">
                 {{ userPrompt(entry.turn, entry.isLive) }}
               </span>
               <span
-                v-if="showBubbleStatus(userItem(entry.turn, entry.isLive))"
+                v-if="showBubbleStatus()"
                 class="workspace-chat__bubble-status"
                 :title="bubbleStatus(entry.turn, entry.isLive).label"
               >

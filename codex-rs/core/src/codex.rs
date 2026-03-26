@@ -4578,15 +4578,6 @@ mod handlers {
             // new_turn_with_sub_id already emits the error event.
             return;
         };
-        if Box::pin(crate::contacts::try_handle_public_contact_input(
-            sess,
-            &current_context,
-            &items,
-        ))
-        .await
-        {
-            return;
-        }
         sess.maybe_emit_unknown_model_warning_for_turn(current_context.as_ref())
             .await;
         current_context.session_telemetry.user_prompt(&items);

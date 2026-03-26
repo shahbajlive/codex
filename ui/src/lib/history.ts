@@ -5,19 +5,7 @@ type ItemLifecycle = "streaming" | "done";
 
 type ToolCategory = "structured" | "mcp" | "web-search" | "collab";
 
-type MessageSource = "human" | "contact";
-
-export type ContactMessageMetadata = {
-  senderAgentId: string;
-  senderThreadId: string;
-  senderTurnId: string;
-  recipientAgentId: string;
-  replyThreadId: string | null;
-};
-
-type ContactEnvelope = ContactMessageMetadata & {
-  message: string;
-};
+type MessageSource = "human";
 
 const TERMINAL_EVENT_SUFFIX = ":terminal";
 const INTERRUPTED_TURN_MESSAGE =
@@ -30,7 +18,6 @@ export type HistoryItem =
       kind: "user";
       text: string;
       source?: MessageSource;
-      contact?: ContactMessageMetadata;
     }
   | {
       id: string;
@@ -99,7 +86,6 @@ export type LiveHistoryItem =
       kind: "user";
       text: string;
       source?: MessageSource;
-      contact?: ContactMessageMetadata;
     }
   | {
       id: string;
@@ -988,24 +974,11 @@ function mapItem(
           return `[${entry.type}]`;
         })
         .join("\n");
-      const contact = parseContactMessage(text);
 
       return {
         id: item.id,
         kind: "user",
-        text: contact?.message ?? text,
-        ...(contact
-          ? {
-              source: "contact" as const,
-              contact: {
-                senderAgentId: contact.senderAgentId,
-                senderThreadId: contact.senderThreadId,
-                senderTurnId: contact.senderTurnId,
-                recipientAgentId: contact.recipientAgentId,
-                replyThreadId: contact.replyThreadId,
-              },
-            }
-          : {}),
+        text,
       };
     }
     case "agentMessage":
@@ -1460,50 +1433,12 @@ export function findLatestUserPreview(thread: Thread): string {
       if (item.type === "userMessage") {
         const text = item.content.find((entry) => entry.type === "text");
         if (text?.text) {
-          return parseContactMessage(text.text)?.message ?? text.text;
+          return text.text;
         }
       }
     }
   }
   return thread.preview;
-}
-
-function parseContactMessage(text: string): ContactEnvelope | null {
-  const trimmed = text.trim();
-  const openTag = /^<contact_message>\s*/i;
-  const closeTag = /\s*<\/contact_message>$/i;
-  if (!openTag.test(trimmed) || !closeTag.test(trimmed)) {
-    return null;
-  }
-
-  const body = trimmed.replace(openTag, "").replace(closeTag, "").trim();
-
-  try {
-    const parsed = JSON.parse(body) as Partial<
-      Record<keyof ContactEnvelope, unknown>
-    >;
-    if (
-      typeof parsed.senderAgentId !== "string" ||
-      typeof parsed.senderThreadId !== "string" ||
-      typeof parsed.senderTurnId !== "string" ||
-      typeof parsed.recipientAgentId !== "string" ||
-      typeof parsed.message !== "string"
-    ) {
-      return null;
-    }
-
-    return {
-      senderAgentId: parsed.senderAgentId,
-      senderThreadId: parsed.senderThreadId,
-      senderTurnId: parsed.senderTurnId,
-      recipientAgentId: parsed.recipientAgentId,
-      replyThreadId:
-        typeof parsed.replyThreadId === "string" ? parsed.replyThreadId : null,
-      message: parsed.message,
-    };
-  } catch {
-    return null;
-  }
 }
 
 export function attachTurn(thread: Thread, turn: Turn): Thread {

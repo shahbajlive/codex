@@ -1,13 +1,9 @@
 {
   name: "Main",
   description: "Main agent - workspace orchestrator",
-  model_provider: "lmstudio",
-  model: "qwen3.5-0.8b",
-  color: "#6366f1",
   extends: null,
-  workspace: null,
-  tools: {
-    allow: null,
-    deny: null,
-  },
+  model: "lmstudio/qwen3.5-9b-uncensored-hauhaucs-aggressive",
+  color: "#6366f1",
+  tools: {},
+  contacts: {},
 }

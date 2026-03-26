@@ -1,92 +1,66 @@
-# Contacts Implementation
+# Contacts Implementation (Updated)
 
-## Implemented
+## Overview
 
-- `contacts.json5` is now authoritative for discoverability and contactability.
-- Each contact must have `id` and `publicThreadId`.
-- If a contact is missing from `contacts.json5`, it cannot be contacted.
+The contacts tool provides **agent discovery** only. Communication with peer agents uses the same subagent mechanism.
 
-## Permission Checks
+## contacts.json5
 
-- The `contacts` tool checks both:
-  - global existence in `contacts.json5`
-  - per-agent `contacts.allow` / `contacts.deny` from `agent.json5`
-- Sending is denied if either check fails.
+- Contains list of contactable agent IDs
+- Each entry only needs `id` (no `publicThreadId` needed anymore)
 
-## Send Behavior
+```json5
+{
+  contacts: [{ id: "backend_engineer" }, { id: "frontend_engineer" }],
+}
+```
 
-- `thread_id` is optional.
-- If `thread_id` is missing, send goes to the target's public thread from `contacts.json5`.
-- If `thread_id` is present, send goes directly to that thread.
+## How to Collaborate with Peer Agents
 
-## Contact Message Transport
+### Step 1: Discover available agents
 
-- Messages are wrapped in a structured `<contact_message>` envelope.
-- The envelope carries:
-  - `sender_agent_id`
-  - `sender_thread_id`
-  - `sender_turn_id`
-  - `recipient_agent_id`
-  - optional `reply_thread_id`
-  - `message`
+```
+contacts read
+```
 
-## Public-Thread System Routing
+Returns list of available agent IDs.
 
-- When a contact message lands on an agent's public thread, system code intercepts it before normal assistant reasoning.
-- If allowed, system:
-  - creates a new private thread
-  - injects a developer handoff message into that thread
-  - forwards the actual user message there
-- If not allowed, it is ignored.
+### Step 2: Spawn peer agent thread
 
-## Private-Thread Direct Routing
+```
+spawn_agent agent_type: "frontend_engineer"
+```
 
-- If a contact message is sent directly to a private thread, system unwraps it there too.
-- The private thread gets:
-  - a developer handoff/update message with metadata
-  - the clean message body as the actual working input
-- Private threads therefore do not keep seeing raw protocol wrappers.
+Creates a new thread where the peer agent runs. Returns `{ agent_id: "thread-xyz-123" }`.
 
-## Sender-Visible Status Events
+### Step 3: Send messages
 
-- Added a new contextual fragment: `contact_notification`.
-- This is similar to `subagent_notification`, but dedicated for contacts.
-- Sender threads can now see lifecycle notifications like:
-  - `delivered`
-  - `accepted`
-  - `status` updates from the receiver private thread
+```
+send_input id: "thread-xyz-123", message: "help with UI"
+```
 
-## Runtime Integration
+Messages go to the spawned peer agent thread.
 
-- Public/direct contact handling is wired into core turn processing before normal task execution.
-- Status watching reuses existing thread status machinery through new contact-specific notifications.
+### Continue conversation
 
-## Supporting Core Fixes
+```
+send_input id: "thread-xyz-123", message: "also check the CSS"
+```
 
-- Fixed pre-existing `thread_manager.rs` and `codex.rs` compile issues that were blocking app-server and UI startup.
-- `cargo test -p codex-core` now passes.
+The thread is persistent - you can continue back-and-forth using the same thread ID.
+
+## Key Points
+
+- No more `<contact_message>` XML envelopes
+- No more public thread routing
+- Uses same `spawn_agent` and `send_input` tools as subagents
+- CollabAgent events (`CollabAgentSpawnEndEvent`, `CollabAgentInteractionEndEvent`) work automatically
 
 ## Key Files Changed
 
-- `codex-rs/core/src/tools/handlers/contacts.rs`
-- `codex-rs/core/src/contacts/config.rs`
-- `codex-rs/core/src/contacts/message.rs`
-- `codex-rs/core/src/contacts/runtime.rs`
-- `codex-rs/core/src/contextual_user_message.rs`
-- `codex-rs/core/src/session_prefix.rs`
-- `codex-rs/core/src/agent/control.rs`
-- `codex-rs/core/src/codex.rs`
-- `codex-rs/core/src/codex_thread.rs`
-- `codex-rs/core/src/thread_manager.rs`
-
-## Not Done Yet
-
-- UI for contacts on `/agents`
-- distinct UI rendering for `contact_notification`
-- end-to-end manual verification through the UI
-
-## Note
-
-- The `<system-reminder>` line seen in the CLI is harmless.
-- It only indicates the environment switched from planning mode to build mode.
-- It is not part of the contacts feature or app logic.
+- `codex-rs/core/src/tools/handlers/contacts.rs` - read-only mode
+- `codex-rs/core/src/contacts/config.rs` - simplified config
+- `codex-rs/core/src/contacts/message.rs` - minimal struct kept
+- `codex-rs/core/src/contacts/runtime.rs` - removed
+- `codex-rs/core/src/contacts/mod.rs` - updated exports
+- `ui/src/lib/history.ts` - removed contact message parsing
