@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { storeToRefs } from "pinia";
-import ActivityPanel from "../components/ActivityPanel.vue";
 import PageHeader from "../components/PageHeader.vue";
-import SettingsPanel from "../components/SettingsPanel.vue";
 import ThreadSidebar from "../components/ThreadSidebar.vue";
 import TranscriptPane from "../components/TranscriptPane.vue";
 import { useCodexStore } from "../stores/codex";
@@ -58,19 +56,6 @@ const settings = computed(() => ({
         :connected="isConnected"
         @send="codexStore.sendMessage"
       />
-
-      <section class="chat-page__side-column">
-        <SettingsPanel
-          :settings="settings"
-          :models="models"
-          :platform-summary="platformSummary"
-          :connection-status="connectionStatus"
-          @update="settingsStore.updateSettings"
-          @connect="codexStore.connect"
-          @disconnect="codexStore.disconnect"
-        />
-        <ActivityPanel :activity="currentActivity" />
-      </section>
     </div>
   </section>
 </template>

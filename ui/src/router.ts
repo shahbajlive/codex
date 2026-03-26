@@ -1,10 +1,10 @@
 import { createRouter, createWebHistory } from "vue-router";
-import AgentsPage from "./pages/AgentsPage.vue";
+import AgentsPage from "./pages/AgentSettings.vue";
 import ChatPage from "./pages/ChatPage.vue";
 import ContactsPage from "./pages/ContactsPage.vue";
 import PlaceholderPage from "./pages/PlaceholderPage.vue";
 import SettingsPage from "./pages/SettingsPage.vue";
-import WorkspaceMessagesRoutePage from "./pages/WorkspaceMessagesRoutePage.vue";
+import WorkspaceMessagesRoutePage from "./pages/AgentChat.vue";
 
 export const router = createRouter({
   history: createWebHistory(),

@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { storeToRefs } from "pinia";
 import PageHeader from "../components/PageHeader.vue";
-import SettingsPanel from "../components/SettingsPanel.vue";
+import GlobalAgentSettings from "../components/GlobalAgentSettings.vue";
 import { useCodexStore } from "../stores/codex";
 import { useSettingsStore } from "../stores/settings";
 
@@ -25,7 +25,7 @@ const settings = computed(() => ({
       subtitle="Manage app-server connection details and global runtime defaults."
     />
 
-    <SettingsPanel
+    <GlobalAgentSettings
       :settings="settings"
       :models="models"
       :platform-summary="platformSummary"

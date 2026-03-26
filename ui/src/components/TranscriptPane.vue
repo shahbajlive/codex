@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import MarkdownRenderer from "./MarkdownRenderer.vue";
 import {
   renderTranscriptItemMarkdown,
   transcriptItemTitle,
   type TranscriptTurn,
 } from "../lib/transcript";
+import { renderMarkdownHtml } from "../lib/markdown";
 
 const props = defineProps<{
   threadName: string;
@@ -194,16 +194,16 @@ watch(
             >
               {{ transcriptItemTitle(item) }}
             </div>
-            <MarkdownRenderer
-              :content="renderTranscriptItemMarkdown(item)"
-              compact
-            />
+            <div
+              class="codex-markdown codex-markdown--compact"
+              v-html="renderMarkdownHtml(renderTranscriptItemMarkdown(item))"
+            ></div>
           </template>
           <template v-else>
-            <MarkdownRenderer
-              :content="renderTranscriptItemMarkdown(item)"
-              compact
-            />
+            <div
+              class="codex-markdown codex-markdown--compact"
+              v-html="renderMarkdownHtml(renderTranscriptItemMarkdown(item))"
+            ></div>
           </template>
         </div>
       </div>

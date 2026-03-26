@@ -3,7 +3,7 @@ import { ref, onBeforeUnmount, onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import AppSidebar from "./components/layout/AppSidebar.vue";
 import AppTopbar from "./components/layout/AppTopbar.vue";
-import SettingsPanel from "./components/SettingsPanel.vue";
+import GlobalAgentSettings from "./components/GlobalAgentSettings.vue";
 import { RouterView } from "vue-router";
 import { useCodexStore } from "./stores/codex";
 import { useSettingsStore } from "./stores/settings";
@@ -98,7 +98,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <div class="right-sidebar__content">
-          <SettingsPanel
+          <GlobalAgentSettings
             :settings="settings"
             :models="models"
             :platform-summary="platformSummary"
