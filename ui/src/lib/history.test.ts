@@ -41,6 +41,13 @@ const thread = {
           phase: null,
           memoryCitation: null,
         },
+        {
+          type: "systemMessage",
+          id: "item_s",
+          label: "Session status",
+          detail: "Status updated.",
+          tone: "info",
+        },
       ],
     },
   ],
@@ -56,6 +63,13 @@ describe("history helpers", () => {
         items: [
           { id: "item_u", kind: "user", text: "hello" },
           { id: "item_a", kind: "assistant", text: "hi there", status: "done" },
+          {
+            id: "item_s",
+            kind: "system",
+            label: "Session status",
+            detail: "Status updated.",
+            tone: "info",
+          },
         ],
       },
     ]);

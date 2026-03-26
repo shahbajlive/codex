@@ -166,7 +166,11 @@ const transcriptStatusChips = computed<TranscriptStatusChip[]>(() => {
 function matchesFilter(item: ItemLike): boolean {
   switch (rowFilter.value) {
     case "messages":
-      return item.kind === "user" || item.kind === "assistant";
+      return (
+        item.kind === "user" ||
+        item.kind === "assistant" ||
+        item.kind === "system"
+      );
     case "work":
       return item.kind !== "user" && item.kind !== "assistant";
     case "errors":
@@ -179,6 +183,9 @@ function matchesFilter(item: ItemLike): boolean {
 
 function isErrorItem(item: ItemLike): boolean {
   if (item.kind === "event") {
+    return item.tone === "error";
+  }
+  if (item.kind === "system") {
     return item.tone === "error";
   }
   if (item.kind === "command") {
@@ -230,11 +237,21 @@ function stepItems(turn: TurnLike): ItemLike[] {
     if (item.kind === "user") {
       return false;
     }
+    if (item.kind === "system") {
+      return false;
+    }
     if ("renderAs" in item && item.renderAs === "bubble") {
       return false;
     }
     return true;
   });
+}
+
+function systemItems(turn: TurnLike): Extract<ItemLike, { kind: "system" }>[] {
+  return turn.items.filter(
+    (item): item is Extract<ItemLike, { kind: "system" }> =>
+      item.kind === "system" && matchesFilter(item),
+  );
 }
 
 function hasVisibleTurn(turn: TurnLike, isLive: boolean): boolean {
@@ -250,6 +267,9 @@ function hasVisibleTurn(turn: TurnLike, isLive: boolean): boolean {
     rowFilter.value !== "work" &&
     rowFilter.value !== "errors"
   ) {
+    return true;
+  }
+  if (systemItems(turn).length > 0) {
     return true;
   }
   return stepItems(turn).length > 0;
@@ -676,14 +696,10 @@ function commandBodyLabel(
   return cwd && cwd.length > 0 ? cwd : null;
 }
 
-function stripSystemReminder(content: string): string {
-  return stripSystemBlocks(content) ?? "";
-}
-
 function normalizedCommand(
   item: Extract<ItemLike, { kind: "command" }>,
 ): string {
-  const cleaned = stripSystemReminder(item.command);
+  const cleaned = item.command.trim();
   return cleaned || item.command.trim();
 }
 
@@ -834,6 +850,26 @@ watch(
         :key="entry.turn.id"
         :class="turnToneClass(entry.turn, entry.isLive)"
       >
+        <article
+          v-for="item in systemItems(entry.turn)"
+          :key="item.id"
+          class="workspace-chat__message-row workspace-chat__message-row--left"
+        >
+          <div
+            class="workspace-chat__message-stack workspace-chat__message-stack--agent"
+          >
+            <div class="workspace-chat__bubble workspace-chat__bubble--system">
+              <div class="workspace-chat__bubble-label">
+                {{ item.label }}
+              </div>
+              <div
+                class="codex-markdown codex-markdown--compact"
+                v-html="renderMarkdownHtml(renderMessageMarkdown(item.detail))"
+              ></div>
+            </div>
+          </div>
+        </article>
+
         <article
           v-if="userPrompt(entry.turn, entry.isLive)"
           class="workspace-chat__message-row workspace-chat__message-row--right"

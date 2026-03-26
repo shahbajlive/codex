@@ -7,20 +7,36 @@ import type { AgentToolsConfig } from "./AgentToolsConfig";
 import type { AskForApproval } from "./AskForApproval";
 import type { SandboxMode } from "./SandboxMode";
 
-export type AgentReadResponse = { id: string, name: string | null, description: string | null, configFile: string | null, nicknameCandidates: Array<string> | null, workspace: string | null, config: JsonValue, model: string | null, modelProvider?: string | null, approvalPolicy: AskForApproval | null, sandboxMode: SandboxMode | null, color?: string | null, developerInstructions: string | null, extends?: string | null, hasWorkspace: boolean, 
-/**
- * Content from bootstrap files in the agent workspace (AGENTS.md, SOUL.md, etc.)
- */
-workspaceInstructions?: string | null, 
-/**
- * Tools configuration for this agent
- */
-tools?: AgentToolsConfig | null, 
-/**
- * Skills enabled for this agent
- */
-skills?: Array<string> | null, 
-/**
- * Contacts configuration for this agent
- */
-contacts?: AgentContactsConfig | null, };
+export type AgentReadResponse = {
+  id: string;
+  name: string | null;
+  description: string | null;
+  configFile: string | null;
+  nicknameCandidates: Array<string> | null;
+  workspace: string | null;
+  config: JsonValue;
+  model: string | null;
+  modelProvider: string | null;
+  approvalPolicy: AskForApproval | null;
+  sandboxMode: SandboxMode | null;
+  color: string | null;
+  developerInstructions: string | null;
+  extends: string | null;
+  hasWorkspace: boolean;
+  /**
+   * Content from bootstrap files in the agent workspace (AGENTS.md, SOUL.md, etc.)
+   */
+  workspaceInstructions: string | null;
+  /**
+   * Tools configuration for this agent
+   */
+  tools: AgentToolsConfig | null;
+  /**
+   * Skills enabled for this agent
+   */
+  skills: Array<string> | null;
+  /**
+   * Contacts configuration for this agent
+   */
+  contacts: AgentContactsConfig | null;
+};

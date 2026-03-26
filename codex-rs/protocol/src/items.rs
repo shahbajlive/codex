@@ -28,6 +28,7 @@ pub enum TurnItem {
     UserMessage(UserMessageItem),
     HookPrompt(HookPromptItem),
     AgentMessage(AgentMessageItem),
+    SystemMessage(SystemMessageItem),
     Plan(PlanItem),
     Reasoning(ReasoningItem),
     WebSearch(WebSearchItem),
@@ -45,6 +46,25 @@ pub struct UserMessageItem {
 pub struct HookPromptItem {
     pub id: String,
     pub fragments: Vec<HookPromptFragment>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub enum SystemMessageTone {
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct SystemMessageItem {
+    pub id: String,
+    pub label: String,
+    pub detail: String,
+    pub tone: SystemMessageTone,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq, Eq)]
@@ -336,6 +356,17 @@ impl AgentMessageItem {
     }
 }
 
+impl SystemMessageItem {
+    pub fn new(label: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            label: label.into(),
+            detail: detail.into(),
+            tone: SystemMessageTone::Info,
+        }
+    }
+}
+
 impl ReasoningItem {
     pub fn as_legacy_events(&self, show_raw_agent_reasoning: bool) -> Vec<EventMsg> {
         let mut events = Vec::new();
@@ -387,6 +418,7 @@ impl TurnItem {
             TurnItem::UserMessage(item) => item.id.clone(),
             TurnItem::HookPrompt(item) => item.id.clone(),
             TurnItem::AgentMessage(item) => item.id.clone(),
+            TurnItem::SystemMessage(item) => item.id.clone(),
             TurnItem::Plan(item) => item.id.clone(),
             TurnItem::Reasoning(item) => item.id.clone(),
             TurnItem::WebSearch(item) => item.id.clone(),
@@ -400,6 +432,7 @@ impl TurnItem {
             TurnItem::UserMessage(item) => vec![item.as_legacy_event()],
             TurnItem::HookPrompt(_) => Vec::new(),
             TurnItem::AgentMessage(item) => item.as_legacy_events(),
+            TurnItem::SystemMessage(_) => Vec::new(),
             TurnItem::Plan(_) => Vec::new(),
             TurnItem::WebSearch(item) => vec![item.as_legacy_event()],
             TurnItem::ImageGeneration(item) => vec![item.as_legacy_event()],

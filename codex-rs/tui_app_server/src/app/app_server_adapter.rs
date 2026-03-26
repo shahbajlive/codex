@@ -26,6 +26,8 @@ use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ServerRequest;
 #[cfg(test)]
+use codex_app_server_protocol::SystemMessageTone as AppServerSystemMessageTone;
+#[cfg(test)]
 use codex_app_server_protocol::Thread;
 #[cfg(test)]
 use codex_app_server_protocol::ThreadItem;
@@ -48,6 +50,8 @@ use codex_protocol::items::ImageGenerationItem;
 use codex_protocol::items::PlanItem;
 #[cfg(test)]
 use codex_protocol::items::ReasoningItem;
+#[cfg(test)]
+use codex_protocol::items::SystemMessageItem;
 #[cfg(test)]
 use codex_protocol::items::TurnItem;
 #[cfg(test)]
@@ -869,7 +873,10 @@ fn turn_snapshot_events(
             continue;
         };
         match item {
-            TurnItem::UserMessage(_) | TurnItem::Plan(_) | TurnItem::AgentMessage(_) => {
+            TurnItem::UserMessage(_)
+            | TurnItem::Plan(_)
+            | TurnItem::AgentMessage(_)
+            | TurnItem::SystemMessage(_) => {
                 events.push(Event {
                     id: String::new(),
                     msg: EventMsg::ItemCompleted(ItemCompletedEvent {
@@ -992,6 +999,25 @@ fn thread_item_to_core(item: &ThreadItem) -> Option<TurnItem> {
                     rollout_ids: citation.thread_ids,
                 }
             }),
+        })),
+        ThreadItem::SystemMessage {
+            id,
+            label,
+            detail,
+            tone,
+        } => Some(TurnItem::SystemMessage(SystemMessageItem {
+            id: id.clone(),
+            label: label.clone(),
+            detail: detail.clone(),
+            tone: match tone {
+                AppServerSystemMessageTone::Info => codex_protocol::items::SystemMessageTone::Info,
+                AppServerSystemMessageTone::Warning => {
+                    codex_protocol::items::SystemMessageTone::Warning
+                }
+                AppServerSystemMessageTone::Error => {
+                    codex_protocol::items::SystemMessageTone::Error
+                }
+            },
         })),
         ThreadItem::Plan { id, text } => Some(TurnItem::Plan(PlanItem {
             id: id.clone(),

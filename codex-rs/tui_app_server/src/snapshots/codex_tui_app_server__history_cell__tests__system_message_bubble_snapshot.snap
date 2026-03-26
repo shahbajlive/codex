@@ -1,0 +1,12 @@
+---
+source: tui_app_server/src/history_cell.rs
+expression: rendered
+---
+╭──────────────────────────────────────────────────────────╮
+│ i Session status                                         │
+│                                                          │
+│ /status                                                  │
+│                                                          │
+│ Status updated.                                          │
+│ Use /status for the full session card.                   │
+╰──────────────────────────────────────────────────────────╯

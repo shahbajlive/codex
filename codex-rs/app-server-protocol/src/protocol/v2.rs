@@ -26,6 +26,7 @@ use codex_protocol::config_types::Verbosity;
 use codex_protocol::config_types::WebSearchMode;
 use codex_protocol::config_types::WebSearchToolConfig;
 use codex_protocol::items::AgentMessageContent as CoreAgentMessageContent;
+use codex_protocol::items::SystemMessageTone as CoreSystemMessageTone;
 use codex_protocol::items::TurnItem as CoreTurnItem;
 use codex_protocol::mcp::Resource as McpResource;
 use codex_protocol::mcp::ResourceTemplate as McpResourceTemplate;
@@ -4472,6 +4473,14 @@ pub enum ThreadItem {
     },
     #[serde(rename_all = "camelCase")]
     #[ts(rename_all = "camelCase")]
+    SystemMessage {
+        id: String,
+        label: String,
+        detail: String,
+        tone: SystemMessageTone,
+    },
+    #[serde(rename_all = "camelCase")]
+    #[ts(rename_all = "camelCase")]
     /// EXPERIMENTAL - proposed plan item content. The completed plan item is
     /// authoritative and may not match the concatenation of `PlanDelta` text.
     Plan { id: String, text: String },
@@ -4612,6 +4621,7 @@ impl ThreadItem {
             ThreadItem::UserMessage { id, .. }
             | ThreadItem::HookPrompt { id, .. }
             | ThreadItem::AgentMessage { id, .. }
+            | ThreadItem::SystemMessage { id, .. }
             | ThreadItem::Plan { id, .. }
             | ThreadItem::Reasoning { id, .. }
             | ThreadItem::CommandExecution { id, .. }
@@ -4743,6 +4753,12 @@ impl From<CoreTurnItem> for ThreadItem {
                     memory_citation: agent.memory_citation.map(Into::into),
                 }
             }
+            CoreTurnItem::SystemMessage(system) => ThreadItem::SystemMessage {
+                id: system.id,
+                label: system.label,
+                detail: system.detail,
+                tone: SystemMessageTone::from(system.tone),
+            },
             CoreTurnItem::Plan(plan) => ThreadItem::Plan {
                 id: plan.id,
                 text: plan.text,
@@ -4767,6 +4783,25 @@ impl From<CoreTurnItem> for ThreadItem {
             CoreTurnItem::ContextCompaction(compaction) => {
                 ThreadItem::ContextCompaction { id: compaction.id }
             }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum SystemMessageTone {
+    Info,
+    Warning,
+    Error,
+}
+
+impl From<CoreSystemMessageTone> for SystemMessageTone {
+    fn from(value: CoreSystemMessageTone) -> Self {
+        match value {
+            CoreSystemMessageTone::Info => Self::Info,
+            CoreSystemMessageTone::Warning => Self::Warning,
+            CoreSystemMessageTone::Error => Self::Error,
         }
     }
 }

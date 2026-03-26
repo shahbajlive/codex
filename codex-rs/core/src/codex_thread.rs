@@ -155,10 +155,6 @@ impl CodexThread {
         self.inject_message_without_turn("user", message).await;
     }
 
-    pub(crate) async fn inject_developer_message_without_turn(&self, message: String) {
-        self.inject_message_without_turn("developer", message).await;
-    }
-
     pub fn rollout_path(&self) -> Option<PathBuf> {
         self.rollout_path.clone()
     }

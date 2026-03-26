@@ -121,6 +121,7 @@
   display: flex;
   flex-direction: column;
   background: var(--bg);
+  min-height: 0;
 }
 
 .workspace-msg-thread__agent {
@@ -366,6 +367,13 @@
   border-top-right-radius: 8px;
 }
 
+.workspace-chat__bubble--system {
+  background: color-mix(in srgb, var(--panel-strong) 82%, var(--card));
+  border-color: color-mix(in srgb, var(--border-strong) 30%, transparent);
+  color: var(--text);
+  border-top-left-radius: 8px;
+}
+
 .workspace-chat__bubble--contact {
   background: color-mix(in srgb, var(--accent) 10%, var(--card));
   border-style: dashed;
@@ -374,6 +382,16 @@
 
 .workspace-chat__bubble--user .workspace-chat__bubble-copy {
   color: inherit;
+}
+
+.workspace-chat__bubble-label {
+  display: inline-block;
+  margin-bottom: 0.4rem;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .workspace-chat__steps {

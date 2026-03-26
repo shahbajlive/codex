@@ -5554,6 +5554,17 @@ impl ChatWidget {
                     }),
                 });
             }
+            ThreadItem::SystemMessage {
+                label,
+                detail,
+                tone,
+                ..
+            } => self.add_to_history(history_cell::SystemMessageHistoryCell::new(
+                label,
+                (!detail.is_empty()).then_some(detail),
+                None,
+                tone,
+            )),
             ThreadItem::Plan { text, .. } => self.on_plan_item_completed(text),
             ThreadItem::Reasoning {
                 summary, content, ..
@@ -6822,7 +6833,7 @@ impl ChatWidget {
             .values()
             .cloned()
             .collect();
-        self.add_to_history(crate::status::new_status_output_with_rate_limits(
+        let status = crate::status::new_status_output_with_rate_limits(
             &self.config,
             self.status_account_display.as_ref(),
             token_info,
@@ -6836,6 +6847,12 @@ impl ChatWidget {
             self.model_display_name(),
             collaboration_mode,
             reasoning_effort_override,
+        );
+        self.add_to_history(history_cell::SystemMessageHistoryCell::new(
+            "Session status".to_string(),
+            Some("/status".to_string()),
+            Some(Box::new(status)),
+            codex_app_server_protocol::SystemMessageTone::Info,
         ));
     }
 

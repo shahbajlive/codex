@@ -399,6 +399,7 @@ impl ThreadHistoryBuilder {
             codex_protocol::items::TurnItem::UserMessage(_)
             | codex_protocol::items::TurnItem::HookPrompt(_)
             | codex_protocol::items::TurnItem::AgentMessage(_)
+            | codex_protocol::items::TurnItem::SystemMessage(_)
             | codex_protocol::items::TurnItem::Reasoning(_)
             | codex_protocol::items::TurnItem::WebSearch(_)
             | codex_protocol::items::TurnItem::ImageGeneration(_)
@@ -410,6 +411,15 @@ impl ThreadHistoryBuilder {
         match &payload.item {
             codex_protocol::items::TurnItem::Plan(plan) => {
                 if plan.text.is_empty() {
+                    return;
+                }
+                self.upsert_item_in_turn_id(
+                    &payload.turn_id,
+                    ThreadItem::from(payload.item.clone()),
+                );
+            }
+            codex_protocol::items::TurnItem::SystemMessage(system) => {
+                if system.detail.is_empty() && system.label.is_empty() {
                     return;
                 }
                 self.upsert_item_in_turn_id(

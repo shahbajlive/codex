@@ -40,6 +40,13 @@ export type HistoryItem =
     }
   | {
       id: string;
+      kind: "system";
+      label: string;
+      detail: string;
+      tone: "info" | "warning" | "error";
+    }
+  | {
+      id: string;
       kind: "command";
       command: string;
       cwd: string;
@@ -105,6 +112,13 @@ export type LiveHistoryItem =
       kind: "plan";
       text: string;
       status: ItemLifecycle;
+    }
+  | {
+      id: string;
+      kind: "system";
+      label: string;
+      detail: string;
+      tone: "info" | "warning" | "error";
     }
   | {
       id: string;
@@ -689,6 +703,14 @@ function mergeItem(current: HistoryItem, next: HistoryItem): HistoryItem {
         error: next.kind === "tool" && next.error ? next.error : current.error,
         status: next.kind === "tool" ? next.status : current.status,
       };
+    case "system":
+      return {
+        id: current.id,
+        kind: "system",
+        label: next.kind === "system" ? next.label : current.label,
+        detail: next.kind === "system" ? next.detail : current.detail,
+        tone: next.kind === "system" ? next.tone : current.tone,
+      };
     case "event":
       return next;
   }
@@ -1002,6 +1024,14 @@ function mapItem(
         kind: "plan",
         text: item.text,
         status: lifecycle,
+      };
+    case "systemMessage":
+      return {
+        id: item.id,
+        kind: "system",
+        label: item.label,
+        detail: item.detail,
+        tone: item.tone,
       };
     case "commandExecution":
       return {

@@ -35,6 +35,10 @@ function isUserItem(kind: string) {
   return kind === "user";
 }
 
+function isSystemItem(kind: string) {
+  return kind === "system";
+}
+
 function isActivityItem(kind: string) {
   return (
     kind === "reasoning" ||
@@ -142,7 +146,9 @@ watch(
           :class="[
             isUserItem(item.kind)
               ? 'transcript-pane__bubble--user'
-              : 'transcript-pane__bubble--assistant',
+              : isSystemItem(item.kind)
+                ? 'transcript-pane__bubble--system'
+                : 'transcript-pane__bubble--assistant',
           ]"
           :style="[
             { maxWidth: '56rem', borderRadius: '24px', padding: '14px 16px' },
@@ -164,23 +170,32 @@ watch(
                       'color-mix(in srgb, var(--bg-elevated) 86%, transparent)',
                     color: 'var(--chat-text)',
                   }
-                : isActivityItem(item.kind)
+                : isSystemItem(item.kind)
                   ? {
                       border: '1px solid',
                       borderColor:
-                        'color-mix(in srgb, var(--accent-2) 26%, transparent)',
+                        'color-mix(in srgb, var(--border-strong) 30%, transparent)',
                       background:
-                        'color-mix(in srgb, var(--accent-2-subtle) 85%, var(--bg-elevated))',
+                        'color-mix(in srgb, var(--panel-strong) 84%, transparent)',
                       color: 'var(--text)',
                     }
-                  : {
-                      border: '1px solid',
-                      borderColor:
-                        'color-mix(in srgb, var(--border-strong) 24%, transparent)',
-                      background:
-                        'color-mix(in srgb, var(--panel-strong) 82%, transparent)',
-                      color: 'var(--text)',
-                    },
+                  : isActivityItem(item.kind)
+                    ? {
+                        border: '1px solid',
+                        borderColor:
+                          'color-mix(in srgb, var(--accent-2) 26%, transparent)',
+                        background:
+                          'color-mix(in srgb, var(--accent-2-subtle) 85%, var(--bg-elevated))',
+                        color: 'var(--text)',
+                      }
+                    : {
+                        border: '1px solid',
+                        borderColor:
+                          'color-mix(in srgb, var(--border-strong) 24%, transparent)',
+                        background:
+                          'color-mix(in srgb, var(--panel-strong) 82%, transparent)',
+                        color: 'var(--text)',
+                      },
           ]"
         >
           <template v-if="transcriptItemTitle(item)">

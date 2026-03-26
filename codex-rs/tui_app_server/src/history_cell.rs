@@ -38,6 +38,7 @@ use crate::wrapping::adaptive_wrap_line;
 use crate::wrapping::adaptive_wrap_lines;
 use base64::Engine;
 use codex_app_server_protocol::McpServerStatus;
+use codex_app_server_protocol::SystemMessageTone;
 use codex_core::config::Config;
 use codex_core::config::types::McpServerTransportConfig;
 #[cfg(test)]
@@ -2161,6 +2162,69 @@ pub(crate) fn new_error_event(message: String) -> PlainHistoryCell {
     PlainHistoryCell { lines }
 }
 
+#[derive(Debug)]
+pub(crate) struct SystemMessageHistoryCell {
+    label: String,
+    detail: Option<String>,
+    body: Option<Box<dyn HistoryCell>>,
+    tone: SystemMessageTone,
+}
+
+impl SystemMessageHistoryCell {
+    pub(crate) fn new(
+        label: String,
+        detail: Option<String>,
+        body: Option<Box<dyn HistoryCell>>,
+        tone: SystemMessageTone,
+    ) -> Self {
+        Self {
+            label,
+            detail,
+            body,
+            tone,
+        }
+    }
+}
+
+impl HistoryCell for SystemMessageHistoryCell {
+    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        let inner_width = width.saturating_sub(4).max(1) as usize;
+        let (badge, badge_style) = match self.tone {
+            SystemMessageTone::Info => ("i", Color::Cyan),
+            SystemMessageTone::Warning => ("!", Color::Yellow),
+            SystemMessageTone::Error => ("x", Color::Red),
+        };
+
+        let mut content: Vec<Line<'static>> = vec![
+            vec![
+                badge.fg(badge_style).bold(),
+                " ".into(),
+                self.label.clone().bold().into(),
+            ]
+            .into(),
+        ];
+
+        if let Some(detail) = &self.detail
+            && !detail.is_empty()
+        {
+            content.push(Line::from(""));
+            content.extend(adaptive_wrap_lines(
+                vec![detail.as_str()],
+                RtOptions::new(inner_width),
+            ));
+        }
+
+        if let Some(body) = &self.body {
+            if content.len() > 1 {
+                content.push(Line::from(""));
+            }
+            content.extend(body.display_lines(inner_width as u16));
+        }
+
+        with_border_with_inner_width(content, inner_width)
+    }
+}
+
 /// A transient history cell that shows an animated spinner while the MCP
 /// inventory RPC is in flight.
 ///
@@ -2975,6 +3039,23 @@ mod tests {
     #[test]
     fn ps_output_empty_snapshot() {
         let cell = new_unified_exec_processes_output(Vec::new());
+        let rendered = render_lines(&cell.display_lines(60)).join("\n");
+        insta::assert_snapshot!(rendered);
+    }
+
+    #[test]
+    fn system_message_bubble_snapshot() {
+        let body = PlainHistoryCell::new(vec![
+            "Status updated.".into(),
+            "Use /status for the full session card.".dim().into(),
+        ]);
+        let cell = SystemMessageHistoryCell::new(
+            "Session status".to_string(),
+            Some("/status".to_string()),
+            Some(Box::new(body)),
+            SystemMessageTone::Info,
+        );
+
         let rendered = render_lines(&cell.display_lines(60)).join("\n");
         insta::assert_snapshot!(rendered);
     }

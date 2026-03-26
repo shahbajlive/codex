@@ -49,6 +49,13 @@ const thread = {
           memoryCitation: null,
         },
         {
+          type: "systemMessage",
+          id: "item_s",
+          label: "Session status",
+          detail: "Status updated.",
+          tone: "info",
+        },
+        {
           type: "reasoning",
           id: "item_r",
           summary: ["Inspecting repository"],
@@ -79,6 +86,13 @@ describe("transcript helpers", () => {
     expect(transcript[0]?.items).toEqual([
       { id: "item_u", kind: "user", text: "hello" },
       { id: "item_a", kind: "assistant", text: "hi there", status: "done" },
+      {
+        id: "item_s",
+        kind: "system",
+        label: "Session status",
+        detail: "Status updated.",
+        tone: "info",
+      },
       {
         id: "item_r",
         kind: "reasoning",
@@ -126,7 +140,15 @@ describe("transcript helpers", () => {
       text: "stream",
       status: "streaming",
     });
-    expect(renderTranscriptItem(withCommand[0]!.items[3]!)).toContain("more");
+    expect(renderTranscriptItem(withCommand[0]!.items[4]!)).toContain("more");
+  });
+
+  it("renders system messages as bubbles", () => {
+    const transcript = buildTranscript(thread);
+    const rendered = renderTranscriptItem(transcript[0]!.items[2]!);
+
+    expect(rendered).toContain("Session status");
+    expect(rendered).toContain("Status updated.");
   });
 
   it("renders tool arguments for dynamic tool calls", () => {

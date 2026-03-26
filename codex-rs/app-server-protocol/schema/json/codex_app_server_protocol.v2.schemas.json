@@ -4570,14 +4570,10 @@
       "properties": {
         "id": {
           "type": "string"
-        },
-        "publicThreadId": {
-          "type": "string"
         }
       },
       "required": [
-        "id",
-        "publicThreadId"
+        "id"
       ],
       "title": "ContactCreateParams",
       "type": "object"
@@ -4639,14 +4635,10 @@
       "properties": {
         "id": {
           "type": "string"
-        },
-        "publicThreadId": {
-          "type": "string"
         }
       },
       "required": [
-        "id",
-        "publicThreadId"
+        "id"
       ],
       "type": "object"
     },
@@ -10525,6 +10517,14 @@
         }
       ]
     },
+    "SystemMessageTone": {
+      "enum": [
+        "info",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    },
     "TerminalInteractionNotification": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
@@ -11063,6 +11063,38 @@
             "type"
           ],
           "title": "AgentMessageThreadItem",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "detail": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "tone": {
+              "$ref": "#/definitions/SystemMessageTone"
+            },
+            "type": {
+              "enum": [
+                "systemMessage"
+              ],
+              "title": "SystemMessageThreadItemType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "detail",
+            "id",
+            "label",
+            "tone",
+            "type"
+          ],
+          "title": "SystemMessageThreadItem",
           "type": "object"
         },
         {

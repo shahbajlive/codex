@@ -19,14 +19,7 @@ pub(crate) struct Handler;
 
 #[derive(Debug, Deserialize)]
 struct ContactsArgs {
-    mode: ContactsMode,
     query: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum ContactsMode {
-    Read,
 }
 
 #[derive(Debug, Serialize)]

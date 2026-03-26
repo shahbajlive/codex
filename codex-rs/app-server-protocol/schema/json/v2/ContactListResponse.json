@@ -5,14 +5,10 @@
       "properties": {
         "id": {
           "type": "string"
-        },
-        "publicThreadId": {
-          "type": "string"
         }
       },
       "required": [
-        "id",
-        "publicThreadId"
+        "id"
       ],
       "type": "object"
     }

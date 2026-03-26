@@ -89,6 +89,8 @@ export function renderTranscriptItem(
       );
     case "plan":
       return stripSystemReminderBlocks(item.text);
+    case "system":
+      return stripSystemReminderBlocks(`${item.label}: ${item.detail}`.trim());
     case "command":
       return stripSystemReminderBlocks(
         [
@@ -136,6 +138,11 @@ export function renderTranscriptItemMarkdown(
       );
     case "plan":
       return chatBubbleMarkdown("Plan:", stripSystemReminderBlocks(item.text));
+    case "system":
+      return chatBubbleMarkdown(
+        `${item.label}:`,
+        stripSystemReminderBlocks(item.detail),
+      );
     case "event":
       return chatBubbleMarkdown(
         `${item.label}:`,
@@ -216,6 +223,8 @@ export function transcriptItemTitle(
       return "Reasoning";
     case "plan":
       return "Plan";
+    case "system":
+      return item.label;
     case "command":
       return item.command;
     case "file-change":
@@ -245,6 +254,8 @@ export function liveTranscriptItemTitle(
       return item.status === "streaming"
         ? `Running ${item.label}`
         : `Completed ${item.label}`;
+    case "system":
+      return item.label;
     case "event":
       return item.label;
     case "user":

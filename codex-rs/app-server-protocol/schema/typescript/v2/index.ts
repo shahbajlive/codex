@@ -278,6 +278,7 @@ export type { SkillsListEntry } from "./SkillsListEntry";
 export type { SkillsListExtraRootsForCwd } from "./SkillsListExtraRootsForCwd";
 export type { SkillsListParams } from "./SkillsListParams";
 export type { SkillsListResponse } from "./SkillsListResponse";
+export type { SystemMessageTone } from "./SystemMessageTone";
 export type { TerminalInteractionNotification } from "./TerminalInteractionNotification";
 export type { TextElement } from "./TextElement";
 export type { TextPosition } from "./TextPosition";

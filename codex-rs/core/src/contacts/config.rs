@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::Path;
 
-use codex_protocol::ThreadId;
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use thiserror::Error;
