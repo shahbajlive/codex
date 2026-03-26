@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
-import PageHeader from "../components/PageHeader.vue";
-import WorkspaceMessagesPage from "../components/WorkspaceMessagesPage.vue";
+import AgentSidebar from "../components/AgentSidebar.vue";
+import ChatWindow from "../components/ChatWindow.vue";
 import { findLatestUserPreview } from "../lib/transcript";
 import { useCodexStore } from "../stores/codex";
 import { useAgentsStore } from "../stores/agents";
@@ -15,6 +15,8 @@ const agentsStore = useAgentsStore();
 const workspaceStore = useChatStore();
 const settingsStore = useSettingsStore();
 const router = useRouter();
+
+const sidebarCollapsed = ref(false);
 const {
   busy: codexBusy,
   isConnected,
@@ -104,15 +106,6 @@ async function initializeWorkspace() {
   }
 }
 
-async function refreshWorkspace() {
-  await agentsStore.refreshAgents();
-  await workspaceStore.refreshSelectedAgentThreads();
-}
-
-async function selectAgent(agentId: string) {
-  await agentsStore.selectAgent(agentId);
-}
-
 onMounted(() => {
   void initializeWorkspace();
 });
@@ -134,8 +127,13 @@ watch(selectedAgentId, async (agentId, previousAgentId) => {
 </script>
 
 <template>
-  <section class="content-panel">
-    <WorkspaceMessagesPage
+  <section
+    class="chat-layout"
+    :class="{ 'is-sidebar-collapsed': sidebarCollapsed }"
+  >
+    <AgentSidebar />
+
+    <ChatWindow
       :loading="busy || codexBusy"
       :auto-compact-token-limit="autoCompactTokenLimit"
       :connected="isConnected"
@@ -161,8 +159,7 @@ watch(selectedAgentId, async (agentId, previousAgentId) => {
       :live-transcript-turn="liveTranscriptTurn"
       :theme="theme"
       :threads="agentThreads"
-      @refresh="refreshWorkspace"
-      @select="selectAgent"
+      :sidebar-collapsed="sidebarCollapsed"
       @select-thread="workspaceStore.selectThreadForSelectedAgent"
       @resolve-request="workspaceStore.resolvePendingRequest"
       @reject-request="workspaceStore.rejectPendingRequest"
@@ -171,6 +168,7 @@ watch(selectedAgentId, async (agentId, previousAgentId) => {
       @set-collapse-override="workspaceStore.setCollapsedItemExpanded"
       @set-collapse-overrides="workspaceStore.mergeCollapsedItemExpanded"
       @open-conversation="openSelectedConversation"
+      @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
     />
   </section>
 </template>

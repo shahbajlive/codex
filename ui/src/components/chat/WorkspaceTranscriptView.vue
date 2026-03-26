@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import MarkdownRenderer from "../MarkdownRenderer.vue";
+import { renderMarkdownHtml } from "../../lib/markdown";
 import {
   type LiveTranscriptItem,
   type LiveTranscriptTurn,
@@ -220,7 +220,6 @@ function responseItem(
 }
 
 function stepItems(turn: TurnLike): ItemLike[] {
-  const response = responseItem(turn);
   return turn.items.filter((item) => {
     if (!matchesFilter(item)) {
       return false;
@@ -228,7 +227,7 @@ function stepItems(turn: TurnLike): ItemLike[] {
     if (item.kind === "user") {
       return false;
     }
-    if (response && item.id === response.id) {
+    if ("renderAs" in item && item.renderAs === "bubble") {
       return false;
     }
     return true;
@@ -236,8 +235,11 @@ function stepItems(turn: TurnLike): ItemLike[] {
 }
 
 function hasVisibleTurn(turn: TurnLike, isLive: boolean): boolean {
-  const response = responseItem(turn);
-  if (response && matchesFilter(response)) {
+  const hasBubble = turn.items.some(
+    (item) =>
+      "renderAs" in item && item.renderAs === "bubble" && matchesFilter(item),
+  );
+  if (hasBubble) {
     return true;
   }
   if (
@@ -890,10 +892,14 @@ watch(
               "
               class="workspace-chat__bubble workspace-chat__bubble--assistant"
             >
-              <MarkdownRenderer
-                :content="renderMessageMarkdown(responseItem(entry.turn)!.text)"
-                compact
-              />
+              <div
+                class="codex-markdown codex-markdown--compact"
+                v-html="
+                  renderMarkdownHtml(
+                    renderMessageMarkdown(responseItem(entry.turn)!.text),
+                  )
+                "
+              ></div>
             </article>
 
             <button
@@ -954,10 +960,10 @@ watch(
                   <div
                     class="workspace-chat__step-body workspace-chat__step-body--subtle"
                   >
-                    <MarkdownRenderer
-                      :content="renderReasoningMarkdown(item)"
-                      compact
-                    />
+                    <div
+                      class="codex-markdown codex-markdown--compact"
+                      v-html="renderMarkdownHtml(renderReasoningMarkdown(item))"
+                    ></div>
                   </div>
                 </template>
 
@@ -966,10 +972,12 @@ watch(
                   <div
                     class="workspace-chat__step-body workspace-chat__step-body--subtle"
                   >
-                    <MarkdownRenderer
-                      :content="renderMessageMarkdown(item.text)"
-                      compact
-                    />
+                    <div
+                      class="codex-markdown codex-markdown--compact"
+                      v-html="
+                        renderMarkdownHtml(renderMessageMarkdown(item.text))
+                      "
+                    ></div>
                   </div>
                 </template>
 
@@ -1099,10 +1107,10 @@ watch(
                     File changes
                   </div>
                   <div class="workspace-chat__step-body">
-                    <MarkdownRenderer
-                      :content="fileChangeMarkdown(item)"
-                      compact
-                    />
+                    <div
+                      class="codex-markdown codex-markdown--compact"
+                      v-html="renderMarkdownHtml(fileChangeMarkdown(item))"
+                    ></div>
                   </div>
                 </template>
 
@@ -1113,10 +1121,12 @@ watch(
                   <div
                     class="workspace-chat__step-body workspace-chat__step-body--subtle"
                   >
-                    <MarkdownRenderer
-                      :content="renderMessageMarkdown(item.detail)"
-                      compact
-                    />
+                    <div
+                      class="codex-markdown codex-markdown--compact"
+                      v-html="
+                        renderMarkdownHtml(renderMessageMarkdown(item.detail))
+                      "
+                    ></div>
                   </div>
                 </template>
 
@@ -1124,10 +1134,12 @@ watch(
                   <div
                     class="workspace-chat__step-body workspace-chat__step-body--subtle"
                   >
-                    <MarkdownRenderer
-                      :content="renderMessageMarkdown(item.text)"
-                      compact
-                    />
+                    <div
+                      class="codex-markdown codex-markdown--compact"
+                      v-html="
+                        renderMarkdownHtml(renderMessageMarkdown(item.text))
+                      "
+                    ></div>
                   </div>
                 </template>
               </article>
