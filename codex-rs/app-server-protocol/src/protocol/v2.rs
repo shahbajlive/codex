@@ -2021,6 +2021,10 @@ impl From<CoreModelAvailabilityNux> for ModelAvailabilityNux {
 pub struct Model {
     pub id: String,
     pub model: String,
+    #[ts(type = "number | null")]
+    pub context_window: Option<i64>,
+    #[ts(type = "number")]
+    pub effective_context_window_percent: i64,
     pub upgrade: Option<String>,
     pub upgrade_info: Option<ModelUpgradeInfo>,
     pub availability_nux: Option<ModelAvailabilityNux>,
@@ -2893,6 +2897,7 @@ pub struct ThreadResumeParams {
 #[ts(export_to = "v2/")]
 pub struct ThreadResumeResponse {
     pub thread: Thread,
+    pub token_usage: ThreadTokenUsage,
     pub model: String,
     pub model_provider: String,
     pub service_tier: Option<ServiceTier>,
@@ -3381,6 +3386,7 @@ pub struct ThreadReadParams {
 #[ts(export_to = "v2/")]
 pub struct ThreadReadResponse {
     pub thread: Thread,
+    pub token_usage: ThreadTokenUsage,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

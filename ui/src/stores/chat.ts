@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import type {
   ApprovalPolicy,
   CodexNotification,
+  Model,
   Thread,
   ThreadTokenUsage,
 } from "../lib/protocol";
@@ -19,7 +20,9 @@ import {
   type LiveTranscriptTurn,
   type TranscriptTurn,
 } from "../lib/transcript";
+import { formatTokenCount } from "../lib/format";
 import { type WorkspacePendingRequest, useCommandsStore } from "./commands";
+import { useCodexStore } from "./codex";
 import { useSettingsStore } from "./settings";
 import { useAgentsStore, clientRef, setAgentsClient } from "./agents";
 
@@ -57,6 +60,24 @@ function clearActiveTurnReconcileTimer() {
   }
 }
 
+function resolveModelContextWindow(
+  models: Model[],
+  modelId: string,
+): number | null {
+  if (!modelId) {
+    return null;
+  }
+
+  const model = models.find((candidate) => candidate.id === modelId);
+  if (!model || model.contextWindow === null) {
+    return null;
+  }
+
+  return Math.floor(
+    (model.contextWindow * model.effectiveContextWindowPercent) / 100,
+  );
+}
+
 export const useChatStore = defineStore("chat", {
   state: () => ({
     selectedThreadId: null as string | null,
@@ -80,9 +101,9 @@ export const useChatStore = defineStore("chat", {
     contextWindow: null as number | null,
     autoCompactTokenLimit: null as number | null,
     selectedModelProvider: null as string | null,
-    selectedTokenUsage: null as ThreadTokenUsage | null,
     tokenUsageByThreadId: {} as Record<string, ThreadTokenUsage>,
     collapsedItemExpandedByKey: {} as Record<string, boolean | string>,
+    transcriptPinnedToLatest: true,
   }),
 
   getters: {
@@ -99,6 +120,28 @@ export const useChatStore = defineStore("chat", {
         splitHistoryView(state.history, state.activeTurnId).liveTurn,
         state.liveHistoryTurn,
       );
+    },
+
+    selectedTokenUsage(state): ThreadTokenUsage | null {
+      if (!state.selectedThreadId) {
+        return null;
+      }
+
+      return state.tokenUsageByThreadId[state.selectedThreadId] ?? null;
+    },
+
+    composerModelUsageLine(): string {
+      const modelName = this.modelLabel || "default";
+      const capacity =
+        this.selectedTokenUsage?.modelContextWindow ?? this.contextWindow;
+      if (capacity === null) {
+        return modelName;
+      }
+
+      const consumed = formatTokenCount(
+        this.selectedTokenUsage?.total.totalTokens ?? 0,
+      );
+      return `${modelName} · ${consumed}/${formatTokenCount(capacity)}`;
     },
   },
 
@@ -154,15 +197,30 @@ export const useChatStore = defineStore("chat", {
       this.agentThreads = remainingThreads;
     },
 
-    applyThreadSnapshot(thread: Thread) {
+    applyThreadSnapshot(thread: Thread, attach = true) {
       this.replaceThread(thread);
-      this.attachedThreadId = thread.id;
+      if (attach) {
+        this.attachedThreadId = thread.id;
+      }
       this.selectedModelProvider = thread.modelProvider ?? null;
-      this.selectedTokenUsage = this.tokenUsageByThreadId[thread.id] ?? null;
       this.activeTurnId = this.findActiveTurnId(thread);
       // @ts-ignore Pinia deep type recursion with complex protocol types
       this.liveHistoryTurn = buildLiveHistoryTurn(thread, this.activeTurnId);
       this.setHistory(buildHistory(thread));
+    },
+
+    applyThreadTokenUsage(
+      threadId: string,
+      tokenUsage: ThreadTokenUsage | null,
+    ) {
+      if (!tokenUsage) {
+        return;
+      }
+
+      this.tokenUsageByThreadId = {
+        ...this.tokenUsageByThreadId,
+        [threadId]: tokenUsage,
+      };
     },
 
     findAgents(query: string) {
@@ -346,9 +404,9 @@ export const useChatStore = defineStore("chat", {
       this.selectedThreadId = null;
       this.attachedThreadId = null;
       this.selectedModelProvider = null;
-      this.selectedTokenUsage = null;
       this.activeTurnId = null;
       this.liveHistoryTurn = null;
+      this.transcriptPinnedToLatest = true;
       this.setHistory(buildHistory(null));
     },
 
@@ -370,27 +428,37 @@ export const useChatStore = defineStore("chat", {
     async refreshRuntimeMetadata() {
       const client = clientRef.client;
       const settings = useSettingsStore();
+      const codexStore = useCodexStore();
       const agentsStore = useAgentsStore();
-      this.modelLabel =
-        agentsStore.config?.model || settings.model || "default";
+      const agentModel = agentsStore.config?.model || settings.model || "";
+      this.modelLabel = agentModel || "default";
+      this.contextWindow = resolveModelContextWindow(
+        codexStore.models,
+        agentModel,
+      );
       if (!client) {
         return;
       }
 
       try {
         const response = await client.readConfig(settings.cwd || undefined);
-        const agentModel = agentsStore.config?.model || "";
+        const resolvedModel =
+          agentsStore.config?.model ||
+          settings.model ||
+          response.config.model ||
+          "";
         const agentProvider = agentsStore.config?.modelProvider || "";
-        this.modelLabel =
-          agentModel || settings.model || response.config.model || "default";
+        this.modelLabel = resolvedModel || "default";
+        this.contextWindow =
+          resolveModelContextWindow(codexStore.models, resolvedModel) ??
+          toNumber(response.config.model_context_window);
         this.selectedModelProvider =
           agentProvider ||
-          (agentModel.includes("/")
-            ? agentModel.slice(0, agentModel.indexOf("/"))
+          (resolvedModel.includes("/")
+            ? resolvedModel.slice(0, resolvedModel.indexOf("/"))
             : null) ||
           response.config.model_provider ||
           null;
-        this.contextWindow = toNumber(response.config.model_context_window);
         this.autoCompactTokenLimit = toNumber(
           response.config.model_auto_compact_token_limit,
         );
@@ -449,6 +517,10 @@ export const useChatStore = defineStore("chat", {
 
       this.selectedThreadId = threadId;
       await this.loadThread(threadId);
+      if (this.selectedThreadId !== threadId) {
+        return;
+      }
+      await this.attachThread(threadId);
     },
 
     async ensureSelectedThread(): Promise<string | null> {
@@ -473,12 +545,15 @@ export const useChatStore = defineStore("chat", {
 
       if (existingThreadId) {
         this.selectedThreadId = existingThreadId;
-        if (this.getSelectedThread(this)?.id === existingThreadId) {
-          this.attachedThreadId = this.attachedThreadId ?? existingThreadId;
+        if (this.attachedThreadId === existingThreadId) {
           return existingThreadId;
         }
 
         await this.loadThread(existingThreadId);
+        if (this.selectedThreadId !== existingThreadId) {
+          return this.selectedThreadId;
+        }
+        await this.attachThread(existingThreadId);
         return this.selectedThreadId;
       }
 
@@ -507,19 +582,17 @@ export const useChatStore = defineStore("chat", {
         throw new Error("Client not connected");
       }
 
-      if (
-        this.attachedThreadId === threadId ||
-        this.getSelectedThread(this)?.id === threadId
-      ) {
+      if (this.attachedThreadId === threadId) {
         return threadId;
       }
 
       try {
-        const thread = (await client.resumeThread(
+        const response = await client.resumeThreadSnapshot(
           threadId,
           this.runtimeSettings(),
-        )) as Thread;
-        this.applyThreadSnapshot(thread);
+        );
+        this.applyThreadTokenUsage(threadId, response.tokenUsage);
+        this.applyThreadSnapshot(response.thread);
         return threadId;
       } catch (error) {
         if (!this.isStaleThreadError(error)) {
@@ -527,16 +600,8 @@ export const useChatStore = defineStore("chat", {
         }
 
         this.removeThread(threadId);
-        const freshThreadId = await this.startFreshThreadForSelectedAgent();
-        if (!freshThreadId) {
-          throw error;
-        }
-
-        this.setStatus(
-          "Previous thread is no longer available. Sent your message in a fresh chat.",
-          "warning",
-        );
-        return freshThreadId;
+        this.clearSelectedThreadState();
+        throw error;
       }
     },
 
@@ -567,21 +632,8 @@ export const useChatStore = defineStore("chat", {
         }
 
         this.removeThread(threadId);
-        const freshThreadId = await this.startFreshThreadForSelectedAgent();
-        if (!freshThreadId) {
-          throw error;
-        }
-
-        const turn = await client.startTurn(
-          freshThreadId,
-          message,
-          this.runtimeSettings(),
-        );
-        this.setStatus(
-          "Previous thread is no longer available. Sent your message in a fresh chat.",
-          "warning",
-        );
-        return { threadId: freshThreadId, turn };
+        this.clearSelectedThreadState();
+        throw error;
       }
     },
 
@@ -617,7 +669,6 @@ export const useChatStore = defineStore("chat", {
         this.replaceThread(
           attachTurn(this.getSelectedThread(this) as Thread, turn) as Thread,
         );
-        this.selectedTokenUsage = null;
         // @ts-ignore Pinia deep type recursion with complex protocol types
         this.liveHistoryTurn = buildLiveHistoryTurn(
           this.getSelectedThread(this),
@@ -671,7 +722,8 @@ export const useChatStore = defineStore("chat", {
         }
 
         try {
-          const thread = (await connectedClient.readThread(threadId)) as Thread;
+          const response = await connectedClient.readThreadSnapshot(threadId);
+          const thread = response.thread;
           if (this.selectedThreadId !== threadId) {
             return;
           }
@@ -696,8 +748,8 @@ export const useChatStore = defineStore("chat", {
           this.interruptRequestedTurnId = null;
           this.interruptRequestedAt = null;
           this.interruptRetryCount = 0;
+          this.applyThreadTokenUsage(threadId, response.tokenUsage);
           this.replaceThread(thread);
-          this.selectedTokenUsage = this.tokenUsageByThreadId[threadId] ?? null;
           // @ts-ignore Pinia deep type recursion with complex protocol types
           this.liveHistoryTurn = buildLiveHistoryTurn(
             this.getSelectedThread(this),
@@ -758,8 +810,10 @@ export const useChatStore = defineStore("chat", {
       try {
         this.statusMessage = null;
         this.statusTone = null;
-        const thread = (await client.readThread(threadId)) as Thread;
-        this.applyThreadSnapshot(thread);
+        const response = await client.readThreadSnapshot(threadId);
+        const thread = response.thread;
+        this.applyThreadTokenUsage(threadId, response.tokenUsage);
+        this.applyThreadSnapshot(thread, false);
         this.statusMessage = this.threadActivityMessage(
           thread,
           this.activeTurnId,
@@ -768,8 +822,10 @@ export const useChatStore = defineStore("chat", {
       } catch (error) {
         if (this.isStaleThreadError(error)) {
           try {
-            const thread = (await client.readThread(threadId, false)) as Thread;
-            this.applyThreadSnapshot(thread);
+            const response = await client.readThreadSnapshot(threadId, false);
+            const thread = response.thread;
+            this.applyThreadTokenUsage(threadId, response.tokenUsage);
+            this.applyThreadSnapshot(thread, false);
             this.statusMessage = this.threadActivityMessage(
               thread,
               this.activeTurnId,
@@ -783,21 +839,6 @@ export const useChatStore = defineStore("chat", {
 
         this.removeThread(threadId);
         this.clearSelectedThreadState();
-
-        if (
-          this.getSelectedAgentId() &&
-          this.selectedThreadId === threadId &&
-          this.isStaleThreadError(error)
-        ) {
-          const freshThreadId = await this.startFreshThreadForSelectedAgent();
-          if (freshThreadId) {
-            this.setStatus(
-              "Previous thread is no longer available. Started a fresh chat.",
-              "warning",
-            );
-            return;
-          }
-        }
         this.setStatus(
           error instanceof Error ? error.message : String(error),
           "error",
@@ -817,7 +858,9 @@ export const useChatStore = defineStore("chat", {
       }
 
       try {
-        const thread = (await client.readThread(threadId)) as Thread;
+        const response = await client.readThreadSnapshot(threadId);
+        const thread = response.thread;
+        this.applyThreadTokenUsage(threadId, response.tokenUsage);
         if (this.selectedThreadId !== threadId) {
           return;
         }
@@ -872,7 +915,6 @@ export const useChatStore = defineStore("chat", {
           }
         }
         this.replaceThread(thread);
-        this.selectedTokenUsage = this.tokenUsageByThreadId[threadId] ?? null;
         this.setHistory(buildHistory(thread));
         if (
           snapshotActiveTurnId &&
@@ -920,10 +962,6 @@ export const useChatStore = defineStore("chat", {
           ...this.tokenUsageByThreadId,
           [notification.params.threadId]: notification.params.tokenUsage,
         };
-        if (notification.params.threadId === this.selectedThreadId) {
-          this.selectedTokenUsage = notification.params.tokenUsage;
-        }
-        this.contextWindow = notification.params.tokenUsage.modelContextWindow;
       }
 
       try {
@@ -1064,6 +1102,10 @@ export const useChatStore = defineStore("chat", {
     async selectThreadForRequest(threadId: string) {
       this.selectedThreadId = threadId;
       await this.loadThread(threadId);
+      if (this.selectedThreadId !== threadId) {
+        return;
+      }
+      await this.attachThread(threadId);
     },
 
     resolvePendingRequest(response: unknown) {
@@ -1116,6 +1158,10 @@ export const useChatStore = defineStore("chat", {
     ) {
       this.statusMessage = message;
       this.statusTone = tone;
+    },
+
+    setTranscriptPinnedToLatest(pinned: boolean) {
+      this.transcriptPinnedToLatest = pinned;
     },
 
     setCollapsedItemExpanded(key: string, expanded: boolean | string) {

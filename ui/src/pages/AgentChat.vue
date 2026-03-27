@@ -29,9 +29,9 @@ const {
   busy,
   collapsedItemExpandedByKey,
   committedTranscript,
-  contextWindow,
   liveTranscriptTurn,
   modelLabel,
+  composerModelUsageLine,
   pendingRequest,
   pendingUserDraft,
   restoredDraft,
@@ -41,7 +41,6 @@ const {
   activeTurnId,
   selectedModelProvider,
   selectedThreadId,
-  selectedTokenUsage,
 } = storeToRefs(workspaceStore);
 const { agents, selectedAgentId } = storeToRefs(agentsStore);
 const { theme } = storeToRefs(settingsStore);
@@ -137,7 +136,6 @@ watch(selectedAgentId, async (agentId, previousAgentId) => {
       :loading="busy || codexBusy"
       :auto-compact-token-limit="autoCompactTokenLimit"
       :connected="isConnected"
-      :context-window="contextWindow"
       :agents="workspaceAgents"
       :model-label="modelLabel"
       :models="models"
@@ -146,8 +144,8 @@ watch(selectedAgentId, async (agentId, previousAgentId) => {
       :selected-model-provider="selectedModelProvider"
       :selected-agent-thread-ids="selectedAgentThreadIds"
       :selected-thread-id="selectedThreadId"
-      :selected-token-usage="selectedTokenUsage"
       :collapse-overrides="collapsedItemExpandedByKey"
+      :composer-model-usage-line="composerModelUsageLine"
       :pending-request="pendingRequest"
       :pending-user-draft="pendingUserDraft"
       :restored-draft="restoredDraft"

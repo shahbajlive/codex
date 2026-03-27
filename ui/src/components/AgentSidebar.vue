@@ -113,24 +113,42 @@ async function refreshSidebar() {
 
 <template>
   <section class="card agents-sidebar">
-    <div class="card-header">
-      <div class="card-title">{{ title }}</div>
-      <button
-        :disabled="refreshDisabled"
-        class="btn btn--sm"
-        @click="refreshSidebar"
-      >
-        {{ refreshLabel }}
-      </button>
+    <div class="agents-sidebar-header">
+      <div class="card-header">
+        <div class="card-title">{{ title }}</div>
+        <button
+          :disabled="refreshDisabled"
+          class="btn btn--sm"
+          aria-label="Refresh"
+          title="Refresh"
+          @click="refreshSidebar"
+        >
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path
+              d="M13 8a5 5 0 0 1-8.6 3.5M3 8a5 5 0 0 1 8.6-3.5"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M11.5 2.5v3h-3M4.5 13.5v-3h3"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
+      <label class="field">
+        <input
+          :value="search"
+          placeholder="Search agents..."
+          @input="search = ($event.target as HTMLInputElement).value"
+        />
+      </label>
     </div>
-
-    <label class="field">
-      <input
-        :value="search"
-        placeholder="Search agents..."
-        @input="search = ($event.target as HTMLInputElement).value"
-      />
-    </label>
 
     <div class="agent-list">
       <button

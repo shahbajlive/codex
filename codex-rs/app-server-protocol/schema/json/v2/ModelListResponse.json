@@ -32,6 +32,13 @@
             }
           ]
         },
+        "contextWindow": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "defaultReasoningEffort": {
           "$ref": "#/definitions/ReasoningEffort"
         },
@@ -40,6 +47,10 @@
         },
         "displayName": {
           "type": "string"
+        },
+        "effectiveContextWindowPercent": {
+          "format": "int64",
+          "type": "integer"
         },
         "hidden": {
           "type": "boolean"
@@ -94,6 +105,7 @@
         "defaultReasoningEffort",
         "description",
         "displayName",
+        "effectiveContextWindowPercent",
         "hidden",
         "id",
         "isDefault",

@@ -121,6 +121,12 @@ pub struct ModelPreset {
     pub id: String,
     /// Model slug (e.g., "gpt-5").
     pub model: String,
+    /// Raw model context window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<i64>,
+    /// Percentage of the model context that is usable for prompts.
+    #[serde(default = "default_effective_context_window_percent")]
+    pub effective_context_window_percent: i64,
     /// Display name shown in UIs.
     pub display_name: String,
     /// Short human description shown in UIs.
@@ -421,6 +427,8 @@ impl From<ModelInfo> for ModelPreset {
         ModelPreset {
             id: info.slug.clone(),
             model: info.slug.clone(),
+            context_window: info.context_window,
+            effective_context_window_percent: info.effective_context_window_percent,
             display_name: info.display_name,
             description: info.description.unwrap_or_default(),
             default_reasoning_effort: info

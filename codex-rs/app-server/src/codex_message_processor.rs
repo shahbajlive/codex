@@ -160,12 +160,14 @@ use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
 use codex_app_server_protocol::ThreadStartedNotification;
 use codex_app_server_protocol::ThreadStatus;
+use codex_app_server_protocol::ThreadTokenUsage;
 use codex_app_server_protocol::ThreadUnarchiveParams;
 use codex_app_server_protocol::ThreadUnarchiveResponse;
 use codex_app_server_protocol::ThreadUnarchivedNotification;
 use codex_app_server_protocol::ThreadUnsubscribeParams;
 use codex_app_server_protocol::ThreadUnsubscribeResponse;
 use codex_app_server_protocol::ThreadUnsubscribeStatus;
+use codex_app_server_protocol::TokenUsageBreakdown;
 use codex_app_server_protocol::Turn;
 use codex_app_server_protocol::TurnInterruptParams;
 use codex_app_server_protocol::TurnStartParams;
@@ -316,6 +318,26 @@ use tracing::error;
 use tracing::info;
 use tracing::warn;
 use uuid::Uuid;
+
+fn empty_thread_token_usage() -> ThreadTokenUsage {
+    ThreadTokenUsage {
+        total: TokenUsageBreakdown {
+            total_tokens: 0,
+            input_tokens: 0,
+            cached_input_tokens: 0,
+            output_tokens: 0,
+            reasoning_output_tokens: 0,
+        },
+        last: TokenUsageBreakdown {
+            total_tokens: 0,
+            input_tokens: 0,
+            cached_input_tokens: 0,
+            output_tokens: 0,
+            reasoning_output_tokens: 0,
+        },
+        model_context_window: None,
+    }
+}
 
 #[cfg(test)]
 use codex_app_server_protocol::ServerRequest;
@@ -3409,6 +3431,16 @@ impl CodexMessageProcessor {
             false
         };
 
+        let token_usage = if let Some(loaded_thread) = loaded_thread.as_ref() {
+            loaded_thread
+                .token_info()
+                .await
+                .map(ThreadTokenUsage::from)
+                .unwrap_or_else(empty_thread_token_usage)
+        } else {
+            empty_thread_token_usage()
+        };
+
         let thread_status = self
             .thread_watch_manager
             .loaded_status_for_thread(&thread.id)
@@ -3419,7 +3451,10 @@ impl CodexMessageProcessor {
             thread_status,
             has_live_in_progress_turn,
         );
-        let response = ThreadReadResponse { thread };
+        let response = ThreadReadResponse {
+            thread,
+            token_usage,
+        };
         self.outgoing.send_response(request_id, response).await;
     }
 
@@ -3593,7 +3628,7 @@ impl CodexMessageProcessor {
         {
             Ok(NewThread {
                 thread_id,
-                thread,
+                thread: conversation,
                 session_configured,
             }) => {
                 let SessionConfiguredEvent { rollout_path, .. } = session_configured;
@@ -3622,7 +3657,7 @@ impl CodexMessageProcessor {
                 let mut thread = match self
                     .load_thread_from_resume_source_or_send_internal(
                         thread_id,
-                        thread.as_ref(),
+                        conversation.as_ref(),
                         &response_history,
                         rollout_path.as_path(),
                         fallback_model_provider.as_str(),
@@ -3652,8 +3687,15 @@ impl CodexMessageProcessor {
                     /*has_live_in_progress_turn*/ false,
                 );
 
+                let token_usage = conversation
+                    .token_info()
+                    .await
+                    .map(ThreadTokenUsage::from)
+                    .unwrap_or_else(empty_thread_token_usage);
+
                 let response = ThreadResumeResponse {
                     thread,
+                    token_usage,
                     model: session_configured.model,
                     model_provider: session_configured.model_provider_id,
                     service_tier: session_configured.service_tier,
@@ -7618,6 +7660,11 @@ async fn handle_pending_thread_resume_request(
     } = pending.config_snapshot;
     let response = ThreadResumeResponse {
         thread,
+        token_usage: conversation
+            .token_info()
+            .await
+            .map(ThreadTokenUsage::from)
+            .unwrap_or_else(empty_thread_token_usage),
         model,
         model_provider: model_provider_id,
         service_tier,

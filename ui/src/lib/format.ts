@@ -11,7 +11,10 @@ export function formatTime(timestampSeconds: number): string {
   });
 }
 
-export function truncate(value: string | null | undefined, length = 96): string {
+export function truncate(
+  value: string | null | undefined,
+  length = 96,
+): string {
   if (!value) {
     return "";
   }
@@ -19,6 +22,16 @@ export function truncate(value: string | null | undefined, length = 96): string 
     return value;
   }
   return `${value.slice(0, length - 1)}…`;
+}
+
+export function formatTokenCount(value: number): string {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`;
+  }
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(0)}k`;
+  }
+  return String(value);
 }
 
 export function formatThreadStatus(

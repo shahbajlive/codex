@@ -73,30 +73,69 @@ async fn build_status_detail(sess: &Arc<Session>, turn_context: &TurnContext) ->
         .map(|usage| usage.total_tokens)
         .unwrap_or(0);
 
-    vec![
-        format!(
-            "Agent: {}",
-            turn_context.agent_id.as_deref().unwrap_or("none")
-        ),
-        format!("CWD: {}", turn_context.cwd.display()),
-        format!("Model: {}", turn_context.model_info.slug),
-        format!("Provider: {}", turn_context.provider.name),
-        format!(
-            "Personality: {}",
-            turn_context
-                .personality
-                .map(|personality| format!("{personality:?}"))
-                .unwrap_or_else(|| "default".to_string())
-        ),
-        format!("Approval: {:?}", turn_context.approval_policy.get()),
-        format!("Sandbox: {:?}", turn_context.sandbox_policy.get()),
-        format!(
-            "Context: {}",
-            turn_context
-                .model_context_window()
-                .map_or_else(|| "unknown".to_string(), |window: i64| window.to_string())
-        ),
-        format!("Tokens: {total_tokens}"),
-    ]
-    .join("\n")
+    let agent = turn_context
+        .agent_id
+        .as_deref()
+        .map(humanize_identifier)
+        .unwrap_or_else(|| "No agent selected".to_string());
+    let approval = humanize_identifier(&format!("{:?}", turn_context.approval_policy.get()));
+    let sandbox = humanize_identifier(&format!("{:?}", turn_context.sandbox_policy.get()));
+    let context_window = turn_context
+        .model_context_window()
+        .map_or_else(|| "unknown".to_string(), |window: i64| window.to_string());
+
+    format!(
+        "Here's the current snapshot:\n\n- **Agent:** `{agent}`\n- **Workspace:** `{}`\n- **Model:** `{}`\n- **Provider:** `{}`\n- **Personality:** {}\n- **Approval:** {}\n- **Sandbox:** {}\n- **Context window:** `{context_window}`\n- **Tokens used:** `{total_tokens}`",
+        turn_context.cwd.display(),
+        turn_context.model_info.slug,
+        turn_context.provider.name,
+        turn_context
+            .personality
+            .map(|personality| humanize_identifier(&format!("{personality:?}")))
+            .unwrap_or_else(|| "Default".to_string()),
+        approval,
+        sandbox,
+    )
+}
+
+fn humanize_identifier(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut capitalize_next = true;
+    for (index, ch) in value.chars().enumerate() {
+        if matches!(ch, '_' | '-') {
+            if !output.ends_with(' ') && !output.is_empty() {
+                output.push(' ');
+            }
+            capitalize_next = true;
+            continue;
+        }
+
+        if ch.is_uppercase() && index > 0 && !output.ends_with(' ') {
+            output.push(' ');
+            capitalize_next = true;
+        }
+
+        if capitalize_next {
+            output.extend(ch.to_uppercase());
+            capitalize_next = false;
+        } else {
+            output.extend(ch.to_lowercase());
+        }
+    }
+
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::humanize_identifier;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn humanizes_status_labels() {
+        assert_eq!(humanize_identifier("backend_engineer"), "Backend Engineer");
+        assert_eq!(humanize_identifier("OnRequest"), "On Request");
+        assert_eq!(humanize_identifier("WorkspaceWrite"), "Workspace Write");
+        assert_eq!(humanize_identifier("friendly"), "Friendly");
+    }
 }

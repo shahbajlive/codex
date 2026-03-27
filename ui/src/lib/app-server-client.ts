@@ -228,33 +228,41 @@ export class CodexAppServerClient {
   }
 
   async readThread(threadId: string, includeTurns = true): Promise<Thread> {
-    const response = await this.transport.request<ThreadReadResponse>(
-      "thread/read",
-      {
-        threadId,
-        includeTurns,
-      },
-    );
+    const response = await this.readThreadSnapshot(threadId, includeTurns);
     return response.thread;
+  }
+
+  async readThreadSnapshot(
+    threadId: string,
+    includeTurns = true,
+  ): Promise<ThreadReadResponse> {
+    return this.transport.request<ThreadReadResponse>("thread/read", {
+      threadId,
+      includeTurns,
+    });
   }
 
   async resumeThread(
     threadId: string,
     settings: ThreadRuntimeSettings,
   ): Promise<Thread> {
-    const response = await this.transport.request<ThreadResumeResponse>(
-      "thread/resume",
-      {
-        threadId,
-        cwd: settings.cwd || null,
-        model: settings.model,
-        personality: normalizePersonality(settings.personality),
-        approvalPolicy: normalizeApprovalPolicy(settings.approvalPolicy),
-        sandbox: normalizeSandboxMode(settings.sandboxMode),
-        persistExtendedHistory: true,
-      },
-    );
+    const response = await this.resumeThreadSnapshot(threadId, settings);
     return response.thread;
+  }
+
+  async resumeThreadSnapshot(
+    threadId: string,
+    settings: ThreadRuntimeSettings,
+  ): Promise<ThreadResumeResponse> {
+    return this.transport.request<ThreadResumeResponse>("thread/resume", {
+      threadId,
+      cwd: settings.cwd || null,
+      model: settings.model,
+      personality: normalizePersonality(settings.personality),
+      approvalPolicy: normalizeApprovalPolicy(settings.approvalPolicy),
+      sandbox: normalizeSandboxMode(settings.sandboxMode),
+      persistExtendedHistory: true,
+    });
   }
 
   async startThread(settings: ThreadRuntimeSettings): Promise<Thread> {

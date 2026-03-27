@@ -3,13 +3,19 @@
    =========================================== */
 
 .shell {
+  --shell-viewport-height: 100vh;
   --shell-pad: 16px;
   --shell-gap: 16px;
   --shell-nav-width: 220px;
+  --shell-nav-height: 0px;
   --shell-topbar-height: 56px;
+  --shell-content-height: calc(
+    var(--shell-viewport-height) - var(--shell-topbar-height) -
+      var(--shell-nav-height)
+  );
   --shell-focus-duration: 200ms;
   --shell-focus-ease: var(--ease-out);
-  height: 100vh;
+  height: var(--shell-viewport-height);
   display: grid;
   grid-template-columns: var(--shell-nav-width) minmax(0, 1fr);
   grid-template-rows: var(--shell-topbar-height) 1fr;
@@ -25,19 +31,19 @@
 
 @supports (height: 100dvh) {
   .shell {
-    height: 100dvh;
+    --shell-viewport-height: 100dvh;
   }
 }
 
 .shell--chat {
-  min-height: 100vh;
-  height: 100vh;
+  min-height: var(--shell-viewport-height);
+  height: var(--shell-viewport-height);
   overflow: hidden;
 }
 
 @supports (height: 100dvh) {
   .shell--chat {
-    height: 100dvh;
+    height: var(--shell-viewport-height);
   }
 }
 
@@ -440,6 +446,7 @@
   grid-area: content;
   padding: 12px 16px 32px;
   display: block;
+  height: var(--shell-content-height);
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
@@ -621,8 +628,9 @@
   .shell {
     --shell-pad: 12px;
     --shell-gap: 12px;
+    --shell-nav-height: 64px;
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: var(--shell-topbar-height) var(--shell-nav-height) 1fr;
     grid-template-areas:
       "topbar"
       "nav"
@@ -630,7 +638,8 @@
   }
 
   .shell--nav-collapsed {
-    grid-template-rows: auto 0 1fr;
+    --shell-nav-height: 0px;
+    grid-template-rows: var(--shell-topbar-height) var(--shell-nav-height) 1fr;
     grid-template-areas:
       "topbar"
       "nav"
@@ -646,7 +655,7 @@
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    height: auto;
+    height: var(--shell-nav-height);
     position: static;
     border-right: none;
     border-bottom: 1px solid var(--border);

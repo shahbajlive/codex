@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import type { Model, Thread, ThreadTokenUsage } from "../lib/protocol";
+import type { Model, Thread } from "../lib/protocol";
 import { slashCommands } from "../lib/slash-commands";
 import {
   type LiveTranscriptTurn,
   type TranscriptTurn,
 } from "../lib/transcript";
-import { formatTime, truncate } from "../lib/format";
+import { formatTime, formatTokenCount, truncate } from "../lib/format";
 import type { WorkspaceAgentRow } from "../stores/chat";
 import type { WorkspacePendingRequest } from "../stores/commands";
 import WorkspaceCommandControl from "./chat/WorkspaceCommandControl.vue";
@@ -19,7 +19,6 @@ const props = defineProps<{
   autoCompactTokenLimit: number | null;
   loading: boolean;
   connected: boolean;
-  contextWindow: number | null;
   agents: WorkspaceAgentRow[];
   modelLabel: string;
   models: Model[];
@@ -37,8 +36,8 @@ const props = defineProps<{
   selectedModelProvider: string | null;
   selectedAgentThreadIds: string[];
   selectedThreadId: string | null;
-  selectedTokenUsage: ThreadTokenUsage | null;
   collapseOverrides: Record<string, boolean | string>;
+  composerModelUsageLine: string;
   theme: string;
   threads: Thread[];
   sidebarCollapsed: boolean;
@@ -176,17 +175,6 @@ const composerMeta = computed(() => [
     ? `Auto-compact ${formatTokenCount(props.autoCompactTokenLimit)}`
     : null,
 ]);
-
-const composerModelUsageLine = computed(() => {
-  const modelName = props.modelLabel || "default";
-  const consumed = formatTokenCount(
-    props.selectedTokenUsage?.total.totalTokens ?? 0,
-  );
-  const capacity = formatTokenCount(
-    props.contextWindow ?? props.selectedTokenUsage?.modelContextWindow ?? 0,
-  );
-  return `${modelName} - ${consumed}/${capacity}`;
-});
 
 const COMMAND_PANEL_PREFIXES = new Set([
   "/model",
@@ -663,16 +651,6 @@ function normalizeElicitationValue(
     return null;
   }
   return typeof value === "string" ? value : "";
-}
-
-function formatTokenCount(value: number) {
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(1)}M`;
-  }
-  if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(0)}k`;
-  }
-  return String(value);
 }
 
 watch(

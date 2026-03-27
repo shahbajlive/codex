@@ -20,6 +20,7 @@ use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::TokenUsage;
+use codex_protocol::protocol::TokenUsageInfo;
 use codex_protocol::protocol::W3cTraceContext;
 use codex_protocol::user_input::UserInput;
 use std::path::PathBuf;
@@ -122,6 +123,10 @@ impl CodexThread {
 
     pub(crate) async fn total_token_usage(&self) -> Option<TokenUsage> {
         self.codex.session.total_token_usage().await
+    }
+
+    pub async fn token_info(&self) -> Option<TokenUsageInfo> {
+        self.codex.session.token_info().await
     }
 
     async fn inject_message_without_turn(&self, role: &str, message: String) {

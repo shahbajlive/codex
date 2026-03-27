@@ -746,6 +746,8 @@ fn model_preset_from_api_model(model: ApiModel) -> ModelPreset {
     ModelPreset {
         id: model.id,
         model: model.model,
+        context_window: model.context_window,
+        effective_context_window_percent: model.effective_context_window_percent,
         display_name: model.display_name,
         description: model.description,
         default_reasoning_effort: model.default_reasoning_effort,

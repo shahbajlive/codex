@@ -49,6 +49,10 @@ type WorkspaceCommandContext = {
   ): void;
   clearSelectedThreadState(): void;
   applyThreadSnapshot(thread: Thread): void;
+  applyThreadTokenUsage(
+    threadId: string,
+    tokenUsage: ThreadTokenUsage | null,
+  ): void;
   refreshRuntimeMetadata(): Promise<void>;
 };
 
@@ -422,15 +426,16 @@ export const useCommandsStore = defineStore("commands", {
             return true;
           }
           const [thread] = matches;
-          const resumedThread = (await client.resumeThread(
+          const response = await client.resumeThreadSnapshot(
             thread.id,
             chatStore.runtimeSettings(),
-          )) as Thread;
+          );
           store.selectedThreadId = thread.id;
-          store.applyThreadSnapshot(resumedThread);
+          store.applyThreadTokenUsage(thread.id, response.tokenUsage);
+          store.applyThreadSnapshot(response.thread);
           store.addLocalEvent(
             "Resumed chat",
-            resumedThread.name || resumedThread.preview || thread.id,
+            response.thread.name || response.thread.preview || thread.id,
           );
           return true;
         }

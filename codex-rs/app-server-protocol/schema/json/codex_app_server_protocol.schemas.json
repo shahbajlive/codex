@@ -10013,6 +10013,13 @@
               }
             ]
           },
+          "contextWindow": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "defaultReasoningEffort": {
             "$ref": "#/definitions/v2/ReasoningEffort"
           },
@@ -10021,6 +10028,10 @@
           },
           "displayName": {
             "type": "string"
+          },
+          "effectiveContextWindowPercent": {
+            "format": "int64",
+            "type": "integer"
           },
           "hidden": {
             "type": "boolean"
@@ -10075,6 +10086,7 @@
           "defaultReasoningEffort",
           "description",
           "displayName",
+          "effectiveContextWindowPercent",
           "hidden",
           "id",
           "isDefault",
@@ -14137,10 +14149,14 @@
         "properties": {
           "thread": {
             "$ref": "#/definitions/v2/Thread"
+          },
+          "tokenUsage": {
+            "$ref": "#/definitions/v2/ThreadTokenUsage"
           }
         },
         "required": [
-          "thread"
+          "thread",
+          "tokenUsage"
         ],
         "title": "ThreadReadResponse",
         "type": "object"
@@ -14437,6 +14453,9 @@
           },
           "thread": {
             "$ref": "#/definitions/v2/Thread"
+          },
+          "tokenUsage": {
+            "$ref": "#/definitions/v2/ThreadTokenUsage"
           }
         },
         "required": [
@@ -14446,7 +14465,8 @@
           "model",
           "modelProvider",
           "sandbox",
-          "thread"
+          "thread",
+          "tokenUsage"
         ],
         "title": "ThreadResumeResponse",
         "type": "object"
