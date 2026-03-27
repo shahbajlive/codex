@@ -374,6 +374,25 @@
   border-top-left-radius: 8px;
 }
 
+.workspace-chat__bubble--system .codex-markdown {
+  color: var(--chat-text);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.workspace-chat__bubble-text {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.workspace-msg-list__avatar--system {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
 .workspace-chat__bubble--contact {
   background: color-mix(in srgb, var(--accent) 10%, var(--card));
   border-style: dashed;

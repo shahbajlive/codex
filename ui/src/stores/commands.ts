@@ -435,18 +435,7 @@ export const useCommandsStore = defineStore("commands", {
           return true;
         }
         case "/status": {
-          store.addLocalEvent(
-            "Workspace status",
-            [
-              `Agent: ${chatStore.getSelectedAgentName()}`,
-              `Thread: ${store.selectedThreadId || "none"}`,
-              `Model: ${store.modelLabel || "default"}`,
-              `Provider: ${store.selectedModelProvider || "unknown"}`,
-              `Context: ${store.contextWindow ?? "unknown"}`,
-              `Tokens: ${store.selectedTokenUsage?.total.totalTokens ?? 0}`,
-            ].join("\n"),
-          );
-          return true;
+          return false;
         }
         case "/debug-config": {
           const response = await client.readConfig(

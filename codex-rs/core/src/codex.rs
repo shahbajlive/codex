@@ -4582,6 +4582,12 @@ mod handlers {
             .await;
         current_context.session_telemetry.user_prompt(&items);
 
+        if crate::slash_commands::handle_workspace_slash_command(sess, &current_context, &items)
+            .await
+        {
+            return;
+        }
+
         // Attempt to inject input into current task.
         if let Err(SteerInputError::NoActiveTurn(items)) =
             sess.steer_input(items, /*expected_turn_id*/ None).await

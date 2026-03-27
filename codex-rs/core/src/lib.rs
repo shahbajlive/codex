@@ -73,6 +73,7 @@ pub mod sandboxing;
 mod session_prefix;
 mod session_startup_prewarm;
 mod shell_detect;
+mod slash_commands;
 mod stream_events_utils;
 pub mod test_support;
 mod text_encoding;

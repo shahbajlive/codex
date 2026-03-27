@@ -1,6 +1,7 @@
 use codex_protocol::items::AgentMessageContent;
 use codex_protocol::items::AgentMessageItem;
 use codex_protocol::items::ReasoningItem;
+use codex_protocol::items::SystemMessageItem;
 use codex_protocol::items::TurnItem;
 use codex_protocol::items::UserMessageItem;
 use codex_protocol::items::WebSearchItem;
@@ -109,7 +110,10 @@ pub fn parse_turn_item(item: &ResponseItem) -> Option<TurnItem> {
                 content,
                 phase.clone(),
             ))),
-            "system" => None,
+            "system" => Some(TurnItem::SystemMessage(parse_system_message(
+                id.as_ref(),
+                content,
+            ))),
             _ => None,
         },
         ResponseItem::Reasoning {
@@ -166,6 +170,25 @@ pub fn parse_turn_item(item: &ResponseItem) -> Option<TurnItem> {
         )),
         _ => None,
     }
+}
+
+fn parse_system_message(id: Option<&String>, message: &[ContentItem]) -> SystemMessageItem {
+    let detail = message
+        .iter()
+        .filter_map(|content_item| match content_item {
+            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+                Some(text.as_str())
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut item = SystemMessageItem::new("Session status", detail);
+    if let Some(id) = id {
+        item.id = id.clone();
+    }
+    item
 }
 
 #[cfg(test)]

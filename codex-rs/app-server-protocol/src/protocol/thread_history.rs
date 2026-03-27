@@ -170,6 +170,7 @@ impl ThreadHistoryBuilder {
             EventMsg::ExitedReviewMode(payload) => self.handle_exited_review_mode(payload),
             EventMsg::ItemStarted(payload) => self.handle_item_started(payload),
             EventMsg::ItemCompleted(payload) => self.handle_item_completed(payload),
+            EventMsg::RawResponseItem(payload) => self.handle_response_item(&payload.item),
             EventMsg::HookStarted(_) | EventMsg::HookCompleted(_) => {}
             EventMsg::Error(payload) => self.handle_error(payload),
             EventMsg::TokenCount(_) => {}
@@ -197,6 +198,26 @@ impl ThreadHistoryBuilder {
                 role, content, id, ..
             } => {
                 if role != "user" {
+                    if role == "system" {
+                        self.ensure_turn().items.push(ThreadItem::SystemMessage {
+                            id: id
+                                .clone()
+                                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                            label: "Session status".to_string(),
+                            detail: content
+                                .iter()
+                                .filter_map(|content_item| match content_item {
+                                    codex_protocol::models::ContentItem::InputText { text }
+                                    | codex_protocol::models::ContentItem::OutputText { text } => {
+                                        Some(text.clone())
+                                    }
+                                    _ => None,
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n"),
+                            tone: crate::protocol::v2::SystemMessageTone::Info,
+                        });
+                    }
                     return;
                 }
 
@@ -2946,6 +2967,47 @@ mod tests {
         let turns = build_turns_from_rollout_items(&items);
         assert_eq!(turns.len(), 1);
         assert!(turns[0].items.is_empty());
+    }
+
+    #[test]
+    fn rebuilds_system_message_items_from_raw_response_items() {
+        let items = vec![
+            RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: "turn-a".into(),
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            })),
+            RolloutItem::EventMsg(EventMsg::RawResponseItem(
+                codex_protocol::protocol::RawResponseItemEvent {
+                    item: codex_protocol::models::ResponseItem::Message {
+                        id: Some("msg-1".into()),
+                        role: "system".into(),
+                        content: vec![codex_protocol::models::ContentItem::InputText {
+                            text: "Agent: Developer Lead".into(),
+                        }],
+                        end_turn: Some(true),
+                        phase: None,
+                    },
+                },
+            )),
+            RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+                turn_id: "turn-a".into(),
+                last_agent_message: None,
+            })),
+        ];
+
+        let turns = build_turns_from_rollout_items(&items);
+
+        assert_eq!(turns.len(), 1);
+        assert_eq!(
+            turns[0].items[0],
+            ThreadItem::SystemMessage {
+                id: "msg-1".into(),
+                label: "Session status".into(),
+                detail: "Agent: Developer Lead".into(),
+                tone: crate::protocol::v2::SystemMessageTone::Info,
+            }
+        );
     }
 
     #[test]

@@ -753,7 +753,7 @@
 
 .agent-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: 16px;
   align-items: center;
 }
@@ -761,6 +761,7 @@
 .agent-header-center {
   display: flex;
   justify-content: center;
+  flex-grow: 1;
 }
 
 .agent-header-main {
@@ -1443,14 +1444,6 @@
 
   .agents-layout {
     grid-template-columns: 1fr;
-  }
-
-  .agent-header {
-    grid-template-columns: 1fr;
-  }
-
-  .agent-header-meta {
-    justify-items: start;
   }
 
   .agent-files-grid {

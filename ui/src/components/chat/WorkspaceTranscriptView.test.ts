@@ -10,18 +10,29 @@ const transcript: TranscriptTurn[] = [
     error: null,
     items: [
       {
+        id: "item_u",
+        kind: "user",
+        text: "/status",
+      },
+      {
         id: "item_1",
         kind: "system",
         label: "Session status",
         detail: "Your operational mode has changed from plan to build.",
         tone: "info",
       },
+      {
+        id: "item_a",
+        kind: "assistant",
+        text: "ready",
+        status: "done",
+      },
     ],
   },
 ];
 
 describe("WorkspaceTranscriptView", () => {
-  it("renders system messages as bubbles", () => {
+  it("renders items in transcript order", () => {
     const wrapper = mount(WorkspaceTranscriptView, {
       props: {
         selectedAgentId: "agent-1",
@@ -39,6 +50,10 @@ describe("WorkspaceTranscriptView", () => {
     });
 
     expect(wrapper.html()).toContain("workspace-chat__bubble--system");
+    expect(wrapper.html()).toContain("workspace-msg-list__avatar--system");
+    expect(wrapper.html().indexOf("/status")).toBeLessThan(
+      wrapper.html().indexOf("Your operational mode has changed"),
+    );
     expect(wrapper.text()).toContain(
       "Your operational mode has changed from plan to build.",
     );

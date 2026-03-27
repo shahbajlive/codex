@@ -1518,6 +1518,14 @@ pub(crate) async fn apply_bespoke_event_handling(
                 .await;
         }
         EventMsg::RawResponseItem(raw_response_item_event) => {
+            maybe_emit_system_message_item_completed(
+                api_version,
+                conversation_id,
+                &event_turn_id,
+                &raw_response_item_event.item,
+                &outgoing,
+            )
+            .await;
             maybe_emit_hook_prompt_item_completed(
                 api_version,
                 conversation_id,
@@ -2098,6 +2106,66 @@ async fn maybe_emit_hook_prompt_item_completed(
     };
     outgoing
         .send_server_notification(ServerNotification::ItemCompleted(notification))
+        .await;
+}
+
+async fn maybe_emit_system_message_item_completed(
+    api_version: ApiVersion,
+    conversation_id: ThreadId,
+    turn_id: &str,
+    item: &codex_protocol::models::ResponseItem,
+    outgoing: &ThreadScopedOutgoingMessageSender,
+) {
+    let ApiVersion::V2 = api_version else {
+        return;
+    };
+
+    let codex_protocol::models::ResponseItem::Message {
+        role, content, id, ..
+    } = item
+    else {
+        return;
+    };
+
+    if role != "system" {
+        return;
+    }
+
+    let detail = content
+        .iter()
+        .filter_map(|content_item| match content_item {
+            codex_protocol::models::ContentItem::InputText { text }
+            | codex_protocol::models::ContentItem::OutputText { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let item = ThreadItem::SystemMessage {
+        id: id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        label: "Session status".to_string(),
+        detail,
+        tone: codex_app_server_protocol::SystemMessageTone::Info,
+    };
+
+    let started = ItemStartedNotification {
+        thread_id: conversation_id.to_string(),
+        turn_id: turn_id.to_string(),
+        item: item.clone(),
+    };
+    outgoing
+        .send_server_notification(ServerNotification::ItemStarted(started))
+        .await;
+
+    let completed = ItemCompletedNotification {
+        thread_id: conversation_id.to_string(),
+        turn_id: turn_id.to_string(),
+        item,
+    };
+    outgoing
+        .send_server_notification(ServerNotification::ItemCompleted(completed))
         .await;
 }
 
