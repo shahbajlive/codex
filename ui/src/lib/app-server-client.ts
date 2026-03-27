@@ -21,6 +21,8 @@ import type {
   SkillsListResponse,
   Thread,
   ThreadListResponse,
+  ThreadPendingInputDeleteResponse,
+  ThreadPendingInputReadResponse,
   ThreadReadResponse,
   ThreadResumeResponse,
   ThreadStartResponse,
@@ -60,6 +62,7 @@ export class CodexAppServerClient {
     return this.transport.onNotification((notification) => {
       switch (notification.method) {
         case "thread/started":
+        case "thread/pendingInput/updated":
         case "turn/started":
         case "turn/aborted":
         case "item/started":
@@ -240,6 +243,25 @@ export class CodexAppServerClient {
       threadId,
       includeTurns,
     });
+  }
+
+  async readThreadPendingInput(
+    threadId: string,
+  ): Promise<ThreadPendingInputReadResponse> {
+    return this.transport.request<ThreadPendingInputReadResponse>(
+      "thread/pendingInput/read",
+      { threadId },
+    );
+  }
+
+  async deleteThreadPendingInput(
+    threadId: string,
+    index: number,
+  ): Promise<ThreadPendingInputDeleteResponse> {
+    return this.transport.request<ThreadPendingInputDeleteResponse>(
+      "thread/pendingInput/delete",
+      { threadId, index },
+    );
   }
 
   async resumeThread(

@@ -53,6 +53,12 @@ import type { Thread } from "../../../codex-rs/app-server-protocol/schema/typesc
 import type { ThreadItem } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem";
 import type { ThreadListParams } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadListParams";
 import type { ThreadListResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadListResponse";
+import type { ThreadPendingInputDeleteParams } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadPendingInputDeleteParams";
+import type { ThreadPendingInputDeleteResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadPendingInputDeleteResponse";
+import type { ThreadPendingInputItem } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadPendingInputItem";
+import type { ThreadPendingInputReadParams } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadPendingInputReadParams";
+import type { ThreadPendingInputReadResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadPendingInputReadResponse";
+import type { ThreadPendingInputUpdatedNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadPendingInputUpdatedNotification";
 import type { ThreadReadParams } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadReadParams";
 import type { ThreadReadResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadReadResponse";
 import type { ThreadResumeParams } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadResumeParams";
@@ -133,6 +139,12 @@ export type {
   ThreadItem,
   ThreadListParams,
   ThreadListResponse,
+  ThreadPendingInputDeleteParams,
+  ThreadPendingInputDeleteResponse,
+  ThreadPendingInputItem,
+  ThreadPendingInputReadParams,
+  ThreadPendingInputReadResponse,
+  ThreadPendingInputUpdatedNotification,
   ThreadReadParams,
   ThreadReadResponse,
   ThreadResumeParams,
@@ -160,6 +172,10 @@ export type {
 
 export type CodexNotification =
   | { method: "thread/started"; params: { thread: Thread } }
+  | {
+      method: "thread/pendingInput/updated";
+      params: ThreadPendingInputUpdatedNotification;
+    }
   | { method: "turn/started"; params: TurnStartedNotification }
   | { method: "turn/aborted"; params: TurnAbortedNotification }
   | { method: "item/started"; params: ItemStartedNotification }

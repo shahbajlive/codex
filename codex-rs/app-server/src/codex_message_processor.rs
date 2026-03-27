@@ -137,6 +137,12 @@ use codex_app_server_protocol::ThreadMetadataGitInfoUpdateParams;
 use codex_app_server_protocol::ThreadMetadataUpdateParams;
 use codex_app_server_protocol::ThreadMetadataUpdateResponse;
 use codex_app_server_protocol::ThreadNameUpdatedNotification;
+use codex_app_server_protocol::ThreadPendingInputDeleteParams;
+use codex_app_server_protocol::ThreadPendingInputDeleteResponse;
+use codex_app_server_protocol::ThreadPendingInputItem;
+use codex_app_server_protocol::ThreadPendingInputReadParams;
+use codex_app_server_protocol::ThreadPendingInputReadResponse;
+use codex_app_server_protocol::ThreadPendingInputUpdatedNotification;
 use codex_app_server_protocol::ThreadReadParams;
 use codex_app_server_protocol::ThreadReadResponse;
 use codex_app_server_protocol::ThreadRealtimeAppendAudioParams;
@@ -263,6 +269,8 @@ use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::dynamic_tools::DynamicToolSpec as CoreDynamicToolSpec;
 use codex_protocol::items::TurnItem;
+use codex_protocol::models::ContentItem;
+use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AgentStatus;
 use codex_protocol::protocol::ConversationAudioParams;
@@ -731,6 +739,14 @@ impl CodexMessageProcessor {
             }
             ClientRequest::ThreadRead { request_id, params } => {
                 self.thread_read(to_connection_request_id(request_id), params)
+                    .await;
+            }
+            ClientRequest::ThreadPendingInputRead { request_id, params } => {
+                self.thread_pending_input_read(to_connection_request_id(request_id), params)
+                    .await;
+            }
+            ClientRequest::ThreadPendingInputDelete { request_id, params } => {
+                self.thread_pending_input_delete(to_connection_request_id(request_id), params)
                     .await;
             }
             ClientRequest::ThreadShellCommand { request_id, params } => {
@@ -3456,6 +3472,133 @@ impl CodexMessageProcessor {
             token_usage,
         };
         self.outgoing.send_response(request_id, response).await;
+    }
+
+    async fn thread_pending_input_read(
+        &mut self,
+        request_id: ConnectionRequestId,
+        params: ThreadPendingInputReadParams,
+    ) {
+        let ThreadPendingInputReadParams { thread_id } = params;
+        let Some((thread_uuid, thread)) = self
+            .loaded_thread_for_pending_input(request_id.clone(), &thread_id)
+            .await
+        else {
+            return;
+        };
+
+        let pending_input = thread.pending_input_snapshot().await;
+        let response = ThreadPendingInputReadResponse {
+            thread_id: thread_uuid.to_string(),
+            pending_input: Self::snapshot_pending_input_items(&pending_input),
+        };
+        self.outgoing.send_response(request_id, response).await;
+    }
+
+    async fn thread_pending_input_delete(
+        &mut self,
+        request_id: ConnectionRequestId,
+        params: ThreadPendingInputDeleteParams,
+    ) {
+        let ThreadPendingInputDeleteParams { thread_id, index } = params;
+        let Some((thread_uuid, thread)) = self
+            .loaded_thread_for_pending_input(request_id.clone(), &thread_id)
+            .await
+        else {
+            return;
+        };
+
+        let Some(removed_item) = thread.delete_pending_input_at(index as usize).await else {
+            self.send_invalid_request_error(
+                request_id,
+                format!("pending input index {index} is out of range for thread {thread_uuid}"),
+            )
+            .await;
+            return;
+        };
+
+        let pending_input = thread.pending_input_snapshot().await;
+        let response = ThreadPendingInputDeleteResponse {
+            thread_id: thread_uuid.to_string(),
+            pending_input: Self::snapshot_pending_input_items(&pending_input),
+        };
+        self.outgoing.send_response(request_id, response).await;
+
+        if self.should_emit_pending_input_snapshot_updates() {
+            self.send_pending_input_updated_notification(thread_uuid, thread, Some(removed_item))
+                .await;
+        }
+    }
+
+    async fn loaded_thread_for_pending_input(
+        &mut self,
+        request_id: ConnectionRequestId,
+        thread_id: &str,
+    ) -> Option<(ThreadId, Arc<codex_core::CodexThread>)> {
+        let thread_uuid = match ThreadId::from_string(thread_id) {
+            Ok(id) => id,
+            Err(err) => {
+                self.send_invalid_request_error(request_id, format!("invalid thread id: {err}"))
+                    .await;
+                return None;
+            }
+        };
+
+        let Some(thread) = self.thread_manager.get_thread(thread_uuid).await.ok() else {
+            self.send_invalid_request_error(
+                request_id,
+                format!("thread not loaded: {thread_uuid}"),
+            )
+            .await;
+            return None;
+        };
+
+        Some((thread_uuid, thread))
+    }
+
+    fn should_emit_pending_input_snapshot_updates(&self) -> bool {
+        true
+    }
+
+    async fn send_pending_input_updated_notification(
+        &self,
+        thread_id: ThreadId,
+        thread: Arc<codex_core::CodexThread>,
+        _removed_item: Option<ResponseInputItem>,
+    ) {
+        let pending_input = thread.pending_input_snapshot().await;
+        let notification = ThreadPendingInputUpdatedNotification {
+            thread_id: thread_id.to_string(),
+            pending_input: Self::snapshot_pending_input_items(&pending_input),
+        };
+        self.outgoing
+            .send_server_notification(ServerNotification::ThreadPendingInputUpdated(notification))
+            .await;
+    }
+
+    fn snapshot_pending_input_items(items: &[ResponseInputItem]) -> Vec<ThreadPendingInputItem> {
+        items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| ThreadPendingInputItem {
+                index: index as u32,
+                text: Self::pending_input_item_text(item),
+            })
+            .collect()
+    }
+
+    fn pending_input_item_text(item: &ResponseInputItem) -> String {
+        match item {
+            ResponseInputItem::Message { content, .. } => content
+                .iter()
+                .filter_map(|content_item| match content_item {
+                    ContentItem::InputText { text } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(""),
+            _ => format!("{item:?}"),
+        }
     }
 
     pub(crate) fn thread_created_receiver(&self) -> broadcast::Receiver<ThreadId> {

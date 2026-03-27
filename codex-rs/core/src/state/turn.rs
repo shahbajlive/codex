@@ -198,6 +198,14 @@ impl TurnState {
         }
     }
 
+    pub(crate) fn pending_input_snapshot(&self) -> Vec<ResponseInputItem> {
+        self.pending_input.clone()
+    }
+
+    pub(crate) fn remove_pending_input_at(&mut self, index: usize) -> Option<ResponseInputItem> {
+        (index < self.pending_input.len()).then(|| self.pending_input.remove(index))
+    }
+
     pub(crate) fn has_pending_input(&self) -> bool {
         !self.pending_input.is_empty()
     }

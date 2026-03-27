@@ -81,6 +81,7 @@ use codex_app_server_protocol::SkillsChangedNotification;
 use codex_app_server_protocol::TerminalInteractionNotification;
 use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::ThreadNameUpdatedNotification;
+use codex_app_server_protocol::ThreadPendingInputUpdatedNotification;
 use codex_app_server_protocol::ThreadRealtimeClosedNotification;
 use codex_app_server_protocol::ThreadRealtimeErrorNotification;
 use codex_app_server_protocol::ThreadRealtimeItemAddedNotification;
@@ -304,7 +305,15 @@ pub(crate) async fn apply_bespoke_event_handling(
             thread_watch_manager
                 .note_turn_completed(&conversation_id.to_string(), turn_failed)
                 .await;
-            handle_turn_complete(conversation_id, event_turn_id, &outgoing, &thread_state).await;
+            handle_turn_complete(
+                conversation_id,
+                event_turn_id,
+                &outgoing,
+                &thread_state,
+                Some(&conversation),
+                api_version,
+            )
+            .await;
         }
         EventMsg::SkillsUpdateAvailable => {
             if let ApiVersion::V2 = api_version {
@@ -1778,6 +1787,8 @@ pub(crate) async fn apply_bespoke_event_handling(
                 turn_aborted_event.reason,
                 &outgoing,
                 &thread_state,
+                Some(&conversation),
+                api_version,
             )
             .await;
         }
@@ -1982,6 +1993,48 @@ async fn emit_turn_aborted(
         .await;
 }
 
+async fn emit_pending_input_updated(
+    conversation_id: ThreadId,
+    conversation: Option<&Arc<CodexThread>>,
+    outgoing: &ThreadScopedOutgoingMessageSender,
+) {
+    let Some(conversation) = conversation else {
+        return;
+    };
+
+    let pending_input = conversation.pending_input_snapshot().await;
+    let notification = ThreadPendingInputUpdatedNotification {
+        thread_id: conversation_id.to_string(),
+        pending_input: pending_input
+            .iter()
+            .enumerate()
+            .map(
+                |(index, item)| codex_app_server_protocol::ThreadPendingInputItem {
+                    index: index as u32,
+                    text: match item {
+                        codex_protocol::models::ResponseInputItem::Message { content, .. } => {
+                            content
+                                .iter()
+                                .filter_map(|content_item| match content_item {
+                                    codex_protocol::models::ContentItem::InputText { text } => {
+                                        Some(text.as_str())
+                                    }
+                                    _ => None,
+                                })
+                                .collect::<Vec<_>>()
+                                .join("")
+                        }
+                        _ => format!("{item:?}"),
+                    },
+                },
+            )
+            .collect(),
+    };
+    outgoing
+        .send_server_notification(ServerNotification::ThreadPendingInputUpdated(notification))
+        .await;
+}
+
 async fn complete_file_change_item(
     conversation_id: ThreadId,
     item_id: String,
@@ -2182,6 +2235,8 @@ async fn handle_turn_complete(
     event_turn_id: String,
     outgoing: &ThreadScopedOutgoingMessageSender,
     thread_state: &Arc<Mutex<ThreadState>>,
+    conversation: Option<&Arc<CodexThread>>,
+    api_version: ApiVersion,
 ) {
     let turn_summary = find_and_remove_turn_summary(conversation_id, thread_state).await;
 
@@ -2191,6 +2246,10 @@ async fn handle_turn_complete(
     };
 
     emit_turn_completed_with_status(conversation_id, event_turn_id, status, error, outgoing).await;
+
+    if matches!(api_version, ApiVersion::V2) {
+        emit_pending_input_updated(conversation_id, conversation, outgoing).await;
+    }
 }
 
 async fn handle_turn_interrupted(
@@ -2199,6 +2258,8 @@ async fn handle_turn_interrupted(
     reason: TurnAbortReason,
     outgoing: &ThreadScopedOutgoingMessageSender,
     thread_state: &Arc<Mutex<ThreadState>>,
+    conversation: Option<&Arc<CodexThread>>,
+    api_version: ApiVersion,
 ) {
     find_and_remove_turn_summary(conversation_id, thread_state).await;
 
@@ -2212,6 +2273,10 @@ async fn handle_turn_interrupted(
         outgoing,
     )
     .await;
+
+    if matches!(api_version, ApiVersion::V2) {
+        emit_pending_input_updated(conversation_id, conversation, outgoing).await;
+    }
 }
 
 async fn handle_thread_rollback_failed(
@@ -3365,6 +3430,8 @@ mod tests {
             event_turn_id.clone(),
             &outgoing,
             &thread_state,
+            None,
+            ApiVersion::V2,
         )
         .await;
 
@@ -3412,6 +3479,8 @@ mod tests {
             TurnAbortReason::Interrupted,
             &outgoing,
             &thread_state,
+            None,
+            ApiVersion::V2,
         )
         .await;
 
@@ -3467,6 +3536,8 @@ mod tests {
             event_turn_id.clone(),
             &outgoing,
             &thread_state,
+            None,
+            ApiVersion::V2,
         )
         .await;
 
@@ -3725,7 +3796,15 @@ mod tests {
             &thread_state,
         )
         .await;
-        handle_turn_complete(conversation_a, a_turn1.clone(), &outgoing, &thread_state).await;
+        handle_turn_complete(
+            conversation_a,
+            a_turn1.clone(),
+            &outgoing,
+            &thread_state,
+            None,
+            ApiVersion::V2,
+        )
+        .await;
 
         // Turn 1 on conversation B
         let b_turn1 = "b_turn1".to_string();
@@ -3739,11 +3818,27 @@ mod tests {
             &thread_state,
         )
         .await;
-        handle_turn_complete(conversation_b, b_turn1.clone(), &outgoing, &thread_state).await;
+        handle_turn_complete(
+            conversation_b,
+            b_turn1.clone(),
+            &outgoing,
+            &thread_state,
+            None,
+            ApiVersion::V2,
+        )
+        .await;
 
         // Turn 2 on conversation A
         let a_turn2 = "a_turn2".to_string();
-        handle_turn_complete(conversation_a, a_turn2.clone(), &outgoing, &thread_state).await;
+        handle_turn_complete(
+            conversation_a,
+            a_turn2.clone(),
+            &outgoing,
+            &thread_state,
+            None,
+            ApiVersion::V2,
+        )
+        .await;
 
         // Verify: A turn 1
         let msg = recv_broadcast_message(&mut rx).await?;

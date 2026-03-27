@@ -631,6 +631,54 @@
             },
             "method": {
               "enum": [
+                "thread/pendingInput/read"
+              ],
+              "title": "Thread/pendingInput/readRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ThreadPendingInputReadParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Thread/pendingInput/readRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "thread/pendingInput/delete"
+              ],
+              "title": "Thread/pendingInput/deleteRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ThreadPendingInputDeleteParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Thread/pendingInput/deleteRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
                 "skills/list"
               ],
               "title": "Skills/listRequestMethod",
@@ -3909,6 +3957,26 @@
             "params"
           ],
           "title": "Thread/name/updatedNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
+                "thread/pendingInput/updated"
+              ],
+              "title": "Thread/pendingInput/updatedNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ThreadPendingInputUpdatedNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Thread/pendingInput/updatedNotification",
           "type": "object"
         },
         {
@@ -14124,6 +14192,115 @@
           "threadId"
         ],
         "title": "ThreadNameUpdatedNotification",
+        "type": "object"
+      },
+      "ThreadPendingInputDeleteParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "index": {
+            "format": "uint32",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "threadId"
+        ],
+        "title": "ThreadPendingInputDeleteParams",
+        "type": "object"
+      },
+      "ThreadPendingInputDeleteResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "pendingInput": {
+            "items": {
+              "$ref": "#/definitions/v2/ThreadPendingInputItem"
+            },
+            "type": "array"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pendingInput",
+          "threadId"
+        ],
+        "title": "ThreadPendingInputDeleteResponse",
+        "type": "object"
+      },
+      "ThreadPendingInputItem": {
+        "properties": {
+          "index": {
+            "format": "uint32",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "text"
+        ],
+        "type": "object"
+      },
+      "ThreadPendingInputReadParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "threadId"
+        ],
+        "title": "ThreadPendingInputReadParams",
+        "type": "object"
+      },
+      "ThreadPendingInputReadResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "pendingInput": {
+            "items": {
+              "$ref": "#/definitions/v2/ThreadPendingInputItem"
+            },
+            "type": "array"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pendingInput",
+          "threadId"
+        ],
+        "title": "ThreadPendingInputReadResponse",
+        "type": "object"
+      },
+      "ThreadPendingInputUpdatedNotification": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "pendingInput": {
+            "items": {
+              "$ref": "#/definitions/v2/ThreadPendingInputItem"
+            },
+            "type": "array"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pendingInput",
+          "threadId"
+        ],
+        "title": "ThreadPendingInputUpdatedNotification",
         "type": "object"
       },
       "ThreadReadParams": {

@@ -288,11 +288,53 @@
 }
 
 .workspace-chat__bubble-status {
-  display: inline-flex;
-  align-items: center;
+  display: inline-grid;
+  grid-template-areas: "icon";
+  place-items: center;
+  width: 14px;
+  height: 14px;
   margin-left: 0.4rem;
-  font-size: 11px;
-  line-height: 1;
+  vertical-align: middle;
+  color: var(--muted);
+  transition:
+    color 180ms ease,
+    opacity 180ms ease,
+    transform 180ms ease,
+    filter 180ms ease;
+}
+
+.workspace-chat__bubble-status--running {
+  color: color-mix(in srgb, var(--muted) 90%, var(--text));
+}
+
+.workspace-chat__bubble-status--completed {
+  color: var(--info);
+}
+
+.workspace-chat__bubble-status--failed,
+.workspace-chat__bubble-status--interrupted {
+  color: var(--danger);
+}
+
+.workspace-chat__bubble-status-icon {
+  grid-area: icon;
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+  transform: translateY(1px) scale(0.92);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.workspace-chat__bubble-status-icon.is-active {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 .workspace-chat__steps-toggle {
@@ -638,7 +680,17 @@
 .workspace-chat__composer {
   border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
   position: relative;
-  padding: 8px 0;
+  padding: 0 0 8px 0;
+}
+
+.workspace-chat__composer--attached {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.workspace-chat__composer--stacked {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .workspace-command-control__backdrop {
@@ -781,6 +833,11 @@
     0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
+.workspace-chat__composer-row--stacked {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
 .workspace-chat__composer-row:focus-within {
   border-color: color-mix(in srgb, var(--accent) 42%, transparent);
   box-shadow:
@@ -903,6 +960,185 @@
   color: var(--muted);
   font-weight: 500;
   white-space: nowrap;
+}
+
+.workspace-chat__composer-shell {
+  margin-bottom: 8px;
+  display: grid;
+  gap: 0;
+}
+
+.workspace-chat__composer-shell--stacked {
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 16px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
+}
+
+.workspace-chat__queue-drawer {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card) 96%, transparent),
+    color-mix(in srgb, var(--secondary) 92%, transparent)
+  );
+}
+
+.workspace-chat__queue-drawer--stacked {
+  border-radius: 0;
+}
+
+.workspace-chat__queue-drawer-header--stacked {
+  border-radius: 0;
+}
+
+.workspace-chat__queue-drawer-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  padding: 10px 12px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.workspace-chat__queue-drawer-header:hover {
+  background: color-mix(in srgb, var(--panel-hover) 74%, transparent);
+}
+
+.workspace-chat__queue-drawer-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.workspace-chat__queue-drawer-title {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workspace-chat__queue-drawer-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.workspace-chat__queue-drawer-count {
+  min-width: 24px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.workspace-chat__queue-drawer-chevron {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 180ms ease;
+}
+
+.workspace-chat__queue-drawer-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.workspace-chat__queue-drawer-body {
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.workspace-chat__queue-drawer-body--stacked {
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.workspace-chat__queue-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--card) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
+}
+
+.workspace-chat__queue-item-status {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--secondary) 88%, transparent);
+}
+
+.workspace-chat__queue-item-status svg {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.workspace-chat__queue-item-body {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.workspace-chat__queue-item-text {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.workspace-chat__queue-item-subtitle {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.workspace-chat__queue-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workspace-chat__queue-item-action {
+  border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.workspace-chat__queue-item-action:hover {
+  background: color-mix(in srgb, var(--panel-hover) 76%, transparent);
+}
+
+.workspace-chat__queue-item-action--danger {
+  color: var(--danger);
 }
 
 .workspace-request {

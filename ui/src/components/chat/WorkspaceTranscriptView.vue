@@ -43,6 +43,13 @@ type TranscriptStatusChip = {
   tone: "info" | "warning" | "error" | "muted";
 };
 
+type BubbleStatusState = "running" | "completed" | "failed" | "interrupted";
+
+type BubbleStatus = {
+  state: BubbleStatusState;
+  label: string;
+};
+
 type TurnLike = TranscriptTurn | LiveTranscriptTurn;
 type ItemLike = TranscriptItem | LiveTranscriptItem;
 type UserItemLike = Extract<ItemLike, { kind: "user" }>;
@@ -385,27 +392,32 @@ function systemAvatarStyle() {
   };
 }
 
-function bubbleStatus(
-  turn: TurnLike,
-  isLive: boolean,
-): {
-  icon: string;
-  label: string;
-} {
-  if (isLive || turn.status === "inProgress") {
-    return { icon: "✓✓", label: "Working" };
-  }
+function bubbleStatus(turn: TurnLike, isLive: boolean): BubbleStatus {
   if (turn.status === "failed") {
-    return { icon: "!", label: "Failed" };
+    return { state: "failed", label: "Failed" };
   }
   if (turn.status === "interrupted") {
-    return { icon: "!", label: "Interrupted" };
+    return { state: "interrupted", label: "Interrupted" };
   }
-  return { icon: "✓", label: "Sent" };
+  if (isLive) {
+    return { state: "running", label: "Working" };
+  }
+  if (turn.status === "completed") {
+    return { state: "completed", label: "Completed" };
+  }
+  return { state: "running", label: "Working" };
 }
 
-function showBubbleStatus(): boolean {
-  return true;
+function bubbleStatusClass(status: BubbleStatus): string {
+  return `workspace-chat__bubble-status--${status.state}`;
+}
+
+function isDoubleTickStatus(status: BubbleStatus): boolean {
+  return status.state === "running" || status.state === "completed";
+}
+
+function isErrorStatus(status: BubbleStatus): boolean {
+  return status.state === "failed" || status.state === "interrupted";
 }
 
 function renderMessageMarkdown(text: string): string {
@@ -895,11 +907,38 @@ onBeforeUnmount(() => {
                     {{ item.text }}
                   </span>
                   <span
-                    v-if="showBubbleStatus()"
                     class="workspace-chat__bubble-status"
+                    :class="
+                      bubbleStatusClass(bubbleStatus(entry.turn, entry.isLive))
+                    "
                     :title="bubbleStatus(entry.turn, entry.isLive).label"
                   >
-                    {{ bubbleStatus(entry.turn, entry.isLive).icon }}
+                    <svg
+                      class="workspace-chat__bubble-status-icon workspace-chat__bubble-status-icon--double"
+                      :class="{
+                        'is-active': isDoubleTickStatus(
+                          bubbleStatus(entry.turn, entry.isLive),
+                        ),
+                      }"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <path d="M2.5 8.5L5.5 11.5L10.5 4.5"></path>
+                      <path d="M6.5 8.5L9.5 11.5L14 5.5"></path>
+                    </svg>
+                    <svg
+                      v-if="
+                        isErrorStatus(bubbleStatus(entry.turn, entry.isLive))
+                      "
+                      class="workspace-chat__bubble-status-icon workspace-chat__bubble-status-icon--error is-active"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <path d="M8 3.5v6"></path>
+                      <path d="M8 11.5h.01"></path>
+                    </svg>
                   </span>
                 </div>
               </div>

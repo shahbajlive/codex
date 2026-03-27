@@ -129,6 +129,14 @@ impl CodexThread {
         self.codex.session.token_info().await
     }
 
+    pub async fn pending_input_snapshot(&self) -> Vec<ResponseInputItem> {
+        self.codex.session.pending_input_snapshot().await
+    }
+
+    pub async fn delete_pending_input_at(&self, index: usize) -> Option<ResponseInputItem> {
+        self.codex.session.remove_pending_input_at(index).await
+    }
+
     async fn inject_message_without_turn(&self, role: &str, message: String) {
         let pending_item = ResponseInputItem::Message {
             role: role.to_string(),

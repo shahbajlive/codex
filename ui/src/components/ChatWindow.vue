@@ -8,6 +8,7 @@ import {
 } from "../lib/transcript";
 import { formatTime, formatTokenCount, truncate } from "../lib/format";
 import type { WorkspaceAgentRow } from "../stores/chat";
+import type { WorkspaceQueuedMessage } from "../stores/chat";
 import type { WorkspacePendingRequest } from "../stores/commands";
 import WorkspaceCommandControl from "./chat/WorkspaceCommandControl.vue";
 import WorkspaceComposer from "./chat/WorkspaceComposer.vue";
@@ -27,6 +28,7 @@ const props = defineProps<{
   restoredDraft: string | null;
   restoredDraftVersion: number;
   pendingUserDraft: string | null;
+  queuedMessages: WorkspaceQueuedMessage[];
   statusMessage: string | null;
   statusTone: "info" | "warning" | "error" | null;
   activeTurnId: string | null;
@@ -50,6 +52,7 @@ const emit = defineEmits<{
   send: [message: string];
   interrupt: [];
   openConversation: [];
+  deleteQueuedMessage: [messageId: string];
   setCollapseOverride: [key: string, expanded: boolean | string];
   setCollapseOverrides: [updates: Record<string, boolean | string>];
   toggleSidebar: [];
@@ -453,6 +456,22 @@ function submit() {
   draft.value = "";
 }
 
+function handleEditQueuedMessage(messageId: string) {
+  const queuedMessage = props.queuedMessages.find(
+    (message) => message.id === messageId,
+  );
+  if (!queuedMessage) {
+    return;
+  }
+
+  draft.value = queuedMessage.text;
+  emit("deleteQueuedMessage", messageId);
+}
+
+function handleDeleteQueuedMessage(messageId: string) {
+  emit("deleteQueuedMessage", messageId);
+}
+
 function applySlashCommand(command: string) {
   draft.value = command;
 }
@@ -764,11 +783,14 @@ onMounted(() => {
         :active-turn-id="activeTurnId"
         :composer-model-usage-line="composerModelUsageLine"
         :composer-meta="composerMeta"
+        :queued-messages="queuedMessages"
         @update-draft="draft = $event"
         @send="submit"
         @interrupt="$emit('interrupt')"
         @attach-mention="applySlashCommand('/mention ')"
         @composer-keydown="handleComposerKeydown"
+        @edit-queued-message="handleEditQueuedMessage"
+        @delete-queued-message="handleDeleteQueuedMessage"
       />
 
       <WorkspaceCommandControl

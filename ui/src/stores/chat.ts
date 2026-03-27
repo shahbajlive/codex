@@ -4,6 +4,7 @@ import type {
   CodexNotification,
   Model,
   Thread,
+  ThreadPendingInputItem,
   ThreadTokenUsage,
 } from "../lib/protocol";
 import {
@@ -36,6 +37,11 @@ export type WorkspaceAgentRow = {
   threadId: string | null;
   updatedAt: number;
   preview: string;
+};
+
+export type WorkspaceQueuedMessage = {
+  id: string;
+  text: string;
 };
 
 export const INTERRUPT_RECONCILE_DELAY_MS = 2500;
@@ -90,6 +96,7 @@ export const useChatStore = defineStore("chat", {
     statusTone: null as "info" | "warning" | "error" | null,
     activeTurnId: null as string | null,
     pendingUserDraft: null as string | null,
+    pendingInputByThreadId: {} as Record<string, ThreadPendingInputItem[]>,
     restoredDraft: null as string | null,
     restoredDraftVersion: 0,
     attachedThreadId: null as string | null,
@@ -143,6 +150,19 @@ export const useChatStore = defineStore("chat", {
       );
       return `${modelName} · ${consumed}/${formatTokenCount(capacity)}`;
     },
+
+    queuedMessages(state): WorkspaceQueuedMessage[] {
+      if (!state.selectedThreadId) {
+        return [];
+      }
+
+      const pendingInput =
+        state.pendingInputByThreadId[state.selectedThreadId] ?? [];
+      return pendingInput.map((item) => ({
+        id: String(item.index),
+        text: item.text,
+      }));
+    },
   },
 
   actions: {
@@ -195,6 +215,21 @@ export const useChatStore = defineStore("chat", {
         }
       }
       this.agentThreads = remainingThreads;
+      if (this.pendingInputByThreadId[threadId]) {
+        const next = { ...this.pendingInputByThreadId };
+        delete next[threadId];
+        this.pendingInputByThreadId = next;
+      }
+    },
+
+    setPendingInputSnapshot(
+      threadId: string,
+      pendingInput: ThreadPendingInputItem[],
+    ) {
+      this.pendingInputByThreadId = {
+        ...this.pendingInputByThreadId,
+        [threadId]: pendingInput,
+      };
     },
 
     applyThreadSnapshot(thread: Thread, attach = true) {
@@ -372,6 +407,7 @@ export const useChatStore = defineStore("chat", {
           return notification.params.turnId;
         case "thread/tokenUsage/updated":
         case "thread/started":
+        case "thread/pendingInput/updated":
           return null;
       }
     },
@@ -637,25 +673,28 @@ export const useChatStore = defineStore("chat", {
       }
     },
 
-    async sendMessage(message: string) {
+    async sendMessage(message: string): Promise<boolean> {
       const client = clientRef.client;
       if (!client || !this.getSelectedAgentId()) {
-        return;
+        return false;
       }
 
       const trimmed = message.trim();
+      if (!trimmed) {
+        return false;
+      }
 
       try {
         this.busy = true;
         this.statusMessage = null;
         this.statusTone = null;
         if (await this.handleSlashCommand(trimmed)) {
-          return;
+          return true;
         }
 
         let threadId = await this.ensureSelectedThread();
         if (!threadId) {
-          return;
+          return false;
         }
 
         threadId = await this.attachThread(threadId);
@@ -680,12 +719,15 @@ export const useChatStore = defineStore("chat", {
           this.activeTurnId,
         );
         this.statusTone = this.statusMessage ? "info" : null;
+        await this.refreshPendingInput(threadId);
         this.refreshActiveTurnReconcileLoop();
+        return true;
       } catch (error) {
         this.setStatus(
           error instanceof Error ? error.message : String(error),
           "error",
         );
+        return false;
       } finally {
         this.busy = false;
       }
@@ -819,6 +861,7 @@ export const useChatStore = defineStore("chat", {
           this.activeTurnId,
         );
         this.statusTone = this.statusMessage ? "info" : null;
+        await this.refreshPendingInput(threadId);
       } catch (error) {
         if (this.isStaleThreadError(error)) {
           try {
@@ -831,6 +874,7 @@ export const useChatStore = defineStore("chat", {
               this.activeTurnId,
             );
             this.statusTone = this.statusMessage ? "info" : null;
+            await this.refreshPendingInput(threadId);
             return;
           } catch {
             // Continue with stale-thread fallback below.
@@ -846,6 +890,40 @@ export const useChatStore = defineStore("chat", {
       } finally {
         this.refreshActiveTurnReconcileLoop();
         this.busy = false;
+      }
+    },
+
+    async refreshPendingInput(threadId: string) {
+      const client = clientRef.client;
+      if (!client) {
+        return;
+      }
+
+      try {
+        const response = await client.readThreadPendingInput(threadId);
+        this.setPendingInputSnapshot(threadId, response.pendingInput);
+      } catch {
+        this.setPendingInputSnapshot(threadId, []);
+      }
+    },
+
+    async deleteQueuedMessage(messageId: string) {
+      const client = clientRef.client;
+      const threadId = this.selectedThreadId;
+      if (!client || !threadId) {
+        return;
+      }
+
+      const index = Number.parseInt(messageId, 10);
+      if (!Number.isFinite(index)) {
+        return;
+      }
+
+      try {
+        const response = await client.deleteThreadPendingInput(threadId, index);
+        this.setPendingInputSnapshot(threadId, response.pendingInput);
+      } catch {
+        await this.refreshPendingInput(threadId);
       }
     },
 
@@ -964,6 +1042,13 @@ export const useChatStore = defineStore("chat", {
         };
       }
 
+      if (notification.method === "thread/pendingInput/updated") {
+        this.setPendingInputSnapshot(
+          notification.params.threadId,
+          notification.params.pendingInput,
+        );
+      }
+
       try {
         if (
           selectedThreadId &&
@@ -1057,6 +1142,7 @@ export const useChatStore = defineStore("chat", {
           this.statusMessage = null;
           this.statusTone = null;
         }
+        void this.refreshPendingInput(notification.params.threadId);
       }
 
       if (notification.method === "turn/completed") {
@@ -1086,6 +1172,7 @@ export const useChatStore = defineStore("chat", {
           this.activeTurnId = null;
           this.refreshTranscriptView();
         }
+        void this.refreshPendingInput(notification.params.threadId);
       }
 
       this.refreshActiveTurnReconcileLoop();

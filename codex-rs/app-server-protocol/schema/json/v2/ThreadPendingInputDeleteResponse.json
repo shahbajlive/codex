@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ThreadPendingInputItem": {
+      "properties": {
+        "index": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "text"
+      ],
+      "type": "object"
+    }
+  },
+  "properties": {
+    "pendingInput": {
+      "items": {
+        "$ref": "#/definitions/ThreadPendingInputItem"
+      },
+      "type": "array"
+    },
+    "threadId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "pendingInput",
+    "threadId"
+  ],
+  "title": "ThreadPendingInputDeleteResponse",
+  "type": "object"
+}

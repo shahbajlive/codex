@@ -302,6 +302,12 @@ export type { ThreadMetadataGitInfoUpdateParams } from "./ThreadMetadataGitInfoU
 export type { ThreadMetadataUpdateParams } from "./ThreadMetadataUpdateParams";
 export type { ThreadMetadataUpdateResponse } from "./ThreadMetadataUpdateResponse";
 export type { ThreadNameUpdatedNotification } from "./ThreadNameUpdatedNotification";
+export type { ThreadPendingInputDeleteParams } from "./ThreadPendingInputDeleteParams";
+export type { ThreadPendingInputDeleteResponse } from "./ThreadPendingInputDeleteResponse";
+export type { ThreadPendingInputItem } from "./ThreadPendingInputItem";
+export type { ThreadPendingInputReadParams } from "./ThreadPendingInputReadParams";
+export type { ThreadPendingInputReadResponse } from "./ThreadPendingInputReadResponse";
+export type { ThreadPendingInputUpdatedNotification } from "./ThreadPendingInputUpdatedNotification";
 export type { ThreadReadParams } from "./ThreadReadParams";
 export type { ThreadReadResponse } from "./ThreadReadResponse";
 export type { ThreadRealtimeAudioChunk } from "./ThreadRealtimeAudioChunk";

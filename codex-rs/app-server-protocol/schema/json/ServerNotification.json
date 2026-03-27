@@ -2970,6 +2970,41 @@
       ],
       "type": "object"
     },
+    "ThreadPendingInputItem": {
+      "properties": {
+        "index": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "text"
+      ],
+      "type": "object"
+    },
+    "ThreadPendingInputUpdatedNotification": {
+      "properties": {
+        "pendingInput": {
+          "items": {
+            "$ref": "#/definitions/ThreadPendingInputItem"
+          },
+          "type": "array"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pendingInput",
+        "threadId"
+      ],
+      "type": "object"
+    },
     "ThreadRealtimeAudioChunk": {
       "description": "EXPERIMENTAL - thread realtime audio chunk.",
       "properties": {
@@ -3913,6 +3948,26 @@
         "params"
       ],
       "title": "Thread/name/updatedNotification",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "method": {
+          "enum": [
+            "thread/pendingInput/updated"
+          ],
+          "title": "Thread/pendingInput/updatedNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ThreadPendingInputUpdatedNotification"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "Thread/pendingInput/updatedNotification",
       "type": "object"
     },
     {

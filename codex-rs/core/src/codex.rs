@@ -3958,6 +3958,28 @@ impl Session {
         }
     }
 
+    pub async fn pending_input_snapshot(&self) -> Vec<ResponseInputItem> {
+        let active = self.active_turn.lock().await;
+        match active.as_ref() {
+            Some(at) => {
+                let ts = at.turn_state.lock().await;
+                ts.pending_input_snapshot()
+            }
+            None => Vec::with_capacity(0),
+        }
+    }
+
+    pub async fn remove_pending_input_at(&self, index: usize) -> Option<ResponseInputItem> {
+        let mut active = self.active_turn.lock().await;
+        match active.as_mut() {
+            Some(at) => {
+                let mut ts = at.turn_state.lock().await;
+                ts.remove_pending_input_at(index)
+            }
+            None => None,
+        }
+    }
+
     pub async fn has_pending_input(&self) -> bool {
         let active = self.active_turn.lock().await;
         match active.as_ref() {

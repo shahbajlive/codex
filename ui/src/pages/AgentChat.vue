@@ -33,6 +33,7 @@ const {
   modelLabel,
   composerModelUsageLine,
   pendingRequest,
+  queuedMessages,
   pendingUserDraft,
   restoredDraft,
   restoredDraftVersion,
@@ -147,6 +148,7 @@ watch(selectedAgentId, async (agentId, previousAgentId) => {
       :collapse-overrides="collapsedItemExpandedByKey"
       :composer-model-usage-line="composerModelUsageLine"
       :pending-request="pendingRequest"
+      :queued-messages="queuedMessages"
       :pending-user-draft="pendingUserDraft"
       :restored-draft="restoredDraft"
       :restored-draft-version="restoredDraftVersion"
@@ -163,6 +165,7 @@ watch(selectedAgentId, async (agentId, previousAgentId) => {
       @reject-request="workspaceStore.rejectPendingRequest"
       @send="workspaceStore.sendMessage"
       @interrupt="workspaceStore.interruptActiveTurn"
+      @delete-queued-message="workspaceStore.deleteQueuedMessage"
       @set-collapse-override="workspaceStore.setCollapsedItemExpanded"
       @set-collapse-overrides="workspaceStore.mergeCollapsedItemExpanded"
       @open-conversation="openSelectedConversation"
