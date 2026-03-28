@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import WorkspaceTranscriptView from "./WorkspaceTranscriptView.vue";
 import type { TranscriptTurn } from "../../lib/transcript";
 
-const transcript: TranscriptTurn[] = [
+const completedTranscript: TranscriptTurn[] = [
   {
     id: "turn_1",
     status: "completed",
@@ -32,6 +32,19 @@ const transcript: TranscriptTurn[] = [
   },
 ];
 
+const liveTranscriptTurn = {
+  id: "turn_live",
+  status: "inProgress",
+  error: null,
+  items: [
+    {
+      id: "item_u",
+      kind: "user",
+      text: "/status",
+    },
+  ],
+};
+
 const scrollTo = vi.fn();
 
 beforeEach(() => {
@@ -54,7 +67,7 @@ describe("WorkspaceTranscriptView", () => {
         selectedAgentName: "Developer Lead",
         selectedAgentColor: null,
         selectedThreadId: "turn_1",
-        committedTranscript: transcript,
+        committedTranscript: completedTranscript,
         liveTranscriptTurn: null,
         activeTurnId: null,
         pendingUserDraft: null,
@@ -84,7 +97,7 @@ describe("WorkspaceTranscriptView", () => {
         selectedAgentName: "Developer Lead",
         selectedAgentColor: null,
         selectedThreadId: "turn_1",
-        committedTranscript: transcript,
+        committedTranscript: completedTranscript,
         liveTranscriptTurn: null,
         activeTurnId: null,
         pendingUserDraft: null,
@@ -110,5 +123,69 @@ describe("WorkspaceTranscriptView", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: "auto" });
+  });
+
+  it("shows a double tick while the live turn is running", () => {
+    const wrapper = mount(WorkspaceTranscriptView, {
+      global: {
+        plugins: [createPinia()],
+      },
+      props: {
+        selectedAgentId: "agent-1",
+        selectedAgentName: "Developer Lead",
+        selectedAgentColor: null,
+        selectedThreadId: "turn_live",
+        committedTranscript: completedTranscript,
+        liveTranscriptTurn,
+        activeTurnId: "turn_live",
+        pendingUserDraft: null,
+        collapseOverrides: {},
+        statusMessage: null,
+        statusTone: null,
+      },
+    });
+
+    expect(
+      wrapper.find(".workspace-chat__bubble-status--running").exists(),
+    ).toBe(true);
+    expect(
+      wrapper
+        .find(
+          ".workspace-chat__bubble-status--running .workspace-chat__bubble-status-icon--double.is-active",
+        )
+        .exists(),
+    ).toBe(true);
+  });
+
+  it("shows a completed double tick after the turn finishes", () => {
+    const wrapper = mount(WorkspaceTranscriptView, {
+      global: {
+        plugins: [createPinia()],
+      },
+      props: {
+        selectedAgentId: "agent-1",
+        selectedAgentName: "Developer Lead",
+        selectedAgentColor: null,
+        selectedThreadId: "turn_1",
+        committedTranscript: completedTranscript,
+        liveTranscriptTurn: null,
+        activeTurnId: null,
+        pendingUserDraft: null,
+        collapseOverrides: {},
+        statusMessage: null,
+        statusTone: null,
+      },
+    });
+
+    expect(
+      wrapper.find(".workspace-chat__bubble-status--completed").exists(),
+    ).toBe(true);
+    expect(
+      wrapper
+        .find(
+          ".workspace-chat__bubble-status--completed .workspace-chat__bubble-status-icon--double.is-active",
+        )
+        .exists(),
+    ).toBe(true);
   });
 });

@@ -35,6 +35,7 @@ use codex_app_server_protocol::ServerRequest;
 use codex_app_server_protocol::ServerRequestResolvedNotification;
 use codex_app_server_protocol::TextElement;
 use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadPendingInputUpdatedNotification;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
 use codex_app_server_protocol::TurnCompletedNotification;
@@ -129,6 +130,16 @@ async fn turn_start_sends_originator_header() -> Result<()> {
         mcp.read_stream_until_response_message(RequestId::Integer(turn_req)),
     )
     .await??;
+
+    let pending_input_update = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("thread/pendingInput/updated"),
+    )
+    .await??;
+    let params = pending_input_update.params.expect("pending input params");
+    let pending_input_update: ThreadPendingInputUpdatedNotification =
+        serde_json::from_value(params).expect("deserialize pending input notification");
+    assert!(pending_input_update.pending_input.is_empty());
 
     timeout(
         DEFAULT_READ_TIMEOUT,

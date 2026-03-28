@@ -296,6 +296,7 @@ pub(crate) async fn apply_bespoke_event_handling(
                 outgoing
                     .send_server_notification(ServerNotification::TurnStarted(notification))
                     .await;
+                emit_pending_input_updated(conversation_id, Some(&conversation), &outgoing).await;
             }
         }
         EventMsg::TurnComplete(_ev) => {

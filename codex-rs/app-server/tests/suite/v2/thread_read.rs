@@ -74,7 +74,7 @@ async fn thread_read_returns_summary_without_turns() -> Result<()> {
         mcp.read_stream_until_response_message(RequestId::Integer(read_id)),
     )
     .await??;
-    let ThreadReadResponse { thread } = to_response::<ThreadReadResponse>(read_resp)?;
+    let ThreadReadResponse { thread, .. } = to_response::<ThreadReadResponse>(read_resp)?;
 
     assert_eq!(thread.id, conversation_id);
     assert_eq!(thread.preview, preview);
@@ -129,7 +129,7 @@ async fn thread_read_can_include_turns() -> Result<()> {
         mcp.read_stream_until_response_message(RequestId::Integer(read_id)),
     )
     .await??;
-    let ThreadReadResponse { thread } = to_response::<ThreadReadResponse>(read_resp)?;
+    let ThreadReadResponse { thread, .. } = to_response::<ThreadReadResponse>(read_resp)?;
 
     assert_eq!(thread.turns.len(), 1);
     let turn = &thread.turns[0];
@@ -190,7 +190,7 @@ async fn thread_read_loaded_thread_returns_precomputed_path_before_materializati
         mcp.read_stream_until_response_message(RequestId::Integer(read_id)),
     )
     .await??;
-    let ThreadReadResponse { thread: read } = to_response::<ThreadReadResponse>(read_resp)?;
+    let ThreadReadResponse { thread: read, .. } = to_response::<ThreadReadResponse>(read_resp)?;
 
     assert_eq!(read.id, thread.id);
     assert_eq!(read.path, Some(thread_path));
@@ -258,7 +258,7 @@ async fn thread_name_set_is_reflected_in_read_list_and_resume() -> Result<()> {
     )
     .await??;
     let read_result = read_resp.result.clone();
-    let ThreadReadResponse { thread } = to_response::<ThreadReadResponse>(read_resp)?;
+    let ThreadReadResponse { thread, .. } = to_response::<ThreadReadResponse>(read_resp)?;
     assert_eq!(thread.id, conversation_id);
     assert_eq!(thread.name.as_deref(), Some(new_name));
     let thread_json = read_result
@@ -468,7 +468,7 @@ async fn thread_read_reports_system_error_idle_flag_after_failed_turn() -> Resul
         mcp.read_stream_until_response_message(RequestId::Integer(read_id)),
     )
     .await??;
-    let ThreadReadResponse { thread } = to_response::<ThreadReadResponse>(read_resp)?;
+    let ThreadReadResponse { thread, .. } = to_response::<ThreadReadResponse>(read_resp)?;
 
     assert_eq!(thread.status, ThreadStatus::SystemError,);
 

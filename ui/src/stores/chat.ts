@@ -685,6 +685,7 @@ export const useChatStore = defineStore("chat", {
       }
 
       try {
+        const hadActiveTurn = this.activeTurnId !== null;
         this.busy = true;
         this.statusMessage = null;
         this.statusTone = null;
@@ -704,7 +705,7 @@ export const useChatStore = defineStore("chat", {
         const { turn } = started;
 
         this.activeTurnId = turn.id;
-        this.pendingUserDraft = trimmed;
+        this.pendingUserDraft = hadActiveTurn ? null : trimmed;
         this.replaceThread(
           attachTurn(this.getSelectedThread(this) as Thread, turn) as Thread,
         );

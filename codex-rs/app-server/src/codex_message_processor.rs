@@ -3180,7 +3180,19 @@ impl CodexMessageProcessor {
             agent_id,
         } = params;
 
-        let public_thread_id = None;
+        let public_thread_id = match agent_id.as_ref() {
+            Some(agent_id) => match ContactsConfig::load(&self.config.codex_home) {
+                Ok(contacts) => contacts
+                    .get(agent_id)
+                    .and_then(|record| record.public_thread_id.as_ref())
+                    .and_then(|id| ThreadId::from_string(id).ok()),
+                Err(error) => {
+                    warn!("failed to load contacts for thread list filtering: {error}");
+                    None
+                }
+            },
+            None => None,
+        };
 
         let requested_page_size = limit
             .map(|value| value as usize)

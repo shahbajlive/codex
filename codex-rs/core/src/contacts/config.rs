@@ -36,8 +36,13 @@ pub struct ContactsConfig {
 
 impl ContactsConfig {
     pub fn add(&mut self, id: String) {
-        self.contacts
-            .insert(id.clone(), ContactRecord { agent_id: id });
+        self.contacts.insert(
+            id.clone(),
+            ContactRecord {
+                agent_id: id,
+                public_thread_id: None,
+            },
+        );
     }
 
     pub fn remove(&mut self, id: &str) -> bool {
@@ -68,6 +73,7 @@ impl ContactsConfig {
             .map(|r| {
                 json!({
                     "id": r.agent_id,
+                    "publicThreadId": r.public_thread_id,
                 })
             })
             .collect();
@@ -78,6 +84,7 @@ impl ContactsConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContactRecord {
     pub agent_id: String,
+    pub public_thread_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -118,12 +125,29 @@ impl ContactsConfig {
         match file {
             ContactsFile::Object { contacts: entries } => {
                 for entry in entries {
-                    contacts.insert(entry.id.clone(), ContactRecord { agent_id: entry.id });
+                    contacts.insert(
+                        entry.id.clone(),
+                        ContactRecord {
+                            agent_id: entry.id,
+                            public_thread_id: entry.public_thread_id,
+                        },
+                    );
                 }
             }
             ContactsFile::LegacyMap(map) => {
-                for (agent_id, _value) in map {
-                    contacts.insert(agent_id.clone(), ContactRecord { agent_id });
+                for (agent_id, value) in map {
+                    let public_thread_id = value
+                        .as_object()
+                        .and_then(|object| object.get("publicThreadId"))
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string);
+                    contacts.insert(
+                        agent_id.clone(),
+                        ContactRecord {
+                            agent_id,
+                            public_thread_id,
+                        },
+                    );
                 }
             }
         }
@@ -188,6 +212,25 @@ mod tests {
         let config = ContactsConfig::load(dir.path()).expect("load contacts");
         assert!(config.get("coder").is_some());
         assert!(config.get("reviewer").is_some());
+    }
+
+    #[test]
+    fn load_structured_contacts_with_public_threads() {
+        let dir = temp_dir_with_contacts(
+            r#"{
+                contacts: [
+                    { id: "coder", publicThreadId: "67e55044-10b1-426f-9247-bb680e5fe0c8" },
+                    { id: "reviewer" }
+                ]
+            }"#,
+        );
+        let config = ContactsConfig::load(dir.path()).expect("load contacts");
+        assert_eq!(
+            config
+                .get("coder")
+                .and_then(|record| record.public_thread_id.as_deref()),
+            Some("67e55044-10b1-426f-9247-bb680e5fe0c8")
+        );
     }
 
     #[test]
