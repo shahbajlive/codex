@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "index": {
+      "format": "uint32",
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "text": {
+      "type": "string"
+    },
+    "threadId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "index",
+    "text",
+    "threadId"
+  ],
+  "title": "ThreadTurnQueueUpdateParams",
+  "type": "object"
+}

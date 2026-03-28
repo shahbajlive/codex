@@ -167,6 +167,14 @@ use codex_app_server_protocol::ThreadStartResponse;
 use codex_app_server_protocol::ThreadStartedNotification;
 use codex_app_server_protocol::ThreadStatus;
 use codex_app_server_protocol::ThreadTokenUsage;
+use codex_app_server_protocol::ThreadTurnQueueDeleteParams;
+use codex_app_server_protocol::ThreadTurnQueueDeleteResponse;
+use codex_app_server_protocol::ThreadTurnQueueItem;
+use codex_app_server_protocol::ThreadTurnQueueReadParams;
+use codex_app_server_protocol::ThreadTurnQueueReadResponse;
+use codex_app_server_protocol::ThreadTurnQueueUpdateParams;
+use codex_app_server_protocol::ThreadTurnQueueUpdateResponse;
+use codex_app_server_protocol::ThreadTurnQueueUpdatedNotification;
 use codex_app_server_protocol::ThreadUnarchiveParams;
 use codex_app_server_protocol::ThreadUnarchiveResponse;
 use codex_app_server_protocol::ThreadUnarchivedNotification;
@@ -747,6 +755,18 @@ impl CodexMessageProcessor {
             }
             ClientRequest::ThreadPendingInputDelete { request_id, params } => {
                 self.thread_pending_input_delete(to_connection_request_id(request_id), params)
+                    .await;
+            }
+            ClientRequest::ThreadTurnQueueRead { request_id, params } => {
+                self.thread_turn_queue_read(to_connection_request_id(request_id), params)
+                    .await;
+            }
+            ClientRequest::ThreadTurnQueueDelete { request_id, params } => {
+                self.thread_turn_queue_delete(to_connection_request_id(request_id), params)
+                    .await;
+            }
+            ClientRequest::ThreadTurnQueueUpdate { request_id, params } => {
+                self.thread_turn_queue_update(to_connection_request_id(request_id), params)
                     .await;
             }
             ClientRequest::ThreadShellCommand { request_id, params } => {
@@ -3542,6 +3562,122 @@ impl CodexMessageProcessor {
         }
     }
 
+    async fn thread_turn_queue_read(
+        &mut self,
+        request_id: ConnectionRequestId,
+        params: ThreadTurnQueueReadParams,
+    ) {
+        let ThreadTurnQueueReadParams { thread_id } = params;
+        let Some((thread_uuid, thread)) = self
+            .loaded_thread_for_pending_input(request_id.clone(), &thread_id)
+            .await
+        else {
+            return;
+        };
+
+        let queue = thread.turn_queue_snapshot().await;
+        let response = ThreadTurnQueueReadResponse {
+            thread_id: thread_uuid.to_string(),
+            queue: queue
+                .iter()
+                .enumerate()
+                .map(|(index, item)| ThreadTurnQueueItem {
+                    index: index as u32,
+                    text: Self::extract_text_from_input_item(item),
+                })
+                .collect(),
+        };
+        self.outgoing.send_response(request_id, response).await;
+    }
+
+    async fn thread_turn_queue_delete(
+        &mut self,
+        request_id: ConnectionRequestId,
+        params: ThreadTurnQueueDeleteParams,
+    ) {
+        let ThreadTurnQueueDeleteParams { thread_id, index } = params;
+        let Some((thread_uuid, thread)) = self
+            .loaded_thread_for_pending_input(request_id.clone(), &thread_id)
+            .await
+        else {
+            return;
+        };
+
+        let Some(_removed_item) = thread.remove_turn_queue_at(index as usize).await else {
+            self.send_invalid_request_error(
+                request_id,
+                format!("turn queue index {index} is out of range for thread {thread_uuid}"),
+            )
+            .await;
+            return;
+        };
+
+        let queue = thread.turn_queue_snapshot().await;
+        let response = ThreadTurnQueueDeleteResponse {
+            thread_id: thread_uuid.to_string(),
+            queue: queue
+                .iter()
+                .enumerate()
+                .map(|(index, item)| ThreadTurnQueueItem {
+                    index: index as u32,
+                    text: Self::extract_text_from_input_item(item),
+                })
+                .collect(),
+        };
+        self.outgoing.send_response(request_id, response).await;
+
+        if self.should_emit_pending_input_snapshot_updates() {
+            self.send_turn_queue_updated_notification(thread_uuid, thread)
+                .await;
+        }
+    }
+
+    async fn thread_turn_queue_update(
+        &mut self,
+        request_id: ConnectionRequestId,
+        params: ThreadTurnQueueUpdateParams,
+    ) {
+        let ThreadTurnQueueUpdateParams {
+            thread_id,
+            index,
+            text,
+        } = params;
+        let Some((thread_uuid, thread)) = self
+            .loaded_thread_for_pending_input(request_id.clone(), &thread_id)
+            .await
+        else {
+            return;
+        };
+
+        let Some(_) = thread.update_turn_queue_at(index as usize, text).await else {
+            self.send_invalid_request_error(
+                request_id,
+                format!("turn queue index {index} is out of range for thread {thread_uuid}"),
+            )
+            .await;
+            return;
+        };
+
+        let queue = thread.turn_queue_snapshot().await;
+        let response = ThreadTurnQueueUpdateResponse {
+            thread_id: thread_uuid.to_string(),
+            queue: queue
+                .iter()
+                .enumerate()
+                .map(|(index, item)| ThreadTurnQueueItem {
+                    index: index as u32,
+                    text: Self::extract_text_from_input_item(item),
+                })
+                .collect(),
+        };
+        self.outgoing.send_response(request_id, response).await;
+
+        if self.should_emit_pending_input_snapshot_updates() {
+            self.send_turn_queue_updated_notification(thread_uuid, thread)
+                .await;
+        }
+    }
+
     async fn loaded_thread_for_pending_input(
         &mut self,
         request_id: ConnectionRequestId,
@@ -3586,6 +3722,42 @@ impl CodexMessageProcessor {
         self.outgoing
             .send_server_notification(ServerNotification::ThreadPendingInputUpdated(notification))
             .await;
+    }
+
+    async fn send_turn_queue_updated_notification(
+        &self,
+        thread_id: ThreadId,
+        thread: Arc<codex_core::CodexThread>,
+    ) {
+        let queue = thread.turn_queue_snapshot().await;
+        let notification = ThreadTurnQueueUpdatedNotification {
+            thread_id: thread_id.to_string(),
+            queue: queue
+                .iter()
+                .enumerate()
+                .map(|(index, item)| ThreadTurnQueueItem {
+                    index: index as u32,
+                    text: Self::extract_text_from_input_item(item),
+                })
+                .collect(),
+        };
+        self.outgoing
+            .send_server_notification(ServerNotification::ThreadTurnQueueUpdated(notification))
+            .await;
+    }
+
+    fn extract_text_from_input_item(item: &ResponseInputItem) -> String {
+        match item {
+            codex_protocol::models::ResponseInputItem::Message { content, .. } => content
+                .iter()
+                .filter_map(|content_item| match content_item {
+                    codex_protocol::models::ContentItem::InputText { text } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(""),
+            _ => format!("{item:?}"),
+        }
     }
 
     fn snapshot_pending_input_items(items: &[ResponseInputItem]) -> Vec<ThreadPendingInputItem> {

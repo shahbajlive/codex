@@ -3271,6 +3271,41 @@
       ],
       "type": "object"
     },
+    "ThreadTurnQueueItem": {
+      "properties": {
+        "index": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "text"
+      ],
+      "type": "object"
+    },
+    "ThreadTurnQueueUpdatedNotification": {
+      "properties": {
+        "queue": {
+          "items": {
+            "$ref": "#/definitions/ThreadTurnQueueItem"
+          },
+          "type": "array"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "queue",
+        "threadId"
+      ],
+      "type": "object"
+    },
     "ThreadUnarchivedNotification": {
       "properties": {
         "threadId": {
@@ -3968,6 +4003,26 @@
         "params"
       ],
       "title": "Thread/pendingInput/updatedNotification",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "method": {
+          "enum": [
+            "thread/turnQueue/updated"
+          ],
+          "title": "Thread/turnQueue/updatedNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ThreadTurnQueueUpdatedNotification"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "Thread/turnQueue/updatedNotification",
       "type": "object"
     },
     {

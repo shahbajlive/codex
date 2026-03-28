@@ -133,6 +133,18 @@ impl CodexThread {
         self.codex.session.pending_input_snapshot().await
     }
 
+    pub async fn turn_queue_snapshot(&self) -> Vec<ResponseInputItem> {
+        self.codex.session.turn_queue_snapshot().await
+    }
+
+    pub async fn remove_turn_queue_at(&self, index: usize) -> Option<ResponseInputItem> {
+        self.codex.session.remove_turn_queue_at(index).await
+    }
+
+    pub async fn update_turn_queue_at(&self, index: usize, text: String) -> Option<()> {
+        self.codex.session.update_turn_queue_at(index, text).await
+    }
+
     pub async fn delete_pending_input_at(&self, index: usize) -> Option<ResponseInputItem> {
         self.codex.session.remove_pending_input_at(index).await
     }

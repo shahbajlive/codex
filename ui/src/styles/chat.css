@@ -1057,8 +1057,6 @@
 
 .workspace-chat__queue-drawer-body {
   display: grid;
-  gap: 8px;
-  padding: 8px 10px 10px;
   border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
 }
 
@@ -1071,7 +1069,6 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 8px;
   border-radius: 12px;
   background: color-mix(in srgb, var(--card) 86%, transparent);
   border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
@@ -1110,11 +1107,6 @@
   line-height: 1.4;
   color: var(--text);
   word-break: break-word;
-}
-
-.workspace-chat__queue-item-subtitle {
-  font-size: 10px;
-  color: var(--muted);
 }
 
 .workspace-chat__queue-item-actions {

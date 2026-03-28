@@ -21,6 +21,7 @@ use crate::protocol::ReviewDecision;
 use crate::protocol::TokenUsage;
 use crate::sandboxing::merge_permission_profiles;
 use crate::tasks::SessionTask;
+use crate::turn_queue::TurnQueue;
 use codex_protocol::models::PermissionProfile;
 
 /// Metadata about the currently running turn.
@@ -84,6 +85,7 @@ pub(crate) struct TurnState {
     granted_permissions: Option<PermissionProfile>,
     pub(crate) tool_calls: u64,
     pub(crate) token_usage_at_turn_start: TokenUsage,
+    pub(crate) turn_queue: TurnQueue,
 }
 
 impl TurnState {
@@ -208,6 +210,51 @@ impl TurnState {
 
     pub(crate) fn has_pending_input(&self) -> bool {
         !self.pending_input.is_empty()
+    }
+
+    // Turn queue methods
+    pub(crate) fn push_turn_queue(&mut self, item: ResponseInputItem) {
+        self.turn_queue.push(item);
+    }
+
+    pub(crate) fn pop_turn_queue(&mut self) -> Option<ResponseInputItem> {
+        self.turn_queue.pop()
+    }
+
+    pub(crate) fn peek_turn_queue(&self) -> Option<&ResponseInputItem> {
+        self.turn_queue.peek()
+    }
+
+    pub(crate) fn remove_turn_queue_at(&mut self, index: usize) -> Option<ResponseInputItem> {
+        self.turn_queue.remove_at(index)
+    }
+
+    pub(crate) fn update_turn_queue_at(&mut self, index: usize, content: String) -> Option<()> {
+        self.turn_queue.update_at(index, content)
+    }
+
+    pub(crate) fn clear_turn_queue(&mut self) {
+        self.turn_queue.clear();
+    }
+
+    pub(crate) fn turn_queue_len(&self) -> usize {
+        self.turn_queue.len()
+    }
+
+    pub(crate) fn has_turn_queue(&self) -> bool {
+        !self.turn_queue.is_empty()
+    }
+
+    pub(crate) fn turn_queue_items(&self) -> &[ResponseInputItem] {
+        self.turn_queue.items()
+    }
+
+    pub(crate) fn set_turn_queue(&mut self, queue: TurnQueue) {
+        self.turn_queue = queue;
+    }
+
+    pub(crate) fn take_turn_queue(&mut self) -> TurnQueue {
+        std::mem::take(&mut self.turn_queue)
     }
 
     pub(crate) fn record_granted_permissions(&mut self, permissions: PermissionProfile) {

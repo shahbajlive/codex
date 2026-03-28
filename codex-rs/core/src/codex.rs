@@ -49,6 +49,7 @@ use crate::stream_events_utils::raw_assistant_output_text_from_item;
 use crate::stream_events_utils::record_completed_response_item;
 use crate::truncate::TruncationPolicy;
 use crate::turn_metadata::TurnMetadataState;
+use crate::turn_queue::TurnQueue;
 use crate::util::error_or_panic;
 use async_channel::Receiver;
 use async_channel::Sender;
@@ -1947,6 +1948,9 @@ impl Session {
 
         // Start the watcher after SessionConfigured so it cannot emit earlier events.
         sess.start_file_watcher_listener();
+
+        // Load persisted turn queue from disk
+        sess.load_turn_queue().await;
         // Construct sandbox_state before MCP startup so it can be sent to each
         // MCP server immediately after it becomes ready (avoiding blocking).
         let sandbox_state = SandboxState {
@@ -3991,6 +3995,135 @@ impl Session {
         }
     }
 
+    // Turn queue methods - session-level persistence
+    pub async fn push_turn_queue(&self, item: ResponseInputItem) {
+        {
+            let mut state = self.state.lock().await;
+            state.push_turn_queue(item);
+        }
+        self.save_turn_queue().await;
+    }
+
+    pub async fn pop_turn_queue(&self) -> Option<ResponseInputItem> {
+        let result = {
+            let mut state = self.state.lock().await;
+            state.pop_turn_queue()
+        };
+        self.save_turn_queue().await;
+        result
+    }
+
+    pub async fn peek_turn_queue(&self) -> Option<ResponseInputItem> {
+        let state = self.state.lock().await;
+        state.peek_turn_queue().cloned()
+    }
+
+    pub async fn remove_turn_queue_at(&self, index: usize) -> Option<ResponseInputItem> {
+        let result = {
+            let mut state = self.state.lock().await;
+            state.remove_turn_queue_at(index)
+        };
+        self.save_turn_queue().await;
+        result
+    }
+
+    pub async fn update_turn_queue_at(&self, index: usize, content: String) -> Option<()> {
+        let result = {
+            let mut state = self.state.lock().await;
+            state.update_turn_queue_at(index, content)
+        };
+        self.save_turn_queue().await;
+        result
+    }
+
+    pub async fn clear_turn_queue(&self) {
+        {
+            let mut state = self.state.lock().await;
+            state.clear_turn_queue();
+        }
+        self.save_turn_queue().await;
+    }
+
+    pub async fn has_turn_queue(&self) -> bool {
+        let state = self.state.lock().await;
+        state.has_turn_queue()
+    }
+
+    pub async fn turn_queue_snapshot(&self) -> Vec<ResponseInputItem> {
+        let state = self.state.lock().await;
+        state.turn_queue_items().to_vec()
+    }
+
+    /// Get a snapshot of the turn queue without locking (for notifications).
+    pub fn turn_queue_snapshot_sync(&self) -> Vec<ResponseInputItem> {
+        self.state
+            .try_lock()
+            .map(|s| s.turn_queue_items().to_vec())
+            .unwrap_or_default()
+    }
+
+    /// Get conversation_id for persistence.
+    pub fn conversation_id(&self) -> ThreadId {
+        self.conversation_id
+    }
+
+    /// Get the turn queue file path for this session.
+    pub(crate) fn turn_queue_path(&self) -> Option<std::path::PathBuf> {
+        let codex_home = self
+            .state
+            .try_lock()
+            .ok()?
+            .session_configuration
+            .codex_home
+            .clone();
+        let conversation_id = self.conversation_id.to_string();
+        let queue_dir = codex_home.join(".codex").join("queue");
+        Some(queue_dir.join(format!("{}.json", conversation_id)))
+    }
+
+    /// Save the turn queue to disk.
+    pub(crate) async fn save_turn_queue(&self) {
+        let queue = self.turn_queue_snapshot_sync();
+        if queue.is_empty() {
+            return;
+        }
+        let Some(path) = self.turn_queue_path() else {
+            return;
+        };
+        if let Err(e) = tokio::fs::create_dir_all(path.parent().unwrap()).await {
+            tracing::warn!("failed to create queue directory: {}", e);
+            return;
+        }
+        if let Err(e) = tokio::fs::write(&path, serde_json::to_string_pretty(&queue).unwrap()).await
+        {
+            tracing::warn!("failed to save turn queue: {}", e);
+        }
+    }
+
+    /// Load the turn queue from disk.
+    pub(crate) async fn load_turn_queue(&self) {
+        let Some(path) = self.turn_queue_path() else {
+            return;
+        };
+        if !tokio::fs::try_exists(&path).await.unwrap_or(false) {
+            return;
+        };
+        match tokio::fs::read_to_string(&path).await {
+            Ok(content) => match serde_json::from_str::<Vec<ResponseInputItem>>(&content) {
+                Ok(items) => {
+                    let mut state = self.state.lock().await;
+                    state.set_turn_queue(TurnQueue::from_items(items));
+                }
+                Err(e) => {
+                    tracing::warn!("failed to parse turn queue: {}", e);
+                }
+            },
+            Err(e) => {
+                tracing::warn!("failed to read turn queue: {}", e);
+            }
+        }
+    }
+
     pub async fn list_resources(
         &self,
         server: &str,
@@ -4471,7 +4604,7 @@ fn submission_dispatch_span(sub: &Submission) -> tracing::Span {
 mod handlers {
     use crate::codex::Session;
     use crate::codex::SessionSettingsUpdate;
-    use crate::codex::SteerInputError;
+    use codex_protocol::models::ResponseInputItem;
 
     use crate::codex::spawn_review_thread;
     use crate::config::Config;
@@ -4615,10 +4748,20 @@ mod handlers {
             return;
         }
 
-        // Attempt to inject input into current task.
-        if let Err(SteerInputError::NoActiveTurn(items)) =
-            sess.steer_input(items, /*expected_turn_id*/ None).await
+        // Check if there's an active turn - if so, add to turn_queue
+        // Otherwise, spawn a new turn
+        if sess
+            .active_turn_context_and_cancellation_token()
+            .await
+            .is_some()
         {
+            // There's an active turn - add items to turn_queue
+            for item in items {
+                let response_item: ResponseInputItem = vec![item].into();
+                sess.push_turn_queue(response_item).await;
+            }
+        } else {
+            // No active turn - spawn a new task
             sess.refresh_mcp_servers_if_requested(&current_context)
                 .await;
             sess.spawn_task(

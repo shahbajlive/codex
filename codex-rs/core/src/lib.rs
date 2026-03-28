@@ -163,6 +163,7 @@ pub use rollout::sessions_root_for_agent;
 mod function_tool;
 mod state;
 mod tasks;
+mod turn_queue;
 mod user_shell_command;
 pub mod util;
 pub(crate) use codex_protocol::protocol;

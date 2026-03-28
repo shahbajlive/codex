@@ -300,6 +300,18 @@ client_request_definitions! {
         params: v2::ThreadPendingInputDeleteParams,
         response: v2::ThreadPendingInputDeleteResponse,
     },
+    ThreadTurnQueueRead => "thread/turnQueue/read" {
+        params: v2::ThreadTurnQueueReadParams,
+        response: v2::ThreadTurnQueueReadResponse,
+    },
+    ThreadTurnQueueDelete => "thread/turnQueue/delete" {
+        params: v2::ThreadTurnQueueDeleteParams,
+        response: v2::ThreadTurnQueueDeleteResponse,
+    },
+    ThreadTurnQueueUpdate => "thread/turnQueue/update" {
+        params: v2::ThreadTurnQueueUpdateParams,
+        response: v2::ThreadTurnQueueUpdateResponse,
+    },
     SkillsList => "skills/list" {
         params: v2::SkillsListParams,
         response: v2::SkillsListResponse,
@@ -949,6 +961,7 @@ server_notification_definitions! {
     SkillsChanged => "skills/changed" (v2::SkillsChangedNotification),
     ThreadNameUpdated => "thread/name/updated" (v2::ThreadNameUpdatedNotification),
     ThreadPendingInputUpdated => "thread/pendingInput/updated" (v2::ThreadPendingInputUpdatedNotification),
+    ThreadTurnQueueUpdated => "thread/turnQueue/updated" (v2::ThreadTurnQueueUpdatedNotification),
     ThreadTokenUsageUpdated => "thread/tokenUsage/updated" (v2::ThreadTokenUsageUpdatedNotification),
     TurnStarted => "turn/started" (v2::TurnStartedNotification),
     HookStarted => "hook/started" (v2::HookStartedNotification),

@@ -1,6 +1,7 @@
 //! Session-wide mutable state.
 
 use codex_protocol::models::PermissionProfile;
+use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -14,6 +15,7 @@ use crate::protocol::TokenUsageInfo;
 use crate::sandboxing::merge_permission_profiles;
 use crate::session_startup_prewarm::SessionStartupPrewarmHandle;
 use crate::truncate::TruncationPolicy;
+use crate::turn_queue::TurnQueue;
 use codex_protocol::protocol::TurnContextItem;
 
 /// Persistent, session-scoped state previously stored directly on `Session`.
@@ -33,6 +35,9 @@ pub(crate) struct SessionState {
     pub(crate) active_connector_selection: HashSet<String>,
     pub(crate) pending_session_start_source: Option<codex_hooks::SessionStartSource>,
     granted_permissions: Option<PermissionProfile>,
+    /// Queued user messages that will become separate turns.
+    /// Persists across turns and across app restarts.
+    pub(crate) turn_queue: TurnQueue,
 }
 
 impl SessionState {
@@ -51,6 +56,29 @@ impl SessionState {
             active_connector_selection: HashSet::new(),
             pending_session_start_source: None,
             granted_permissions: None,
+            turn_queue: TurnQueue::new(),
+        }
+    }
+
+    /// Create session state with a pre-loaded turn queue (e.g., restored from persistence).
+    pub(crate) fn new_with_turn_queue(
+        session_configuration: SessionConfiguration,
+        turn_queue: TurnQueue,
+    ) -> Self {
+        let history = ContextManager::new();
+        Self {
+            session_configuration,
+            history,
+            latest_rate_limits: None,
+            server_reasoning_included: false,
+            dependency_env: HashMap::new(),
+            mcp_dependency_prompted: HashSet::new(),
+            previous_turn_settings: None,
+            startup_prewarm: None,
+            active_connector_selection: HashSet::new(),
+            pending_session_start_source: None,
+            granted_permissions: None,
+            turn_queue,
         }
     }
 
@@ -213,6 +241,50 @@ impl SessionState {
 
     pub(crate) fn granted_permissions(&self) -> Option<PermissionProfile> {
         self.granted_permissions.clone()
+    }
+
+    pub(crate) fn push_turn_queue(&mut self, item: ResponseInputItem) {
+        self.turn_queue.push(item);
+    }
+
+    pub(crate) fn pop_turn_queue(&mut self) -> Option<ResponseInputItem> {
+        self.turn_queue.pop()
+    }
+
+    pub(crate) fn peek_turn_queue(&self) -> Option<&ResponseInputItem> {
+        self.turn_queue.peek()
+    }
+
+    pub(crate) fn remove_turn_queue_at(&mut self, index: usize) -> Option<ResponseInputItem> {
+        self.turn_queue.remove_at(index)
+    }
+
+    pub(crate) fn update_turn_queue_at(&mut self, index: usize, content: String) -> Option<()> {
+        self.turn_queue.update_at(index, content)
+    }
+
+    pub(crate) fn clear_turn_queue(&mut self) {
+        self.turn_queue.clear();
+    }
+
+    pub(crate) fn turn_queue_len(&self) -> usize {
+        self.turn_queue.len()
+    }
+
+    pub(crate) fn has_turn_queue(&self) -> bool {
+        !self.turn_queue.is_empty()
+    }
+
+    pub(crate) fn turn_queue_items(&self) -> &[ResponseInputItem] {
+        self.turn_queue.items()
+    }
+
+    pub(crate) fn take_turn_queue(&mut self) -> TurnQueue {
+        std::mem::take(&mut self.turn_queue)
+    }
+
+    pub(crate) fn set_turn_queue(&mut self, queue: TurnQueue) {
+        self.turn_queue = queue;
     }
 }
 

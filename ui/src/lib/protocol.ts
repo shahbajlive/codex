@@ -67,6 +67,11 @@ import type { ThreadStartParams } from "../../../codex-rs/app-server-protocol/sc
 import type { ThreadStartResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadStartResponse";
 import type { ThreadTokenUsage } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadTokenUsage";
 import type { ThreadTokenUsageUpdatedNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadTokenUsageUpdatedNotification";
+import type { ThreadTurnQueueItem } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadTurnQueueItem";
+import type { ThreadTurnQueueReadResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadTurnQueueReadResponse";
+import type { ThreadTurnQueueDeleteResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadTurnQueueDeleteResponse";
+import type { ThreadTurnQueueUpdateResponse } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadTurnQueueUpdateResponse";
+import type { ThreadTurnQueueUpdatedNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/ThreadTurnQueueUpdatedNotification";
 import type { Turn } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/Turn";
 import type { TurnAbortedNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/TurnAbortedNotification";
 import type { TurnCompletedNotification } from "../../../codex-rs/app-server-protocol/schema/typescript/v2/TurnCompletedNotification";
@@ -153,6 +158,11 @@ export type {
   ThreadStartResponse,
   ThreadTokenUsage,
   ThreadTokenUsageUpdatedNotification,
+  ThreadTurnQueueItem,
+  ThreadTurnQueueReadResponse,
+  ThreadTurnQueueDeleteResponse,
+  ThreadTurnQueueUpdateResponse,
+  ThreadTurnQueueUpdatedNotification,
   Turn,
   TurnAbortedNotification,
   TurnCompletedNotification,
@@ -175,6 +185,10 @@ export type CodexNotification =
   | {
       method: "thread/pendingInput/updated";
       params: ThreadPendingInputUpdatedNotification;
+    }
+  | {
+      method: "thread/turnQueue/updated";
+      params: ThreadTurnQueueUpdatedNotification;
     }
   | { method: "turn/started"; params: TurnStartedNotification }
   | { method: "turn/aborted"; params: TurnAbortedNotification }

@@ -68,9 +68,6 @@ const emit = defineEmits<{
           <div class="workspace-chat__queue-item-text">
             {{ truncate(message.text, 160) }}
           </div>
-          <div class="workspace-chat__queue-item-subtitle">
-            Waiting in queue
-          </div>
         </div>
 
         <div class="workspace-chat__queue-item-actions">

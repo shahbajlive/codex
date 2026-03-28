@@ -360,6 +360,15 @@ impl Session {
             last_agent_message,
         });
         self.send_event(turn_context.as_ref(), event).await;
+
+        // Auto-continue: check if there's items in the queue
+        // Note: Full auto-continue would require spawning next turn, but that creates
+        // a type cycle (spawn_task -> task -> on_task_finished -> spawn_task).
+        // For now, the queue will be processed when the next user input is submitted
+        // or when the frontend triggers a new turn.
+        if self.has_turn_queue().await {
+            tracing::debug!("turn complete, queued items available for next turn");
+        }
     }
 
     async fn register_new_active_task(

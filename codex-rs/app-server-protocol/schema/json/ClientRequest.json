@@ -3418,6 +3418,55 @@
       },
       "type": "object"
     },
+    "ThreadTurnQueueDeleteParams": {
+      "properties": {
+        "index": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadTurnQueueReadParams": {
+      "properties": {
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadTurnQueueUpdateParams": {
+      "properties": {
+        "index": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "text",
+        "threadId"
+      ],
+      "type": "object"
+    },
     "ThreadUnarchiveParams": {
       "properties": {
         "threadId": {
@@ -4155,6 +4204,78 @@
         "params"
       ],
       "title": "Thread/pendingInput/deleteRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/turnQueue/read"
+          ],
+          "title": "Thread/turnQueue/readRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ThreadTurnQueueReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/turnQueue/readRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/turnQueue/delete"
+          ],
+          "title": "Thread/turnQueue/deleteRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ThreadTurnQueueDeleteParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/turnQueue/deleteRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/turnQueue/update"
+          ],
+          "title": "Thread/turnQueue/updateRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ThreadTurnQueueUpdateParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/turnQueue/updateRequest",
       "type": "object"
     },
     {

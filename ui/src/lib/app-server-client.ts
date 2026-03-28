@@ -63,6 +63,7 @@ export class CodexAppServerClient {
       switch (notification.method) {
         case "thread/started":
         case "thread/pendingInput/updated":
+        case "thread/turnQueue/updated":
         case "turn/started":
         case "turn/aborted":
         case "item/started":
@@ -261,6 +262,36 @@ export class CodexAppServerClient {
     return this.transport.request<ThreadPendingInputDeleteResponse>(
       "thread/pendingInput/delete",
       { threadId, index },
+    );
+  }
+
+  async readThreadTurnQueue(
+    threadId: string,
+  ): Promise<ThreadTurnQueueReadResponse> {
+    return this.transport.request<ThreadTurnQueueReadResponse>(
+      "thread/turnQueue/read",
+      { threadId },
+    );
+  }
+
+  async deleteThreadTurnQueue(
+    threadId: string,
+    index: number,
+  ): Promise<ThreadTurnQueueDeleteResponse> {
+    return this.transport.request<ThreadTurnQueueDeleteResponse>(
+      "thread/turnQueue/delete",
+      { threadId, index },
+    );
+  }
+
+  async updateThreadTurnQueue(
+    threadId: string,
+    index: number,
+    text: string,
+  ): Promise<ThreadTurnQueueUpdateResponse> {
+    return this.transport.request<ThreadTurnQueueUpdateResponse>(
+      "thread/turnQueue/update",
+      { threadId, index, text },
     );
   }
 

@@ -679,6 +679,78 @@
             },
             "method": {
               "enum": [
+                "thread/turnQueue/read"
+              ],
+              "title": "Thread/turnQueue/readRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ThreadTurnQueueReadParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Thread/turnQueue/readRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "thread/turnQueue/delete"
+              ],
+              "title": "Thread/turnQueue/deleteRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ThreadTurnQueueDeleteParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Thread/turnQueue/deleteRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "thread/turnQueue/update"
+              ],
+              "title": "Thread/turnQueue/updateRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ThreadTurnQueueUpdateParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Thread/turnQueue/updateRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
                 "skills/list"
               ],
               "title": "Skills/listRequestMethod",
@@ -3977,6 +4049,26 @@
             "params"
           ],
           "title": "Thread/pendingInput/updatedNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
+                "thread/turnQueue/updated"
+              ],
+              "title": "Thread/turnQueue/updatedNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ThreadTurnQueueUpdatedNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Thread/turnQueue/updatedNotification",
           "type": "object"
         },
         {
@@ -15082,6 +15174,158 @@
           "turnId"
         ],
         "title": "ThreadTokenUsageUpdatedNotification",
+        "type": "object"
+      },
+      "ThreadTurnQueueDeleteParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "index": {
+            "format": "uint32",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "threadId"
+        ],
+        "title": "ThreadTurnQueueDeleteParams",
+        "type": "object"
+      },
+      "ThreadTurnQueueDeleteResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "queue": {
+            "items": {
+              "$ref": "#/definitions/v2/ThreadTurnQueueItem"
+            },
+            "type": "array"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "queue",
+          "threadId"
+        ],
+        "title": "ThreadTurnQueueDeleteResponse",
+        "type": "object"
+      },
+      "ThreadTurnQueueItem": {
+        "properties": {
+          "index": {
+            "format": "uint32",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "text"
+        ],
+        "type": "object"
+      },
+      "ThreadTurnQueueReadParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "threadId"
+        ],
+        "title": "ThreadTurnQueueReadParams",
+        "type": "object"
+      },
+      "ThreadTurnQueueReadResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "queue": {
+            "items": {
+              "$ref": "#/definitions/v2/ThreadTurnQueueItem"
+            },
+            "type": "array"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "queue",
+          "threadId"
+        ],
+        "title": "ThreadTurnQueueReadResponse",
+        "type": "object"
+      },
+      "ThreadTurnQueueUpdateParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "index": {
+            "format": "uint32",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "text",
+          "threadId"
+        ],
+        "title": "ThreadTurnQueueUpdateParams",
+        "type": "object"
+      },
+      "ThreadTurnQueueUpdateResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "queue": {
+            "items": {
+              "$ref": "#/definitions/v2/ThreadTurnQueueItem"
+            },
+            "type": "array"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "queue",
+          "threadId"
+        ],
+        "title": "ThreadTurnQueueUpdateResponse",
+        "type": "object"
+      },
+      "ThreadTurnQueueUpdatedNotification": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "queue": {
+            "items": {
+              "$ref": "#/definitions/v2/ThreadTurnQueueItem"
+            },
+            "type": "array"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "queue",
+          "threadId"
+        ],
+        "title": "ThreadTurnQueueUpdatedNotification",
         "type": "object"
       },
       "ThreadUnarchiveParams": {

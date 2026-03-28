@@ -5124,6 +5124,70 @@ pub struct ThreadPendingInputUpdatedNotification {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
+pub struct ThreadTurnQueueUpdatedNotification {
+    pub thread_id: String,
+    pub queue: Vec<ThreadTurnQueueItem>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadTurnQueueItem {
+    pub index: u32,
+    pub text: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadTurnQueueReadParams {
+    pub thread_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadTurnQueueReadResponse {
+    pub thread_id: String,
+    pub queue: Vec<ThreadTurnQueueItem>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadTurnQueueDeleteParams {
+    pub thread_id: String,
+    pub index: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadTurnQueueDeleteResponse {
+    pub thread_id: String,
+    pub queue: Vec<ThreadTurnQueueItem>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadTurnQueueUpdateParams {
+    pub thread_id: String,
+    pub index: u32,
+    pub text: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadTurnQueueUpdateResponse {
+    pub thread_id: String,
+    pub queue: Vec<ThreadTurnQueueItem>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
 pub struct TurnStartedNotification {
     pub thread_id: String,
     pub turn: Turn,

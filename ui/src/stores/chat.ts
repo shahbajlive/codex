@@ -6,6 +6,7 @@ import type {
   Thread,
   ThreadPendingInputItem,
   ThreadTokenUsage,
+  ThreadTurnQueueItem,
 } from "../lib/protocol";
 import {
   applyLiveHistoryNotification,
@@ -97,6 +98,7 @@ export const useChatStore = defineStore("chat", {
     activeTurnId: null as string | null,
     pendingUserDraft: null as string | null,
     pendingInputByThreadId: {} as Record<string, ThreadPendingInputItem[]>,
+    turnQueueByThreadId: {} as Record<string, ThreadTurnQueueItem[]>,
     restoredDraft: null as string | null,
     restoredDraftVersion: 0,
     attachedThreadId: null as string | null,
@@ -158,10 +160,34 @@ export const useChatStore = defineStore("chat", {
 
       const pendingInput =
         state.pendingInputByThreadId[state.selectedThreadId] ?? [];
-      return pendingInput.map((item) => ({
-        id: String(item.index),
-        text: item.text,
-      }));
+      const turnQueue = state.turnQueueByThreadId[state.selectedThreadId] ?? [];
+
+      const messages: WorkspaceQueuedMessage[] = [];
+
+      // Add pending input messages (steer)
+      messages.push(
+        ...pendingInput.map((item) => ({
+          id: `pending-${item.index}`,
+          text: item.text,
+        })),
+      );
+
+      // Add turn queue messages (queued user inputs)
+      messages.push(
+        ...turnQueue.map((item) => ({
+          id: `queue-${item.index}`,
+          text: item.text,
+        })),
+      );
+
+      return messages;
+    },
+
+    turnQueue(state): ThreadTurnQueueItem[] {
+      if (!state.selectedThreadId) {
+        return [];
+      }
+      return state.turnQueueByThreadId[state.selectedThreadId] ?? [];
     },
   },
 
@@ -229,6 +255,13 @@ export const useChatStore = defineStore("chat", {
       this.pendingInputByThreadId = {
         ...this.pendingInputByThreadId,
         [threadId]: pendingInput,
+      };
+    },
+
+    setTurnQueueSnapshot(threadId: string, queue: ThreadTurnQueueItem[]) {
+      this.turnQueueByThreadId = {
+        ...this.turnQueueByThreadId,
+        [threadId]: queue,
       };
     },
 
@@ -915,16 +948,43 @@ export const useChatStore = defineStore("chat", {
         return;
       }
 
-      const index = Number.parseInt(messageId, 10);
+      // Check if this is a pending input or turn queue message
+      // messageId format: "pending-{index}" or "queue-{index}"
+      const isPendingInput = messageId.startsWith("pending-");
+      const isTurnQueue = messageId.startsWith("queue-");
+
+      if (!isPendingInput && !isTurnQueue) {
+        console.warn("Unknown messageId format:", messageId);
+        return;
+      }
+
+      const index = Number.parseInt(messageId.split("-")[1], 10);
       if (!Number.isFinite(index)) {
         return;
       }
 
       try {
-        const response = await client.deleteThreadPendingInput(threadId, index);
-        this.setPendingInputSnapshot(threadId, response.pendingInput);
-      } catch {
-        await this.refreshPendingInput(threadId);
+        if (isTurnQueue) {
+          // Delete from turn queue
+          const response = await client.deleteThreadTurnQueue(threadId, index);
+          this.setTurnQueueSnapshot(threadId, response.queue);
+        } else {
+          // Delete from pending input
+          const response = await client.deleteThreadPendingInput(
+            threadId,
+            index,
+          );
+          this.setPendingInputSnapshot(threadId, response.pendingInput);
+        }
+      } catch (error) {
+        console.error("Failed to delete queued message:", error);
+        if (isTurnQueue) {
+          // Refresh turn queue on error
+          const response = await client.readThreadTurnQueue(threadId);
+          this.setTurnQueueSnapshot(threadId, response.queue);
+        } else {
+          await this.refreshPendingInput(threadId);
+        }
       }
     },
 
@@ -1047,6 +1107,13 @@ export const useChatStore = defineStore("chat", {
         this.setPendingInputSnapshot(
           notification.params.threadId,
           notification.params.pendingInput,
+        );
+      }
+
+      if (notification.method === "thread/turnQueue/updated") {
+        this.setTurnQueueSnapshot(
+          notification.params.threadId,
+          notification.params.queue,
         );
       }
 

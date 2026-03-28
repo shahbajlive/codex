@@ -90,6 +90,8 @@ use codex_app_server_protocol::ThreadRealtimeStartedNotification;
 use codex_app_server_protocol::ThreadRollbackResponse;
 use codex_app_server_protocol::ThreadTokenUsage;
 use codex_app_server_protocol::ThreadTokenUsageUpdatedNotification;
+use codex_app_server_protocol::ThreadTurnQueueItem;
+use codex_app_server_protocol::ThreadTurnQueueUpdatedNotification;
 use codex_app_server_protocol::ToolRequestUserInputOption;
 use codex_app_server_protocol::ToolRequestUserInputParams;
 use codex_app_server_protocol::ToolRequestUserInputQuestion;
@@ -297,6 +299,7 @@ pub(crate) async fn apply_bespoke_event_handling(
                     .send_server_notification(ServerNotification::TurnStarted(notification))
                     .await;
                 emit_pending_input_updated(conversation_id, Some(&conversation), &outgoing).await;
+                emit_turn_queue_updated(conversation_id, Some(&conversation), &outgoing).await;
             }
         }
         EventMsg::TurnComplete(_ev) => {
@@ -2036,6 +2039,44 @@ async fn emit_pending_input_updated(
         .await;
 }
 
+async fn emit_turn_queue_updated(
+    conversation_id: ThreadId,
+    conversation: Option<&Arc<CodexThread>>,
+    outgoing: &ThreadScopedOutgoingMessageSender,
+) {
+    let Some(conversation) = conversation else {
+        return;
+    };
+
+    let queue = conversation.turn_queue_snapshot().await;
+    let notification = ThreadTurnQueueUpdatedNotification {
+        thread_id: conversation_id.to_string(),
+        queue: queue
+            .iter()
+            .enumerate()
+            .map(|(index, item)| ThreadTurnQueueItem {
+                index: index as u32,
+                text: match item {
+                    codex_protocol::models::ResponseInputItem::Message { content, .. } => content
+                        .iter()
+                        .filter_map(|content_item| match content_item {
+                            codex_protocol::models::ContentItem::InputText { text } => {
+                                Some(text.as_str())
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join(""),
+                    _ => format!("{item:?}"),
+                },
+            })
+            .collect(),
+    };
+    outgoing
+        .send_server_notification(ServerNotification::ThreadTurnQueueUpdated(notification))
+        .await;
+}
+
 async fn complete_file_change_item(
     conversation_id: ThreadId,
     item_id: String,
@@ -2250,6 +2291,7 @@ async fn handle_turn_complete(
 
     if matches!(api_version, ApiVersion::V2) {
         emit_pending_input_updated(conversation_id, conversation, outgoing).await;
+        emit_turn_queue_updated(conversation_id, conversation, outgoing).await;
     }
 }
 
@@ -2277,6 +2319,7 @@ async fn handle_turn_interrupted(
 
     if matches!(api_version, ApiVersion::V2) {
         emit_pending_input_updated(conversation_id, conversation, outgoing).await;
+        emit_turn_queue_updated(conversation_id, conversation, outgoing).await;
     }
 }
 
