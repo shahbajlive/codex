@@ -362,12 +362,18 @@ impl Session {
         self.send_event(turn_context.as_ref(), event).await;
 
         // Auto-continue: check if there's items in the queue
-        // Note: Full auto-continue would require spawning next turn, but that creates
-        // a type cycle (spawn_task -> task -> on_task_finished -> spawn_task).
-        // For now, the queue will be processed when the next user input is submitted
-        // or when the frontend triggers a new turn.
         if self.has_turn_queue().await {
-            tracing::debug!("turn complete, queued items available for next turn");
+            let sess = Arc::clone(self);
+            let handle = tokio::runtime::Handle::current();
+            tokio::task::spawn_blocking(move || {
+                handle.block_on(async move {
+                    let next_turn_context = sess
+                        .new_default_turn_with_sub_id(sess.next_internal_sub_id())
+                        .await;
+                    sess.spawn_task(next_turn_context, Vec::new(), RegularTask::new())
+                        .await;
+                });
+            });
         }
     }
 
@@ -460,6 +466,21 @@ impl Session {
             reason,
         });
         self.send_event(task.turn_context.as_ref(), event).await;
+
+        // Auto-continue after interrupt: check if there's items in the queue
+        if self.has_turn_queue().await {
+            let sess = Arc::clone(self);
+            let handle = tokio::runtime::Handle::current();
+            tokio::task::spawn_blocking(move || {
+                handle.block_on(async move {
+                    let next_turn_context = sess
+                        .new_default_turn_with_sub_id(sess.next_internal_sub_id())
+                        .await;
+                    sess.spawn_task(next_turn_context, Vec::new(), RegularTask::new())
+                        .await;
+                });
+            });
+        }
     }
 }
 

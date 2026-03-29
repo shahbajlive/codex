@@ -6,12 +6,14 @@ const props = defineProps<{
   queuedMessages: WorkspaceQueuedMessage[];
   expanded: boolean;
   stacked?: boolean;
+  hasActiveTurn?: boolean;
 }>();
 
 const emit = defineEmits<{
   toggleExpanded: [];
   editQueuedMessage: [messageId: string];
   deleteQueuedMessage: [messageId: string];
+  steerQueuedMessage: [messageId: string];
 }>();
 </script>
 
@@ -71,6 +73,14 @@ const emit = defineEmits<{
         </div>
 
         <div class="workspace-chat__queue-item-actions">
+          <button
+            v-if="hasActiveTurn"
+            class="workspace-chat__queue-item-action"
+            type="button"
+            @click="emit('steerQueuedMessage', message.id)"
+          >
+            Steer
+          </button>
           <button
             class="workspace-chat__queue-item-action"
             type="button"

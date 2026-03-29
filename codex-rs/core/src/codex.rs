@@ -2084,7 +2084,7 @@ impl Session {
         }
     }
 
-    fn next_internal_sub_id(&self) -> String {
+    pub(crate) fn next_internal_sub_id(&self) -> String {
         let id = self
             .next_internal_sub_id
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -4002,6 +4002,11 @@ impl Session {
             state.push_turn_queue(item);
         }
         self.save_turn_queue().await;
+        self.send_event_raw(Event {
+            id: String::new(),
+            msg: EventMsg::TurnQueueUpdated,
+        })
+        .await;
     }
 
     pub async fn pop_turn_queue(&self) -> Option<ResponseInputItem> {
@@ -4010,6 +4015,13 @@ impl Session {
             state.pop_turn_queue()
         };
         self.save_turn_queue().await;
+        if result.is_some() {
+            self.send_event_raw(Event {
+                id: String::new(),
+                msg: EventMsg::TurnQueueUpdated,
+            })
+            .await;
+        }
         result
     }
 
@@ -4755,7 +4767,8 @@ mod handlers {
             .await
             .is_some()
         {
-            // There's an active turn - add items to turn_queue
+            // There's an active turn - add items to turn_queue (SessionState)
+            // Each queued item becomes a separate turn after TurnComplete
             for item in items {
                 let response_item: ResponseInputItem = vec![item].into();
                 sess.push_turn_queue(response_item).await;
@@ -6845,6 +6858,7 @@ fn realtime_text_for_event(msg: &EventMsg) -> Option<String> {
         | EventMsg::ThreadRolledBack(_)
         | EventMsg::TurnStarted(_)
         | EventMsg::TurnComplete(_)
+        | EventMsg::TurnQueueUpdated
         | EventMsg::TokenCount(_)
         | EventMsg::UserMessage(_)
         | EventMsg::AgentMessageDelta(_)

@@ -299,6 +299,10 @@ pub(crate) async fn apply_bespoke_event_handling(
                     .send_server_notification(ServerNotification::TurnStarted(notification))
                     .await;
                 emit_pending_input_updated(conversation_id, Some(&conversation), &outgoing).await;
+            }
+        }
+        EventMsg::TurnQueueUpdated => {
+            if let ApiVersion::V2 = api_version {
                 emit_turn_queue_updated(conversation_id, Some(&conversation), &outgoing).await;
             }
         }
@@ -2291,7 +2295,6 @@ async fn handle_turn_complete(
 
     if matches!(api_version, ApiVersion::V2) {
         emit_pending_input_updated(conversation_id, conversation, outgoing).await;
-        emit_turn_queue_updated(conversation_id, conversation, outgoing).await;
     }
 }
 

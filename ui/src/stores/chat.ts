@@ -988,6 +988,70 @@ export const useChatStore = defineStore("chat", {
       }
     },
 
+    async steerQueuedMessage(messageId: string) {
+      const client = clientRef.client;
+      const threadId = this.selectedThreadId;
+      if (!client || !threadId) {
+        return;
+      }
+
+      // Parse messageId to determine source
+      const isPendingInput = messageId.startsWith("pending-");
+      const isTurnQueue = messageId.startsWith("queue-");
+
+      if (!isPendingInput && !isTurnQueue) {
+        console.warn("Unknown messageId format:", messageId);
+        return;
+      }
+
+      const index = Number.parseInt(messageId.split("-")[1], 10);
+      if (!Number.isFinite(index)) {
+        return;
+      }
+
+      // Get the message text from the queue
+      let messageText = "";
+      if (isTurnQueue) {
+        const queue = this.turnQueueByThreadId[threadId] || [];
+        const item = queue.find((_, i) => i === index);
+        messageText = item?.text || "";
+      } else {
+        const pending = this.pendingInputByThreadId[threadId] || [];
+        const item = pending.find((_, i) => i === index);
+        messageText = item?.text || "";
+      }
+
+      if (!messageText) {
+        console.warn("No message text found for index:", index);
+        return;
+      }
+
+      try {
+        // Use turn_steer to send the message to the current turn
+        const activeTurnId = this.activeTurnId;
+        if (!activeTurnId) {
+          console.warn("No active turn to steer");
+          return;
+        }
+
+        await client.steerThreadTurn(threadId, activeTurnId, messageText);
+
+        // Remove the message from queue after steering
+        if (isTurnQueue) {
+          const response = await client.deleteThreadTurnQueue(threadId, index);
+          this.setTurnQueueSnapshot(threadId, response.queue);
+        } else {
+          const response = await client.deleteThreadPendingInput(
+            threadId,
+            index,
+          );
+          this.setPendingInputSnapshot(threadId, response.pendingInput);
+        }
+      } catch (error) {
+        console.error("Failed to steer queued message:", error);
+      }
+    },
+
     async reconcileActiveTurnSnapshot() {
       const client = clientRef.client;
       const threadId = this.selectedThreadId;

@@ -166,6 +166,7 @@ watch(selectedAgentId, async (agentId, previousAgentId) => {
       @send="workspaceStore.sendMessage"
       @interrupt="workspaceStore.interruptActiveTurn"
       @delete-queued-message="workspaceStore.deleteQueuedMessage"
+      @steer-queued-message="workspaceStore.steerQueuedMessage"
       @set-collapse-override="workspaceStore.setCollapsedItemExpanded"
       @set-collapse-overrides="workspaceStore.mergeCollapsedItemExpanded"
       @open-conversation="openSelectedConversation"

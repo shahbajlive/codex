@@ -53,6 +53,7 @@ const emit = defineEmits<{
   interrupt: [];
   openConversation: [];
   deleteQueuedMessage: [messageId: string];
+  steerQueuedMessage: [messageId: string];
   setCollapseOverride: [key: string, expanded: boolean | string];
   setCollapseOverrides: [updates: Record<string, boolean | string>];
   toggleSidebar: [];
@@ -472,6 +473,18 @@ function handleDeleteQueuedMessage(messageId: string) {
   emit("deleteQueuedMessage", messageId);
 }
 
+function handleSteerQueuedMessage(messageId: string) {
+  const queuedMessage = props.queuedMessages.find(
+    (message) => message.id === messageId,
+  );
+  if (!queuedMessage) {
+    return;
+  }
+
+  // Emit steer event - the parent will handle the actual steer RPC
+  emit("steerQueuedMessage", messageId);
+}
+
 function applySlashCommand(command: string) {
   draft.value = command;
 }
@@ -791,6 +804,7 @@ onMounted(() => {
         @composer-keydown="handleComposerKeydown"
         @edit-queued-message="handleEditQueuedMessage"
         @delete-queued-message="handleDeleteQueuedMessage"
+        @steer-queued-message="handleSteerQueuedMessage"
       />
 
       <WorkspaceCommandControl

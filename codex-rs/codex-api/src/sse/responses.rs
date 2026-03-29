@@ -3,6 +3,7 @@ use crate::common::ResponseStream;
 use crate::error::ApiError;
 use crate::rate_limits::parse_all_rate_limits;
 use crate::telemetry::SseTelemetry;
+use bytes::Bytes;
 use codex_client::ByteStream;
 use codex_client::StreamResponse;
 use codex_client::TransportError;
@@ -15,13 +16,15 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::io::BufRead;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio::time::timeout;
-use tokio_util::io::ReaderStream;
 use tracing::debug;
 use tracing::trace;
 
@@ -33,17 +36,73 @@ pub fn stream_from_fixture(
     path: impl AsRef<Path>,
     idle_timeout: Duration,
 ) -> Result<ResponseStream, ApiError> {
-    let file =
-        std::fs::File::open(path.as_ref()).map_err(|err| ApiError::Stream(err.to_string()))?;
-    let mut content = String::new();
-    for line in std::io::BufReader::new(file).lines() {
-        let line = line.map_err(|err| ApiError::Stream(err.to_string()))?;
-        content.push_str(&line);
-        content.push_str("\n\n");
+    let path = path.as_ref();
+    let path = if path.is_dir() {
+        static NEXT_FIXTURE_INDEX: AtomicUsize = AtomicUsize::new(0);
+        let mut entries = std::fs::read_dir(path)
+            .map_err(|err| ApiError::Stream(err.to_string()))?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|entry_path| entry_path.is_file())
+            .collect::<Vec<PathBuf>>();
+        entries.sort();
+        let index = NEXT_FIXTURE_INDEX.fetch_add(1, Ordering::SeqCst);
+        let selected = entries
+            .get(index)
+            .cloned()
+            .or_else(|| entries.last().cloned())
+            .ok_or_else(|| ApiError::Stream("fixture directory is empty".to_string()))?;
+        selected
+    } else {
+        path.to_path_buf()
+    };
+
+    #[derive(Clone)]
+    enum FixtureChunk {
+        Line(String),
+        Delay(Duration),
     }
 
-    let reader = std::io::Cursor::new(content);
-    let stream = ReaderStream::new(reader).map_err(|err| TransportError::Network(err.to_string()));
+    let file = std::fs::File::open(&path).map_err(|err| ApiError::Stream(err.to_string()))?;
+    let mut chunks = Vec::new();
+    for line in std::io::BufReader::new(file).lines() {
+        let line = line.map_err(|err| ApiError::Stream(err.to_string()))?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Some(delay_ms) = line.strip_prefix("delay_ms:") {
+            let delay_ms = delay_ms
+                .trim()
+                .parse::<u64>()
+                .map_err(|err| ApiError::Stream(err.to_string()))?;
+            chunks.push(FixtureChunk::Delay(Duration::from_millis(delay_ms)));
+            continue;
+        }
+        chunks.push(FixtureChunk::Line(line));
+    }
+
+    let stream = futures::stream::unfold(
+        (Arc::new(chunks), 0usize),
+        |(chunks, mut index)| async move {
+            loop {
+                let Some(chunk) = chunks.get(index).cloned() else {
+                    return None;
+                };
+                index += 1;
+                match chunk {
+                    FixtureChunk::Line(line) => {
+                        let mut line = line;
+                        line.push_str("\n\n");
+                        return Some((Ok(Bytes::from(line)), (chunks, index)));
+                    }
+                    FixtureChunk::Delay(duration) => {
+                        tokio::time::sleep(duration).await;
+                    }
+                }
+            }
+        },
+    )
+    .map_err(|err: TransportError| err);
     let (tx_event, rx_event) = mpsc::channel::<Result<ResponseEvent, ApiError>>(1600);
     tokio::spawn(process_sse(
         Box::pin(stream),

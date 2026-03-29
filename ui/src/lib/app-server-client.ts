@@ -370,6 +370,18 @@ export class CodexAppServerClient {
     });
   }
 
+  async steerThreadTurn(
+    threadId: string,
+    turnId: string,
+    text: string,
+  ): Promise<void> {
+    await this.transport.request("turn/steer", {
+      threadId,
+      expectedTurnId: turnId,
+      input: [{ text }],
+    });
+  }
+
   async listModels(): Promise<Model[]> {
     const response = await this.transport.request<ModelListResponse>(
       "model/list",

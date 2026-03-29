@@ -22,6 +22,7 @@ const emit = defineEmits<{
   composerKeydown: [event: KeyboardEvent];
   editQueuedMessage: [messageId: string];
   deleteQueuedMessage: [messageId: string];
+  steerQueuedMessage: [messageId: string];
 }>();
 
 const textarea = ref<HTMLTextAreaElement | null>(null);
@@ -59,9 +60,11 @@ onMounted(() => {
       v-if="queuedMessages.length"
       :queued-messages="queuedMessages"
       :expanded="queuedDrawerExpanded"
+      :has-active-turn="!!activeTurnId"
       @toggle-expanded="queuedDrawerExpanded = !queuedDrawerExpanded"
       @edit-queued-message="emit('editQueuedMessage', $event)"
       @delete-queued-message="emit('deleteQueuedMessage', $event)"
+      @steer-queued-message="emit('steerQueuedMessage', $event)"
     />
 
     <form
