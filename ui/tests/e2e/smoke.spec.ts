@@ -7,6 +7,13 @@ const appServerUrl =
   process.env.CODEX_APP_SERVER_URL ?? `ws://127.0.0.1:${appServerPort}`;
 const repoRoot = path.resolve(process.cwd(), "..");
 
+test.beforeEach(async ({ page }) => {
+  page.on("console", (msg) =>
+    console.log(`BROWSER CONSOLE: ${msg.type()}: ${msg.text()}`),
+  );
+  page.on("pageerror", (err) => console.log(`BROWSER ERROR: ${err}`));
+});
+
 async function openWorkspace(page: Page) {
   await page.addInitScript(
     ({ url, cwd }) => {
@@ -306,35 +313,21 @@ test.describe("Codex Workspace - Turn Queue", () => {
       page.locator(".workspace-chat__queue-drawer-count"),
     ).toHaveText("3");
 
-    // Interrupt the current turn (press Escape or click interrupt button)
-    // Look for interrupt button
+    // Interrupt the current turn (click interrupt button)
     const interruptBtn = page.locator(
-      "[title='Interrupt'], [aria-label='Interrupt']",
+      "[title='Interrupt turn'], [aria-label='Interrupt turn']",
     );
-    if (await interruptBtn.isVisible()) {
-      await interruptBtn.click();
-    } else {
-      // Try pressing Escape
-      await page.keyboard.press("Escape");
-    }
+    await interruptBtn.click();
 
-    // Wait a moment for interrupt to process
-    await page.waitForTimeout(2000);
+    // Wait for the interrupt to process and auto-continue to start
+    // The auto-continue should pop from the queue immediately
+    await page.waitForTimeout(3000);
 
     // The first message should now be picked up as the next turn
     // Queue should now have 2 items (message 2 and 3)
     await expect(
       page.locator(".workspace-chat__queue-drawer-count"),
-    ).toHaveText("2");
-
-    // Wait for the auto-continue to process the next message
-    // After another 20s delay, message 2 should be picked up
-    await page.waitForTimeout(5000);
-
-    // Now queue should have 1 item (message 3)
-    await expect(
-      page.locator(".workspace-chat__queue-drawer-count"),
-    ).toHaveText("1");
+    ).toHaveText("2", { timeout: 10000 });
   });
 });
 

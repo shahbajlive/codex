@@ -1027,14 +1027,18 @@ export const useChatStore = defineStore("chat", {
       }
 
       try {
-        // Use turn_steer to send the message to the current turn
-        const activeTurnId = this.activeTurnId;
-        if (!activeTurnId) {
+        // Get the latest thread snapshot to get the current active turn ID
+        // This handles the case where auto-continue started a new turn
+        const snapshot = await client.readThreadSnapshot(threadId);
+        const activeTurn = snapshot.thread.turns.find(
+          (turn) => turn.status === "inProgress",
+        );
+        if (!activeTurn) {
           console.warn("No active turn to steer");
           return;
         }
 
-        await client.steerThreadTurn(threadId, activeTurnId, messageText);
+        await client.steerThreadTurn(threadId, activeTurn.id, messageText);
 
         // Remove the message from queue after steering
         if (isTurnQueue) {

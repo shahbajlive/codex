@@ -378,7 +378,7 @@ export class CodexAppServerClient {
     await this.transport.request("turn/steer", {
       threadId,
       expectedTurnId: turnId,
-      input: [{ text }],
+      input: [{ type: "text", text }],
     });
   }
 
